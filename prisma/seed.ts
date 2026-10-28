@@ -182,6 +182,96 @@ async function main() {
     console.log("   No GATEWAY_UPSTREAM/GATEWAY_API_KEY found in .env; skipping gateway migration.");
   }
 
+  // 5. Seed Initial Catalog Models and Upstream Routes (if gateway exists)
+  console.log("-> Seeding catalog models and routes...");
+  const primaryGateway = await prisma.gateway.findFirst({
+    where: { isEnabled: true },
+    orderBy: [{ isPrimary: "desc" }, { priority: "asc" }],
+  });
+
+  if (primaryGateway) {
+    const googleProvider = await prisma.modelProvider.findUnique({
+      where: { slug: "google" },
+    });
+
+    if (googleProvider) {
+      const upstreamModel = await prisma.upstreamModel.upsert({
+        where: {
+          gatewayId_modelKey: {
+            gatewayId: primaryGateway.id,
+            modelKey: "gemini-3.8-flash",
+          },
+        },
+        update: {
+          ownedBy: "google",
+          isAvailable: true,
+          lastSeenAt: new Date(),
+        },
+        create: {
+          gatewayId: primaryGateway.id,
+          modelKey: "gemini-3.8-flash",
+          ownedBy: "google",
+          isAvailable: true,
+          firstSeenAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+      });
+
+      const catalogModel = await prisma.catalogModel.upsert({
+        where: { publicId: "gemini/gemini-3.8-flash" },
+        update: {
+          displayName: "Gemini 3.8 Flash",
+          shortName: "Gemini 3.8 Flash",
+          description: "Google's fast, multimodal model with native tool-use support.",
+          providerId: googleProvider.id,
+          category: "fast",
+          supportsVision: true,
+          supportsTools: true,
+          supportsReasoning: false,
+          status: "active",
+        },
+        create: {
+          publicId: "gemini/gemini-3.8-flash",
+          displayName: "Gemini 3.8 Flash",
+          shortName: "Gemini 3.8 Flash",
+          description: "Google's fast, multimodal model with native tool-use support.",
+          providerId: googleProvider.id,
+          category: "fast",
+          supportsVision: true,
+          supportsTools: true,
+          supportsReasoning: false,
+          status: "active",
+          sortOrder: 30,
+        },
+      });
+
+      await prisma.catalogModelRoute.upsert({
+        where: {
+          catalogModelId_upstreamModelId: {
+            catalogModelId: catalogModel.id,
+            upstreamModelId: upstreamModel.id,
+          },
+        },
+        update: {
+          priority: 1,
+          isEnabled: true,
+        },
+        create: {
+          catalogModelId: catalogModel.id,
+          upstreamModelId: upstreamModel.id,
+          priority: 1,
+          isEnabled: true,
+        },
+      });
+
+      console.log(
+        `   Seeded catalog model "${catalogModel.publicId}" routed to upstream "${upstreamModel.modelKey}" via gateway "${primaryGateway.name}".`
+      );
+    }
+  } else {
+    console.log("   No active gateway found; skipped catalog model route seeding.");
+  }
+
   console.log("✅ Seeding completed successfully!");
 }
 

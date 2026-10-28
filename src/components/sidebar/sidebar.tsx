@@ -58,6 +58,7 @@ export function Sidebar({
       today: filtered.filter((s) => s.group === "today"),
       yesterday: filtered.filter((s) => s.group === "yesterday"),
       week: filtered.filter((s) => s.group === "week"),
+      earlier: filtered.filter((s) => s.group === "earlier"),
     };
   }, [filtered]);
 
@@ -138,7 +139,7 @@ export function Sidebar({
                     <SessionLink
                       key={s.id}
                       session={s}
-                      active={pathname === `/c/${s.id}` || pathname === `/c/${s.slug}`}
+                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
                       onClick={onCloseMobile}
                     />
                   ))}
@@ -156,7 +157,7 @@ export function Sidebar({
                     <SessionLink
                       key={s.id}
                       session={s}
-                      active={pathname === `/c/${s.id}` || pathname === `/c/${s.slug}`}
+                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
                       onClick={onCloseMobile}
                     />
                   ))}
@@ -174,7 +175,25 @@ export function Sidebar({
                     <SessionLink
                       key={s.id}
                       session={s}
-                      active={pathname === `/c/${s.id}` || pathname === `/c/${s.slug}`}
+                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
+                      onClick={onCloseMobile}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {groups.earlier.length > 0 && (
+              <div>
+                <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
+                  {t("nav.earlier")}
+                </p>
+                <div className="space-y-0.5">
+                  {groups.earlier.map((s) => (
+                    <SessionLink
+                      key={s.id}
+                      session={s}
+                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
                       onClick={onCloseMobile}
                     />
                   ))}

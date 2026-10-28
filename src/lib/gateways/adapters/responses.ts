@@ -13,11 +13,26 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
     model: request.model,
     input: request.messages
       .filter((m) => m.role !== "system")
-      .map((m) =>
-        m.role === "tool"
-          ? { type: "function_call_output", call_id: m.toolCallId ?? "", output: m.content }
-          : { role: m.role, content: m.content }
-      ),
+      .flatMap((m) => {
+        if (m.role === "tool") {
+          return [{ type: "function_call_output", call_id: m.toolCallId ?? "", output: m.content }];
+        }
+        const items: Array<Record<string, unknown>> = [];
+        if (m.content) {
+          items.push({ role: m.role, content: m.content });
+        }
+        if (m.toolCalls?.length) {
+          for (const call of m.toolCalls) {
+            items.push({
+              type: "function_call",
+              call_id: call.id,
+              name: call.name,
+              arguments: call.arguments,
+            });
+          }
+        }
+        return items.length > 0 ? items : [{ role: m.role, content: "" }];
+      }),
     stream: true,
   };
   if (system.length) body.instructions = system.join("\n\n");
@@ -56,6 +71,7 @@ function parseRecord(record: SseRecord): GatewayStreamEvent[] {
     return [{
       type: "tool_call",
       callId: String(payload?.call_id ?? payload?.item_id ?? ""),
+      index: typeof payload?.output_index === "number" ? payload.output_index : undefined,
       name: payload?.name ?? "",
       argumentsDelta: payload?.delta ?? "",
     }];
@@ -64,6 +80,7 @@ function parseRecord(record: SseRecord): GatewayStreamEvent[] {
     return [{
       type: "tool_call",
       callId: String(payload.item.call_id ?? payload.item.id ?? ""),
+      index: typeof payload?.output_index === "number" ? payload.output_index : undefined,
       name: payload.item.name ?? "",
       argumentsDelta: "",
     }];

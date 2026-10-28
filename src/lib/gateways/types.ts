@@ -16,7 +16,10 @@ export type GatewayStreamEvent =
   | { type: "reasoning"; text: string }
   | {
       type: "tool_call";
+      /** Upstream call id; may only be present on the first fragment of a call. */
       callId: string;
+      /** Stable position of the call within the response; used to join fragments. */
+      index?: number;
       name: string;
       argumentsDelta: string;
     }
@@ -31,11 +34,19 @@ export type GatewayStreamEvent =
       reason: FinishReason;
     };
 
+export interface ToolCallInput {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
 export interface ChatMessageInput {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   name?: string;
   toolCallId?: string;
+  /** Tool calls requested by an assistant turn (needed before the matching `tool` messages). */
+  toolCalls?: ToolCallInput[];
 }
 
 export interface GatewayExecutionRequest {

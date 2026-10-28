@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from "react";
 import { cn } from "@/lib/cn";
 
 interface ToastContextType {
@@ -11,11 +11,12 @@ const ToastContext = createContext<ToastContextType | null>(null);
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toastText, setToastText] = useState<string | null>(null);
+  const timerRef = useRef<number | undefined>(undefined);
 
   const toast = useCallback((message: string, durationMs = 2400) => {
     setToastText(message);
-    window.clearTimeout((toast as any)._timer);
-    (toast as any)._timer = window.setTimeout(() => {
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
       setToastText(null);
     }, durationMs);
   }, []);

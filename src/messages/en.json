@@ -9,6 +9,7 @@
     "today": "Today",
     "yesterday": "Yesterday",
     "last7Days": "Previous 7 days",
+    "earlier": "Earlier",
     "emptyHistory": "No matching conversations found.",
     "monthlyQuota": "Monthly quota",
     "quotaResetsIn": "resets in {days} days",

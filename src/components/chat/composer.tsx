@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
-import { ArrowUp, Mic, Plus, Paperclip, Globe, Brain, Image } from "lucide-react";
+import { ArrowUp, Mic, Plus, Paperclip, Globe, Brain, ImageIcon } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
 import { ModelSelector } from "./model-selector";
@@ -12,6 +12,7 @@ import type { ReasoningLevel } from "@/types";
 
 interface ComposerProps {
   onSend: (text: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
   currentModelId: string;
   onModelChange: (modelId: string) => void;
@@ -21,6 +22,7 @@ interface ComposerProps {
 
 export function Composer({
   onSend,
+  onStop,
   disabled,
   currentModelId,
   onModelChange,
@@ -99,7 +101,7 @@ export function Composer({
                   onClick={() => toast(t("toast.featureUnavailable"))}
                   className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)] cursor-pointer"
                 >
-                  <Image className="w-3.5 h-3.5 text-[var(--muted)]" />
+                  <ImageIcon className="w-3.5 h-3.5 text-[var(--muted)]" />
                   <span>{t("composer.photo")}</span>
                 </button>
                 <button
@@ -176,20 +178,33 @@ export function Composer({
               <Mic className="w-4 h-4" />
             </button>
 
-            <Tooltip content={t("composer.enterToSend")} side="top" align="end">
-              <button
-                type="submit"
-                disabled={!value.trim() || disabled}
-                className={cn(
-                  "grid place-items-center w-8 h-8 rounded-[10px] text-[var(--accent-text)] bg-[var(--accent)]",
-                  "hover:bg-[var(--accent-hover)] active:scale-95 transition-all cursor-pointer",
-                  "disabled:bg-[var(--border)] disabled:text-[var(--placeholder)] disabled:cursor-not-allowed disabled:active:scale-100"
-                )}
-                aria-label={t("composer.send")}
-              >
-                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-              </button>
-            </Tooltip>
+            {disabled && onStop ? (
+              <Tooltip content="Stop generation" side="top" align="end">
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="grid place-items-center w-8 h-8 rounded-[10px] text-[var(--accent-text)] bg-[var(--accent)] hover:bg-[var(--accent-hover)] active:scale-95 transition-all cursor-pointer"
+                  aria-label="Stop generation"
+                >
+                  <span className="w-3 h-3 rounded-[2px] bg-current" />
+                </button>
+              </Tooltip>
+            ) : (
+              <Tooltip content={t("composer.enterToSend")} side="top" align="end">
+                <button
+                  type="submit"
+                  disabled={!value.trim() || disabled}
+                  className={cn(
+                    "grid place-items-center w-8 h-8 rounded-[10px] text-[var(--accent-text)] bg-[var(--accent)]",
+                    "hover:bg-[var(--accent-hover)] active:scale-95 transition-all cursor-pointer",
+                    "disabled:bg-[var(--border)] disabled:text-[var(--placeholder)] disabled:cursor-not-allowed disabled:active:scale-100"
+                  )}
+                  aria-label={t("composer.send")}
+                >
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              </Tooltip>
+            )}
           </div>
         </div>
       </form>

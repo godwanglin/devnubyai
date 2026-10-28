@@ -23,6 +23,15 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
       content: m.content,
       ...(m.name ? { name: m.name } : {}),
       ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
+      ...(m.toolCalls?.length
+        ? {
+            tool_calls: m.toolCalls.map((call) => ({
+              id: call.id,
+              type: "function",
+              function: { name: call.name, arguments: call.arguments },
+            })),
+          }
+        : {}),
     })),
     stream: true,
     stream_options: { include_usage: true },
@@ -61,7 +70,8 @@ function parseRecord(record: SseRecord): GatewayStreamEvent[] {
   for (const call of Array.isArray(delta?.tool_calls) ? delta.tool_calls : []) {
     events.push({
       type: "tool_call",
-      callId: String(call?.id ?? call?.index ?? ""),
+      callId: typeof call?.id === "string" ? call.id : "",
+      index: typeof call?.index === "number" ? call.index : undefined,
       name: call?.function?.name ?? "",
       argumentsDelta: call?.function?.arguments ?? "",
     });
