@@ -1,6 +1,6 @@
 # 02 — API Routing & Transport Chat (Draft)
 
-> Status: **DRAFT — menunggu review**.
+> Status: **Disetujui — sebagian terimplementasi**. Fondasi (`proxy.ts`, format response, auth, `/me`, `/models`, `/auth/*`, `GET /admin/gateways`) selesai di Phase 2 (`0350ccc`); endpoint chat/SSE menyusul di Phase 4, admin penuh di Phase 5.
 > Next.js 16 App Router: semua endpoint = Route Handler `src/app/api/v1/**/route.ts` (lihat `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`). Proteksi cross-cutting di `src/proxy.ts` (konvensi pengganti `middleware`).
 
 ## 1. Prinsip

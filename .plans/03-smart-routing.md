@@ -1,6 +1,6 @@
 # 03 — Smart Routing & Fallback (Draft)
 
-> Status: **DRAFT — menunggu review**.
+> Status: **Disetujui — belum diimplementasi** (dikerjakan di Phase 3). Tabel & setting `routing.*` sudah ada sejak Phase 1.
 > **Aturan wajib:** smart routing & fallback **tidak boleh di-hardcode**. Gateway, kandidat, urutan, kode error yang memicu fallback, batas percobaan, dan circuit breaker semuanya dibaca dari DB (`gateways`, `catalog_model_routes`, `app_settings`) dan diatur admin di `/admin/model-catalog`. Lihat `ARCHITECTURE_RULES.md` §9.
 
 ## 1. Sumber konfigurasi

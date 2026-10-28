@@ -1,6 +1,6 @@
 # 01 — Database Schema (Draft)
 
-> Status: **DRAFT — menunggu review**. Belum ada migration yang dijalankan.
+> Status: **Disetujui & terimplementasi** (Phase 1, `1dff8d1`). Migration `20261028000000_init` sudah ter-deploy di DB VPS.
 > Engine: **MariaDB 10.11** (VPS `194.233.78.169:3306`), InnoDB, `utf8mb4`.
 > ORM / migration: **Prisma** (provider `mysql` + driver adapter MariaDB) — detail setup di Phase 1.
 
