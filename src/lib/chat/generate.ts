@@ -1,11 +1,17 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/client";
 import { ApiError } from "@/lib/api/response";
 import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool } from "@/lib/tools";
+import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
 import { recordUserUsage } from "@/lib/chat/quota";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
-import type { ChatMessageInput, ToolCallInput } from "@/lib/gateways/types";
+import type {
+  ChatMessageInput,
+  ReasoningEffortVariant,
+  ToolCallInput,
+} from "@/lib/gateways/types";
 import {
   createUIMessageStream,
   smoothStream,
@@ -24,6 +30,7 @@ export interface StreamGenerationOptions {
   userMessagePublicId: string;
   requestedModelPublicId?: string;
   sessionModelPublicId?: string | null;
+  reasoningEffort?: ReasoningEffortVariant;
   conversationHistory: ChatMessageInput[];
   requestId: string;
   clientSignal: AbortSignal;
@@ -131,6 +138,7 @@ export function createChatGenerationStream(
     userMessagePublicId,
     requestedModelPublicId,
     sessionModelPublicId,
+    reasoningEffort,
     conversationHistory,
     requestId,
     clientSignal,
@@ -174,7 +182,9 @@ export function createChatGenerationStream(
           },
         });
 
+        // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
+        const executedToolParts: Record<string, unknown>[] = [];
         let remainingToolRounds = resolvedModel.supportsTools ? 3 : 0;
         let stepIndex = 0;
 
@@ -190,6 +200,7 @@ export function createChatGenerationStream(
             messageId: assistantMessageId,
             request: {
               messages: currentMessages,
+              reasoningEffort,
               tools: resolvedModel.supportsTools ? devnubyTools : undefined,
               signal: combinedSignal,
             },
@@ -202,6 +213,7 @@ export function createChatGenerationStream(
           const reasoningPartId = `reasoning_${assistantMessagePublicId}_${stepIndex}`;
           let hasEmittedTextStart = false;
           let hasEmittedReasoningStart = false;
+          let hasEndedReasoning = false;
 
           // Bridge gateway events to TextStreamParts for smoothStream
           async function* rawTextPartsGenerator(): AsyncIterable<
@@ -215,6 +227,11 @@ export function createChatGenerationStream(
               if (event.type === "delta") {
                 turnContent += event.text;
                 fullContent += event.text;
+                // Jawaban mulai keluar → fase berpikir selesai, tutup reasoning part sekarang
+                if (hasEmittedReasoningStart && !hasEndedReasoning) {
+                  hasEndedReasoning = true;
+                  yield { type: "reasoning-end", id: reasoningPartId };
+                }
                 if (!hasEmittedTextStart) {
                   hasEmittedTextStart = true;
                   yield { type: "text-start", id: textPartId };
@@ -249,7 +266,7 @@ export function createChatGenerationStream(
               }
             }
 
-            if (hasEmittedReasoningStart) {
+            if (hasEmittedReasoningStart && !hasEndedReasoning) {
               yield { type: "reasoning-end", id: reasoningPartId };
             }
             if (hasEmittedTextStart) {
@@ -315,6 +332,18 @@ export function createChatGenerationStream(
                 signal: combinedSignal,
               });
 
+              executedToolParts.push({
+                type: "dynamic-tool",
+                toolCallId: effectiveCallId,
+                toolName: tool.name,
+                state: result.success ? "output-available" : "output-error",
+                input: parsedArgs,
+                output: result.success
+                  ? sanitizeToolOutputForStorage(tool.name, result.data)
+                  : undefined,
+                errorText: result.success ? undefined : result.error?.message,
+              });
+
               if (result.success) {
                 writer.write({
                   type: "tool-output-available",
@@ -350,6 +379,10 @@ export function createChatGenerationStream(
           data: {
             content: fullContent,
             reasoning: fullReasoning || null,
+            parts:
+              executedToolParts.length > 0
+                ? (executedToolParts as unknown as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
             status: "completed",
             promptTokens: promptTokens || null,
             completionTokens: completionTokens || null,

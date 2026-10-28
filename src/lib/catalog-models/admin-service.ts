@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { bumpRoutingVersion } from "@/lib/routing/settings";
+import { invalidateActiveCatalogCache } from "@/lib/catalog/cache";
 import type { Prisma } from "@/generated/client";
 
 export interface SanitizedProviderSummaryDto {
@@ -306,6 +307,7 @@ export async function createCatalogModel(
     );
 
     await bumpRoutingVersion(actorUserId, tx);
+    void invalidateActiveCatalogCache();
 
     return tx.catalogModel.findUniqueOrThrow({
       where: { id: model.id },
@@ -436,6 +438,7 @@ export async function updateCatalogModel(
     );
 
     await bumpRoutingVersion(actorUserId, tx);
+    void invalidateActiveCatalogCache();
 
     return tx.catalogModel.findUniqueOrThrow({
       where: { id },
@@ -510,6 +513,7 @@ export async function deleteCatalogModel(id: bigint, actorUserId: bigint): Promi
     );
 
     await bumpRoutingVersion(actorUserId, tx);
+    void invalidateActiveCatalogCache();
   });
 }
 

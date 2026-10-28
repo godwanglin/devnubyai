@@ -75,7 +75,20 @@
     "more": "Lainnya",
     "like": "Tanggapan bagus",
     "dislike": "Tanggapan buruk",
-    "feedbackRecorded": "Terima kasih atas masukan Anda!"
+    "feedbackRecorded": "Terima kasih atas masukan Anda!",
+    "scrollToBottom": "Gulir ke bawah",
+    "thinking": "Sedang berpikir",
+    "thoughtFor": "Berpikir selama {seconds} detik",
+    "thoughtProcess": "Proses berpikir",
+    "toolRunning": "Menjalankan {tool}",
+    "toolDone": "Memakai {tool}",
+    "toolFailed": "{tool} gagal",
+    "toolInput": "Input",
+    "toolOutput": "Hasil",
+    "doneWebSearch": "Selesai mencari di web",
+    "doneDeepSearch": "Selesai riset mendalam",
+    "searchingWeb": "Sedang mencari di web...",
+    "searchingTopic": "Mencari \"{topic}\""
   },
   "toast": {
     "newChatStarted": "Percakapan baru dimulai",

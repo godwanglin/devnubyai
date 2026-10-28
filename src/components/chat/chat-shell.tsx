@@ -9,17 +9,18 @@ import React, {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type DynamicToolUIPart, type UIMessage } from "ai";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { ChatTopbar } from "./chat-topbar";
 import { Composer } from "./composer";
 import { MessageList } from "./message-list";
 import { Welcome } from "./welcome";
+import { ChatMessagesSkeleton } from "./chat-skeleton";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
 import { getLocalStorage, setLocalStorage } from "@/lib/storage";
 import { useToast } from "@/providers/toast-provider";
-import type { Message, ReasoningLevel, Session } from "@/types";
+import type { Message, ReasoningLevel, Session, ToolActivity } from "@/types";
 
 function errorMessage(err: unknown, fallback: string) {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -66,6 +67,7 @@ interface ApiMessageItem {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   reasoning?: string | null;
+  parts?: unknown;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -118,18 +120,59 @@ function extractUIMessageText(msg: UIMessage): string {
   return text;
 }
 
+// Map message creation timestamps by message ID to preserve real creation time across streaming
+const messageTimestamps = new Map<string, string>();
+
 /**
  * Maps an array of AI SDK UIMessages into the UI's simple Message format.
  */
 function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
   return uiMessages
     .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({
-      id: m.id,
-      role: m.role as "user" | "assistant",
-      content: extractUIMessageText(m),
-      createdAt: new Date().toISOString(),
-    }));
+    .map((m) => {
+      let createdAt = messageTimestamps.get(m.id);
+      if (!createdAt) {
+        createdAt = new Date().toISOString();
+        messageTimestamps.set(m.id, createdAt);
+      }
+      let reasoning = "";
+      let isReasoningStreaming = false;
+      const toolCalls: ToolActivity[] = [];
+
+      for (const part of m.parts) {
+        if (part.type === "reasoning") {
+          reasoning += (reasoning && part.text ? "\n\n" : "") + part.text;
+          if (part.state === "streaming") isReasoningStreaming = true;
+        } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
+          const tool = part as DynamicToolUIPart;
+          toolCalls.push({
+            id: tool.toolCallId,
+            name: tool.toolName ?? part.type.slice("tool-".length),
+            state:
+              tool.state === "input-streaming"
+                ? "streaming"
+                : tool.state === "output-available"
+                  ? "completed"
+                  : tool.state === "output-error"
+                    ? "error"
+                    : "running",
+            input: tool.input,
+            output: tool.state === "output-available" ? tool.output : undefined,
+            error: tool.state === "output-error" ? tool.errorText : undefined,
+          });
+        }
+      }
+
+      return {
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: extractUIMessageText(m),
+        createdAt,
+        reasoning: reasoning || null,
+        isReasoningStreaming,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      };
+    });
 }
 
 /**
@@ -138,17 +181,36 @@ function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
 function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[] {
   return items
     .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({
-      id: m.id,
-      role: m.role as "user" | "assistant",
-      parts: [
-        {
-          type: "text",
-          text: m.content,
-          state: "done",
-        },
-      ],
-    }));
+    .map((m) => {
+      messageTimestamps.set(m.id, m.createdAt);
+
+      let parsedSavedParts: unknown[] = [];
+      if (typeof m.parts === "string" && m.parts.trim().length > 0) {
+        try {
+          const json = JSON.parse(m.parts);
+          if (Array.isArray(json)) parsedSavedParts = json;
+        } catch {}
+      } else if (Array.isArray(m.parts)) {
+        parsedSavedParts = m.parts;
+      }
+
+      return {
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        parts: [
+          ...(m.reasoning
+            ? [{ type: "reasoning" as const, text: m.reasoning, state: "done" as const }]
+            : []),
+          // Rehydrate persisted tool activity parts (e.g. interactive_quiz or search)
+          ...(parsedSavedParts as any[]),
+          {
+            type: "text",
+            text: m.content,
+            state: "done",
+          },
+        ],
+      };
+    });
 }
 
 export function ChatShell() {
@@ -169,6 +231,7 @@ export function ChatShell() {
 
   // Live sessions list from API
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
 
   // Extract current chat publicId from /c/[id]
   const currentChatId = useMemo(() => {
@@ -176,6 +239,9 @@ export function ChatShell() {
     const parts = pathname.split("/");
     return parts[1] === "c" && parts[2] ? parts[2] : null;
   }, [pathname]);
+
+  // Loading state when opening / switching between chat sessions
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   // Stored selection, or the first catalog model when it is missing/no longer active
   const currentModelId =
@@ -200,6 +266,7 @@ export function ChatShell() {
               api: `/api/v1/chats/${effectiveChatId}/messages/${messageId}/regenerate`,
               body: {
                 model: currentModelId || undefined,
+                reasoningLevel: reasoningLevel || undefined,
               },
             };
           }
@@ -210,11 +277,12 @@ export function ChatShell() {
             body: {
               content: text,
               model: currentModelId || undefined,
+              reasoningLevel: reasoningLevel || undefined,
             },
           };
         },
       }),
-    [activeChatId, currentModelId]
+    [activeChatId, currentModelId, reasoningLevel]
   );
 
   // Refresh session list from `/api/v1/chats`
@@ -266,21 +334,26 @@ export function ChatShell() {
   useEffect(() => {
     let active = true;
     loadSessions().then((items) => {
-      if (active && items) setSessions(items);
+      if (active) {
+        if (items) setSessions(items);
+        setIsLoadingSessions(false);
+      }
     });
     return () => {
       active = false;
     };
   }, [pathname]);
 
-  // Fetch initial messages when opening `/c/[id]`
+  // Fetch initial messages when opening `/c/[id]` (limit to latest 10 messages for fast initial load)
   useEffect(() => {
     if (!currentChatId || currentChatId === ownedChatId) return;
 
     let active = true;
+
     (async () => {
       try {
-        const res = await fetch(`/api/v1/chats/${currentChatId}/messages?limit=100`, {
+        setIsLoadingMessages(true);
+        const res = await fetch(`/api/v1/chats/${currentChatId}/messages?limit=10`, {
           credentials: "same-origin",
         });
         if (!res.ok) {
@@ -296,6 +369,10 @@ export function ChatShell() {
         setUiMessages(mapApiMessagesToUIMessages(items));
       } catch {
         // Failed to load messages
+      } finally {
+        if (active) {
+          setIsLoadingMessages(false);
+        }
       }
     })();
 
@@ -402,6 +479,7 @@ export function ChatShell() {
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--surface)]">
       <Sidebar
         sessions={sessions}
+        isLoadingSessions={isLoadingSessions}
         isCollapsed={isCollapsed}
         onToggleCollapse={() => setIsCollapsed((v) => !v)}
         mobileOpen={mobileOpen}
@@ -422,11 +500,14 @@ export function ChatShell() {
         />
 
         <div className="flex-1 overflow-y-auto">
-          {domainMessages.length === 0 && !isThinking ? (
+          {isLoadingMessages ? (
+            <ChatMessagesSkeleton />
+          ) : domainMessages.length === 0 && !isThinking ? (
             <Welcome onSelectPrompt={handleSend} />
           ) : (
             <MessageList
               messages={domainMessages}
+              chatId={currentChatId ?? undefined}
               isThinking={isThinking}
               streamingId={streamingId}
               onRegenerate={handleRegenerate}

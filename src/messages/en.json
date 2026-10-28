@@ -75,7 +75,20 @@
     "more": "More",
     "like": "Good response",
     "dislike": "Bad response",
-    "feedbackRecorded": "Thank you for your feedback!"
+    "feedbackRecorded": "Thank you for your feedback!",
+    "scrollToBottom": "Scroll to bottom",
+    "thinking": "Thinking",
+    "thoughtFor": "Thought for {seconds}s",
+    "thoughtProcess": "Thought process",
+    "toolRunning": "Running {tool}",
+    "toolDone": "Used {tool}",
+    "toolFailed": "{tool} failed",
+    "toolInput": "Input",
+    "toolOutput": "Result",
+    "doneWebSearch": "Finished searching the web",
+    "doneDeepSearch": "Finished deep research",
+    "searchingWeb": "Searching the web...",
+    "searchingTopic": "Searching \"{topic}\""
   },
   "toast": {
     "newChatStarted": "New conversation started",

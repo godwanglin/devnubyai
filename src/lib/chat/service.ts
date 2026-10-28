@@ -280,7 +280,7 @@ export async function listChatMessages(
   options: { limit?: number; cursor?: string } = {}
 ): Promise<{ messages: ChatMessageDto[]; nextCursor: string | null }> {
   const session = await getChatSession(userId, sessionPublicId);
-  const limit = Math.min(Math.max(1, options.limit ?? 50), 100);
+  const limit = Math.min(Math.max(1, options.limit ?? 10), 100);
 
   let cursorCondition: Prisma.ChatMessageWhereInput | undefined;
   if (options.cursor) {
@@ -289,16 +289,17 @@ export async function listChatMessages(
       select: { id: true },
     });
     if (cursorMsg) {
-      cursorCondition = { id: { gt: cursorMsg.id } };
+      cursorCondition = { id: { lt: cursorMsg.id } };
     }
   }
 
-  const messages = await db.chatMessage.findMany({
+  // Load latest messages in reverse order (id DESC) so initial fetch grabs the latest turns
+  const messagesDesc = await db.chatMessage.findMany({
     where: {
       sessionId: session.id,
       ...(cursorCondition ? cursorCondition : {}),
     },
-    orderBy: { id: "asc" },
+    orderBy: { id: "desc" },
     take: limit + 1,
     include: {
       catalogModel: { select: { publicId: true } },
@@ -306,10 +307,13 @@ export async function listChatMessages(
   });
 
   let nextCursor: string | null = null;
-  if (messages.length > limit) {
-    const nextItem = messages.pop()!;
+  if (messagesDesc.length > limit) {
+    const nextItem = messagesDesc.pop()!;
     nextCursor = nextItem.publicId;
   }
+
+  // Reverse back to chronological order (asc) for UI display
+  const messages = messagesDesc.reverse();
 
   return {
     messages: messages.map(toMessageDto),

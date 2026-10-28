@@ -1,10 +1,22 @@
 export type Role = "user" | "assistant" | "system";
 
+export interface ToolActivity {
+  id: string;
+  name: string;
+  state: "streaming" | "running" | "completed" | "error";
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+}
+
 export interface Message {
   id: string;
   role: Role;
   content: string;
   createdAt: string;
+  reasoning?: string | null;
+  isReasoningStreaming?: boolean;
+  toolCalls?: ToolActivity[];
 }
 
 export interface Session {

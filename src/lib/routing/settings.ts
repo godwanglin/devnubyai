@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { getCachedJson, setCachedJson, invalidateCacheKey, invalidateCachePattern } from "@/lib/redis/client";
 
 /**
  * Routing configuration lives only in `app_settings` (admin-managed).
@@ -83,16 +84,25 @@ function parseSettings(
   return result.data;
 }
 
+const REDIS_ROUTING_SETTINGS_KEY = "routing:settings";
+
 /**
- * Fetch routing settings from app_settings with a short-lived memory cache
+ * Fetch routing settings from app_settings with Redis + local cache
  * whose TTL is itself `routing.cache_ttl_seconds`.
  */
 export async function getRoutingSettings(options?: {
   forceRefresh?: boolean;
 }): Promise<RoutingSettings> {
   const now = Date.now();
-  if (!options?.forceRefresh && cached && now < cached.expiresAt) {
-    return cached.settings;
+  if (!options?.forceRefresh) {
+    if (cached && now < cached.expiresAt) {
+      return cached.settings;
+    }
+    const redisCached = await getCachedJson<RoutingSettings>(REDIS_ROUTING_SETTINGS_KEY);
+    if (redisCached) {
+      cached = { settings: redisCached, expiresAt: now + redisCached.cacheTtlSeconds * 1000 };
+      return redisCached;
+    }
   }
 
   const rows = await db.appSetting.findMany({
@@ -102,14 +112,17 @@ export async function getRoutingSettings(options?: {
 
   const settings = parseSettings(rows);
   cached = { settings, expiresAt: now + settings.cacheTtlSeconds * 1000 };
+  await setCachedJson(REDIS_ROUTING_SETTINGS_KEY, settings, settings.cacheTtlSeconds);
   return settings;
 }
 
 /**
- * Invalidate the memory cache. Call this after admin mutations.
+ * Invalidate the cache in Redis & memory. Call this after admin mutations.
  */
 export function invalidateRoutingSettingsCache(): void {
   cached = null;
+  void invalidateCacheKey(REDIS_ROUTING_SETTINGS_KEY);
+  void invalidateCachePattern("routing:candidates:*");
 }
 
 /**

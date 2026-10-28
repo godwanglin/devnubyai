@@ -23,6 +23,7 @@ import type { Session } from "@/types";
 
 interface SidebarProps {
   sessions: Session[];
+  isLoadingSessions?: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   mobileOpen: boolean;
@@ -31,6 +32,7 @@ interface SidebarProps {
 
 export function Sidebar({
   sessions,
+  isLoadingSessions = false,
   isCollapsed,
   onToggleCollapse,
   mobileOpen,
@@ -130,82 +132,88 @@ export function Sidebar({
           </div>
 
           <nav className="space-y-4">
-            {groups.today.length > 0 && (
-              <div>
-                <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                  {t("nav.today")}
-                </p>
-                <div className="space-y-0.5">
-                  {groups.today.map((s) => (
-                    <SessionLink
-                      key={s.id}
-                      session={s}
-                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                      onClick={onCloseMobile}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+            {isLoadingSessions && sessions.length === 0 ? (
+              <SidebarSessionsSkeleton />
+            ) : (
+              <>
+                {groups.today.length > 0 && (
+                  <div>
+                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
+                      {t("nav.today")}
+                    </p>
+                    <div className="space-y-0.5">
+                      {groups.today.map((s) => (
+                        <SessionLink
+                          key={s.id}
+                          session={s}
+                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
+                          onClick={onCloseMobile}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {groups.yesterday.length > 0 && (
-              <div>
-                <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                  {t("nav.yesterday")}
-                </p>
-                <div className="space-y-0.5">
-                  {groups.yesterday.map((s) => (
-                    <SessionLink
-                      key={s.id}
-                      session={s}
-                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                      onClick={onCloseMobile}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+                {groups.yesterday.length > 0 && (
+                  <div>
+                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
+                      {t("nav.yesterday")}
+                    </p>
+                    <div className="space-y-0.5">
+                      {groups.yesterday.map((s) => (
+                        <SessionLink
+                          key={s.id}
+                          session={s}
+                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
+                          onClick={onCloseMobile}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {groups.week.length > 0 && (
-              <div>
-                <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                  {t("nav.last7Days")}
-                </p>
-                <div className="space-y-0.5">
-                  {groups.week.map((s) => (
-                    <SessionLink
-                      key={s.id}
-                      session={s}
-                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                      onClick={onCloseMobile}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+                {groups.week.length > 0 && (
+                  <div>
+                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
+                      {t("nav.last7Days")}
+                    </p>
+                    <div className="space-y-0.5">
+                      {groups.week.map((s) => (
+                        <SessionLink
+                          key={s.id}
+                          session={s}
+                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
+                          onClick={onCloseMobile}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {groups.earlier.length > 0 && (
-              <div>
-                <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                  {t("nav.earlier")}
-                </p>
-                <div className="space-y-0.5">
-                  {groups.earlier.map((s) => (
-                    <SessionLink
-                      key={s.id}
-                      session={s}
-                      active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                      onClick={onCloseMobile}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+                {groups.earlier.length > 0 && (
+                  <div>
+                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
+                      {t("nav.earlier")}
+                    </p>
+                    <div className="space-y-0.5">
+                      {groups.earlier.map((s) => (
+                        <SessionLink
+                          key={s.id}
+                          session={s}
+                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
+                          onClick={onCloseMobile}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {filtered.length === 0 && (
-              <p className="px-1 text-xs text-[var(--placeholder)]">
-                {t("nav.emptyHistory")}
-              </p>
+                {filtered.length === 0 && (
+                  <p className="px-1 text-xs text-[var(--placeholder)]">
+                    {t("nav.emptyHistory")}
+                  </p>
+                )}
+              </>
             )}
           </nav>
         </div>
@@ -348,6 +356,29 @@ function AccountSkeleton() {
         <div className="flex-1 space-y-1.5">
           <span className="block h-3 w-28 rounded bg-[var(--hover)]" />
           <span className="block h-2.5 w-16 rounded bg-[var(--hover)]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Skeleton shown when chat sessions are being initially fetched from the server. */
+function SidebarSessionsSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse px-1" aria-busy="true">
+      <div>
+        <div className="h-2.5 w-12 rounded bg-[var(--hover)] mb-2" />
+        <div className="space-y-1.5">
+          <div className="h-7 w-full rounded-[6px] bg-[var(--hover)]" />
+          <div className="h-7 w-[85%] rounded-[6px] bg-[var(--hover)]" />
+          <div className="h-7 w-[70%] rounded-[6px] bg-[var(--hover)]" />
+        </div>
+      </div>
+      <div>
+        <div className="h-2.5 w-16 rounded bg-[var(--hover)] mb-2" />
+        <div className="space-y-1.5">
+          <div className="h-7 w-[90%] rounded-[6px] bg-[var(--hover)]" />
+          <div className="h-7 w-[75%] rounded-[6px] bg-[var(--hover)]" />
         </div>
       </div>
     </div>

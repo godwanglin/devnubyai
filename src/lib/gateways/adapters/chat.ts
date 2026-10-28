@@ -39,6 +39,9 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
   if (request.temperature !== undefined) body.temperature = request.temperature;
   if (request.topP !== undefined) body.top_p = request.topP;
   if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
+  if (request.reasoningEffort !== undefined) {
+    body.reasoning_effort = request.reasoningEffort;
+  }
   if (request.tools?.length) {
     body.tools = request.tools.map((tool) => ({
       type: "function",

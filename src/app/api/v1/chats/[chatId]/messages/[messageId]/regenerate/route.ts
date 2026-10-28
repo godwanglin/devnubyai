@@ -6,10 +6,12 @@ import { getChatSession } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
 import { createUIMessageStreamResponse } from "ai";
+import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const regenerateSchema = z.object({
   model: z.string().trim().optional(),
+  reasoningLevel: z.enum(["0", "1", "2", "3", "4"]).optional(),
 });
 
 type RouteContext = { params: Promise<{ chatId: string; messageId: string }> };
@@ -110,6 +112,7 @@ export async function POST(request: Request, context: RouteContext) {
       userMessagePublicId: lastUserMsg?.publicId || "",
       requestedModelPublicId: parsed.data.model,
       sessionModelPublicId: session.catalogModelPublicId,
+      reasoningEffort: mapReasoningEffort(parsed.data.reasoningLevel),
       conversationHistory: conversationMessages,
       requestId,
       clientSignal: request.signal,

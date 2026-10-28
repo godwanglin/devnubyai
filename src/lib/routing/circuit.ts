@@ -1,40 +1,85 @@
 import { recordGatewayFailure, recordGatewaySuccess } from "@/lib/gateways/repository";
+import { redis } from "@/lib/redis/client";
 import type { DecryptedGatewayConfig } from "@/lib/gateways/types";
 import type { GatewayError } from "./errors";
 import type { RoutingSettings } from "./settings";
 
 /**
- * In-process view of each gateway's circuit, seeded from DB columns and kept
- * current by the executor. DB writes are fire-and-forget so streams never block.
+ * Gateway Circuit Breaker State.
+ * Synchronized with Redis so all cluster instances share the circuit state,
+ * with an in-process memory cache for fast sub-millisecond lookups.
  */
 interface CircuitState {
   consecutiveFailures: number;
   openUntil: number | null;
 }
 
-const states = new Map<string, CircuitState>();
+const localStates = new Map<string, CircuitState>();
+
+function redisKey(gatewayId: bigint | string): string {
+  return `circuit:gateway:${gatewayId}`;
+}
 
 function key(gatewayId: bigint): string {
   return gatewayId.toString();
 }
 
-/** Seed from a freshly loaded DB row, without discarding newer in-process state. */
+/** Seed from a freshly loaded DB row, without discarding newer state. */
 export function seedCircuit(gateway: DecryptedGatewayConfig): void {
-  if (states.has(key(gateway.id))) return;
-  states.set(key(gateway.id), {
+  const gKey = key(gateway.id);
+  if (localStates.has(gKey)) return;
+
+  const openUntil = gateway.circuitOpenUntil ? gateway.circuitOpenUntil.getTime() : null;
+  localStates.set(gKey, {
     consecutiveFailures: gateway.consecutiveFailures,
-    openUntil: gateway.circuitOpenUntil ? gateway.circuitOpenUntil.getTime() : null,
+    openUntil,
   });
+
+  // Sync to Redis asynchronously if Redis doesn't have it
+  const client = redis;
+  if (client) {
+    const rKey = redisKey(gateway.id);
+    void client.get(rKey).then((val) => {
+      if (!val) {
+        void client.set(
+          rKey,
+          JSON.stringify({
+            consecutiveFailures: gateway.consecutiveFailures,
+            openUntil,
+          }),
+          "EX",
+          3600
+        );
+      } else {
+        try {
+          const parsed = JSON.parse(val) as CircuitState;
+          localStates.set(gKey, parsed);
+        } catch {}
+      }
+    });
+  }
 }
 
 export function getCircuitOpenUntil(gatewayId: bigint, now = Date.now()): number | null {
-  const state = states.get(key(gatewayId));
+  const state = localStates.get(key(gatewayId));
   if (!state?.openUntil || state.openUntil <= now) return null;
   return state.openUntil;
 }
 
 export function markSuccess(gatewayId: bigint): void {
-  states.set(key(gatewayId), { consecutiveFailures: 0, openUntil: null });
+  const gKey = key(gatewayId);
+  localStates.set(gKey, { consecutiveFailures: 0, openUntil: null });
+
+  const client = redis;
+  if (client) {
+    void client.set(
+      redisKey(gatewayId),
+      JSON.stringify({ consecutiveFailures: 0, openUntil: null }),
+      "EX",
+      3600
+    );
+  }
+
   void recordGatewaySuccess(gatewayId);
 }
 
@@ -44,12 +89,23 @@ export function markFailure(
   settings: RoutingSettings
 ): void {
   const now = Date.now();
-  const previous = states.get(key(gatewayId)) ?? { consecutiveFailures: 0, openUntil: null };
+  const previous = localStates.get(key(gatewayId)) ?? { consecutiveFailures: 0, openUntil: null };
   const consecutiveFailures = previous.consecutiveFailures + 1;
   const shouldOpen = consecutiveFailures >= settings.circuitFailureThreshold;
   const openUntil = shouldOpen ? now + settings.circuitCooldownSeconds * 1000 : previous.openUntil;
 
-  states.set(key(gatewayId), { consecutiveFailures, openUntil });
+  localStates.set(key(gatewayId), { consecutiveFailures, openUntil });
+
+  const client = redis;
+  if (client) {
+    void client.set(
+      redisKey(gatewayId),
+      JSON.stringify({ consecutiveFailures, openUntil }),
+      "EX",
+      3600
+    );
+  }
+
   void recordGatewayFailure({
     gatewayId,
     consecutiveFailures,
@@ -60,6 +116,18 @@ export function markFailure(
 
 /** Admin "Reset circuit" or tests. */
 export function resetCircuit(gatewayId?: bigint): void {
-  if (gatewayId === undefined) states.clear();
-  else states.delete(key(gatewayId));
+  const client = redis;
+  if (gatewayId === undefined) {
+    localStates.clear();
+    if (client) {
+      void client.keys("circuit:gateway:*").then((keys) => {
+        if (keys.length > 0) void client.del(...keys);
+      });
+    }
+  } else {
+    localStates.delete(key(gatewayId));
+    if (client) {
+      void client.del(redisKey(gatewayId));
+    }
+  }
 }

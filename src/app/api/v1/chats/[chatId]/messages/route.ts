@@ -5,12 +5,14 @@ import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/respon
 import { getChatSession, listChatMessages, getRecentMessagesForGateway } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
+import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
 import { createUIMessageStreamResponse } from "ai";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const sendMessageSchema = z.object({
   content: z.string().trim().min(1, "Message content cannot be empty"),
   model: z.string().trim().optional(),
+  reasoningLevel: z.enum(["0", "1", "2", "3", "4"]).optional(),
 });
 
 type RouteContext = { params: Promise<{ chatId: string }> };
@@ -69,41 +71,38 @@ export async function POST(request: Request, context: RouteContext) {
       session.catalogModelPublicId
     );
 
-    // 1. Persist user message in DB
-    const userMessage = await db.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        role: "user",
-        content: parsed.data.content,
-        status: "completed",
-      },
-    });
-
-    // 2. Persist assistant message placeholder with status "streaming"
-    const assistantMessage = await db.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        role: "assistant",
-        content: "",
-        catalogModelId: resolvedModel.id,
-        status: "streaming",
-      },
-    });
-
-    // Update session lastMessageAt & title if it's the first message
-    const messageCount = await db.chatMessage.count({ where: { sessionId: session.id } });
+    // Atomically persist user message, assistant placeholder, and update session metadata
     const autoTitle =
-      messageCount <= 2 && session.title === "New chat"
+      session.title === "New chat"
         ? parsed.data.content.slice(0, 40).trim() || "New chat"
         : undefined;
 
-    await db.chatSession.update({
-      where: { id: session.id },
-      data: {
-        lastMessageAt: new Date(),
-        ...(autoTitle ? { title: autoTitle } : {}),
-      },
-    });
+    const [userMessage, assistantMessage] = await db.$transaction([
+      db.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          role: "user",
+          content: parsed.data.content,
+          status: "completed",
+        },
+      }),
+      db.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          role: "assistant",
+          content: "",
+          catalogModelId: resolvedModel.id,
+          status: "streaming",
+        },
+      }),
+      db.chatSession.update({
+        where: { id: session.id },
+        data: {
+          lastMessageAt: new Date(),
+          ...(autoTitle ? { title: autoTitle } : {}),
+        },
+      }),
+    ]);
 
     // 3. Prepare recent conversation context for gateway
     const history = await getRecentMessagesForGateway(session.id, 20);
@@ -122,6 +121,7 @@ export async function POST(request: Request, context: RouteContext) {
       userMessagePublicId: userMessage.publicId,
       requestedModelPublicId: parsed.data.model,
       sessionModelPublicId: session.catalogModelPublicId,
+      reasoningEffort: mapReasoningEffort(parsed.data.reasoningLevel),
       conversationHistory: conversationMessages,
       requestId,
       clientSignal: request.signal,

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { mapGateway } from "@/lib/gateways/repository";
+import { getCachedJson, setCachedJson, invalidateCachePattern } from "@/lib/redis/client";
 import type { CandidateRoute } from "@/lib/gateways/types";
 import { getCircuitOpenUntil, seedCircuit } from "./circuit";
 import { getRoutingSettings } from "./settings";
@@ -18,15 +19,21 @@ interface CacheEntry {
   expiresAt: number;
 }
 
+// In-memory fallback
 const memoryCache = new Map<string, CacheEntry>();
 
 export function clearCandidateCache(): void {
   memoryCache.clear();
+  void invalidateCachePattern("routing:candidates:*");
+}
+
+function candidateCacheKey(version: number, publicId: string): string {
+  return `routing:candidates:${version}:${publicId}`;
 }
 
 /**
  * Resolve ordered candidate routes for a public catalog model id.
- * Uses a memory cache keyed on `routing.version` and `routing.cache_ttl_seconds`.
+ * Uses Redis cache (with in-memory fallback) keyed on `routing.version` and `routing.cache_ttl_seconds`.
  */
 export async function resolveCandidates(
   requestedPublicId?: string | null,
@@ -37,11 +44,42 @@ export async function resolveCandidates(
   const publicId = requestedPublicId?.trim() || settings.defaultModel;
   const defaultModelUsed = !requestedPublicId?.trim();
 
-  const cacheKey = `${settings.version}:${publicId}`;
+  const rKey = candidateCacheKey(settings.version, publicId);
+
   if (!options?.forceRefresh) {
-    const hit = memoryCache.get(cacheKey);
-    if (hit && hit.version === settings.version && now < hit.expiresAt) {
-      return hit.data;
+    // 1. Check in-memory fast cache
+    const memHit = memoryCache.get(rKey);
+    if (memHit && memHit.version === settings.version && now < memHit.expiresAt) {
+      return memHit.data;
+    }
+
+    // 2. Check Redis cache
+    const redisHit = await getCachedJson<ResolvedCandidates>(rKey);
+    if (redisHit && redisHit.routingVersion === settings.version) {
+      // Re-hydrate BigInt properties from JSON serialization
+      const hydrated: ResolvedCandidates = {
+        ...redisHit,
+        catalogModelId: BigInt(redisHit.catalogModelId),
+        candidates: redisHit.candidates.map((c) => ({
+          ...c,
+          candidateId: BigInt(c.candidateId),
+          upstreamModelId: BigInt(c.upstreamModelId),
+          gateway: {
+            ...c.gateway,
+            id: BigInt(c.gateway.id),
+          },
+        })),
+      };
+      // Seed circuits for cached gateways
+      for (const c of hydrated.candidates) {
+        seedCircuit(c.gateway);
+      }
+      memoryCache.set(rKey, {
+        data: hydrated,
+        version: settings.version,
+        expiresAt: now + settings.cacheTtlSeconds * 1000,
+      });
+      return hydrated;
     }
   }
 
@@ -145,11 +183,27 @@ export async function resolveCandidates(
     routingVersion: settings.version,
   };
 
-  memoryCache.set(cacheKey, {
+  memoryCache.set(rKey, {
     data: result,
     version: settings.version,
     expiresAt: now + settings.cacheTtlSeconds * 1000,
   });
+
+  // Serialize BigInt to string for Redis storage
+  const redisPayload = {
+    ...result,
+    catalogModelId: result.catalogModelId.toString(),
+    candidates: result.candidates.map((c) => ({
+      ...c,
+      candidateId: c.candidateId.toString(),
+      upstreamModelId: c.upstreamModelId.toString(),
+      gateway: {
+        ...c.gateway,
+        id: c.gateway.id.toString(),
+      },
+    })),
+  };
+  await setCachedJson(rKey, redisPayload, settings.cacheTtlSeconds);
 
   return result;
 }

@@ -4,9 +4,8 @@ export interface ToolParameter {
   required?: boolean;
   enum?: string[];
   default?: unknown;
-  items?: {
-    type: string;
-  };
+  items?: Record<string, unknown>;
+  properties?: Record<string, unknown>;
 }
 
 export interface ToolParametersSchema {

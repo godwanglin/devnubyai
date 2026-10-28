@@ -8,6 +8,7 @@ import { deepSearchTool } from "./deep-search";
 import { writeFileTool } from "./write-file";
 import { readFileTool } from "./read-file";
 import { visionTool } from "./vision-tool";
+import { interactiveQuizTool } from "./interactive-quiz";
 
 export * from "./types";
 export * from "./ssrf";
@@ -16,6 +17,7 @@ export * from "./deep-search";
 export * from "./write-file";
 export * from "./read-file";
 export * from "./vision-tool";
+export * from "./interactive-quiz";
 
 /**
  * All active tools available to Devnuby AI.
@@ -26,6 +28,7 @@ export const devnubyTools: ToolDefinition<any, any>[] = [
   writeFileTool,
   readFileTool,
   visionTool,
+  interactiveQuizTool,
 ];
 
 /**

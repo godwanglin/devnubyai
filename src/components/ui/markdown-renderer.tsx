@@ -3,14 +3,20 @@
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
+import { CitationBadge } from "@/components/chat/citation-badge";
+import type { CompactWebSource } from "@/lib/tools/compact-source";
 
 export interface MarkdownRendererProps {
   content: string;
   className?: string;
+  sourcesMap?: Map<string, CompactWebSource>;
 }
 
 interface CodeBlockProps {
@@ -96,19 +102,44 @@ function extractText(node: React.ReactNode): string {
   return "";
 }
 
-export function MarkdownRenderer({ content, className }: MarkdownRendererProps) {
+/**
+ * Many models emit LaTeX as \( … \) / \[ … \]; remark-math only understands
+ * $ … $ / $$ … $$, so normalize the delimiters (code spans/blocks untouched).
+ */
+function normalizeMath(markdown: string): string {
+  return markdown
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((chunk, i) =>
+      i % 2 === 1
+        ? chunk
+        : chunk
+            .replace(/\\\[([\s\S]+?)\\\]/g, (_, expr) => `\n$$\n${expr.trim()}\n$$\n`)
+            .replace(/\\\(([\s\S]+?)\\\)/g, (_, expr) => `$${expr.trim()}$`)
+    )
+    .join("");
+}
+
+export function MarkdownRenderer({ content, className, sourcesMap }: MarkdownRendererProps) {
   return (
     <div className={cn("prose-chat", className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeHighlight, [rehypeKatex, { throwOnError: false, strict: "ignore" }]]}
         components={{
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           code: CodeBlock as any,
           pre: ({ children }) => <>{children}</>,
+          a: ({ href, children }) => {
+            if (!href) return <>{children}</>;
+            return (
+              <CitationBadge href={href} sourcesMap={sourcesMap}>
+                {children}
+              </CitationBadge>
+            );
+          },
         }}
       >
-        {content}
+        {normalizeMath(content)}
       </ReactMarkdown>
     </div>
   );

@@ -1,25 +1,27 @@
 "use client";
 
-import React, { useSyncExternalStore, useState } from "react";
+import React, { useMemo, useSyncExternalStore, useState } from "react";
 import {
   Check,
   Copy,
   Volume2,
-  Share2,
   RefreshCw,
-  MoreHorizontal,
   ThumbsUp,
   ThumbsDown,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Tooltip } from "@/components/ui/tooltip";
+import { ThinkingAccordion } from "./thinking-accordion";
+import { ToolActivityList } from "./tool-activity";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
+import type { CompactWebSource } from "@/lib/tools/compact-source";
 import type { Message } from "@/types";
 
 interface MessageBubbleProps {
   message: Message;
+  chatId?: string;
   isStreaming?: boolean;
   onRegenerate?: () => void;
 }
@@ -70,7 +72,7 @@ function formatMessageTime(dateString: string, locale: "id" | "en"): string {
   return `${day} ${monthName} ${year}`;
 }
 
-export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBubbleProps) {
+export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: MessageBubbleProps) {
   const { t, locale } = useI18n();
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -85,6 +87,32 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
 
   const isUser = message.role === "user";
   const formattedTime = isMounted ? formatMessageTime(message.createdAt, locale) : "";
+
+  // Build a lookup map of URLs -> source metadata from search tool outputs
+  const sourcesMap = useMemo(() => {
+    const map = new Map<string, CompactWebSource>();
+    if (!message.toolCalls) return map;
+
+    for (const tool of message.toolCalls) {
+      const out = tool.output as { sources?: CompactWebSource[]; results?: Array<{ title?: string; url?: string }> } | undefined;
+      if (Array.isArray(out?.sources)) {
+        for (const s of out.sources) {
+          if (s?.url) map.set(s.url, s);
+        }
+      } else if (Array.isArray(out?.results)) {
+        for (const r of out.results) {
+          if (r?.url) {
+            map.set(r.url, {
+              title: r.title || "Web Result",
+              url: r.url,
+              domain: "",
+            });
+          }
+        }
+      }
+    }
+    return map;
+  }, [message.toolCalls]);
 
   async function handleCopy() {
     try {
@@ -105,7 +133,7 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
 
   if (isUser) {
     return (
-      <div className="flex flex-col items-end pl-6 sm:pl-14 py-4">
+      <div className="group flex flex-col items-end pl-6 sm:pl-14 py-4">
         <div
           className={cn(
             "max-w-[80%] px-4 py-3 rounded-[16px] rounded-br-[6px]",
@@ -116,7 +144,7 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
           {message.content}
         </div>
         {formattedTime ? (
-          <span className="text-[11px] text-[var(--muted)] mt-1 px-1 select-none">
+          <span className="text-[11px] text-[var(--muted)] mt-1 px-1 select-none opacity-0 group-hover:opacity-100 transition-opacity">
             {formattedTime}
           </span>
         ) : null}
@@ -124,15 +152,40 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
     );
   }
 
+  const hasContent = Boolean(message.content.trim());
+  const hasActivity = Boolean(message.reasoning) || Boolean(message.toolCalls?.length);
+  const isToolRunning = message.toolCalls?.some(
+    (tool) => tool.state === "running" || tool.state === "streaming"
+  );
+
+  // Balasan yang dibatalkan sebelum ada teks/aktivitas: biarkan kosong tanpa action bar
+  if (!isStreaming && !hasContent && !hasActivity) return null;
+
   return (
     <div className="py-4 group">
-      {message.content ? (
+      {message.reasoning ? (
+        <ThinkingAccordion
+          content={message.reasoning}
+          isStreaming={isStreaming && message.isReasoningStreaming && !hasContent}
+        />
+      ) : null}
+
+      {message.toolCalls?.length ? (
+        <ToolActivityList
+          tools={message.toolCalls}
+          messageId={message.id}
+          chatId={chatId}
+        />
+      ) : null}
+
+      {hasContent ? (
         <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
-          <MarkdownRenderer content={message.content} />
+          <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
         </div>
       ) : null}
 
-      {isStreaming ? (
+      {!hasContent && !isStreaming ? null : isStreaming ? (
+        message.isReasoningStreaming || isToolRunning ? null : (
         <div
           className="flex items-center gap-1.5 mt-2.5 py-1"
           role="status"
@@ -148,8 +201,9 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
             style={{ animationDelay: "300ms" }}
           />
         </div>
+        )
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5">
+        <div className="flex items-center gap-2 mt-2.5">
           {/* Action buttons (icon-only with tooltips) */}
           <div className="flex items-center gap-0.5">
             {/* Copy button */}
@@ -179,18 +233,6 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
               </button>
             </Tooltip>
 
-            {/* Share button */}
-            <Tooltip content={t("message.share")} side="top">
-              <button
-                type="button"
-                onClick={() => toast(t("toast.featureUnavailable"))}
-                className="grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-                aria-label={t("message.share")}
-              >
-                <Share2 className="w-3.5 h-3.5" />
-              </button>
-            </Tooltip>
-
             {/* Regenerate button */}
             {onRegenerate ? (
               <Tooltip content={t("message.regenerate")} side="top">
@@ -204,18 +246,6 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
                 </button>
               </Tooltip>
             ) : null}
-
-            {/* More options button */}
-            <Tooltip content={t("message.more")} side="top">
-              <button
-                type="button"
-                onClick={() => toast(t("toast.featureUnavailable"))}
-                className="grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-                aria-label={t("message.more")}
-              >
-                <MoreHorizontal className="w-3.5 h-3.5" />
-              </button>
-            </Tooltip>
 
             <span className="w-px h-3.5 bg-[var(--border)] mx-1" aria-hidden="true" />
 
@@ -250,9 +280,9 @@ export function MessageBubble({ message, isStreaming, onRegenerate }: MessageBub
             </Tooltip>
           </div>
 
-          {/* Timestamp on right */}
+          {/* Timestamp right beside icons - only visible on bubble hover */}
           {formattedTime ? (
-            <span className="text-[11px] text-[var(--muted)] select-none ml-auto px-1">
+            <span className="text-[11px] text-[var(--muted)] select-none px-1 opacity-0 group-hover:opacity-100 transition-opacity">
               {formattedTime}
             </span>
           ) : null}

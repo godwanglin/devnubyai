@@ -49,6 +49,8 @@ export interface ChatMessageInput {
   toolCalls?: ToolCallInput[];
 }
 
+export type ReasoningEffortVariant = "off" | "low" | "medium" | "high" | "xhigh";
+
 export interface GatewayExecutionRequest {
   model: string;
   messages: ChatMessageInput[];
@@ -56,6 +58,7 @@ export interface GatewayExecutionRequest {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  reasoningEffort?: ReasoningEffortVariant;
   tools?: ToolDefinition[];
   paramOverrides?: Record<string, unknown> | null;
   signal?: AbortSignal;

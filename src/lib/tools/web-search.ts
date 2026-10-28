@@ -30,50 +30,39 @@ async function performSearch(
 ): Promise<WebSearchResultItem[]> {
   const tavilyApiKey = process.env.TAVILY_API_KEY;
 
-  if (tavilyApiKey) {
-    const res = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        api_key: tavilyApiKey,
-        query,
-        max_results: numResults,
-        search_depth: "basic",
-        include_answer: false,
-      }),
-      signal,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Tavily search API responded with status ${res.status}`);
-    }
-
-    const json = await res.json();
-    return (json.results || []).map((item: any) => ({
-      title: item.title || "Untitled",
-      url: item.url || "",
-      snippet: item.content || item.snippet || "",
-      source: "tavily",
-    }));
+  if (!tavilyApiKey) {
+    throw new Error(
+      "TAVILY_API_KEY is not configured in the environment. Please add it to your .env file."
+    );
   }
 
-  // Safe fallback mock when API key is not yet set in environment
-  return [
-    {
-      title: `Latest search results for: "${query}"`,
-      url: "https://docs.devnuby.ai/search-results",
-      snippet: `Relevant documentation and information regarding ${query}. Provides verified public technical references.`,
-      source: "devnuby-search-preview",
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-    {
-      title: `${query} - Official Reference & Documentation`,
-      url: "https://developer.mozilla.org/en-US/search",
-      snippet: `Developer guidelines, syntax patterns, and best practices regarding ${query}.`,
-      source: "devnuby-search-preview",
-    },
-  ].slice(0, numResults);
+    body: JSON.stringify({
+      api_key: tavilyApiKey,
+      query,
+      max_results: numResults,
+      search_depth: "basic",
+      include_answer: false,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`Tavily search API responded with status ${res.status}: ${errorText || res.statusText}`);
+  }
+
+  const json = await res.json();
+  return (json.results || []).map((item: any) => ({
+    title: item.title || "Untitled",
+    url: item.url || "",
+    snippet: item.content || item.snippet || "",
+    source: "tavily",
+  }));
 }
 
 export const webSearchTool: ToolDefinition<WebSearchParams, WebSearchData> = {
