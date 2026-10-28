@@ -1,0 +1,105 @@
+{
+  "brand": {
+    "name": "Devnuby",
+    "tagline": "AI Conversational Workspace"
+  },
+  "nav": {
+    "newChat": "New chat",
+    "searchPlaceholder": "Search chats...",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "last7Days": "Previous 7 days",
+    "emptyHistory": "No matching conversations found.",
+    "monthlyQuota": "Monthly quota",
+    "quotaResetsIn": "resets in {days} days",
+    "accountOptions": "Account options",
+    "hideSidebar": "Hide sidebar",
+    "showSidebar": "Show sidebar",
+    "settings": "Account settings",
+    "usage": "Usage & quota",
+    "logout": "Log out",
+    "login": "Log in"
+  },
+  "topbar": {
+    "share": "Share chat",
+    "toggleTheme": "Toggle theme",
+    "moreOptions": "More options",
+    "rename": "Rename chat",
+    "duplicate": "Duplicate chat",
+    "exportMarkdown": "Export as Markdown",
+    "deleteChat": "Delete chat"
+  },
+  "welcome": {
+    "kicker": "Devnuby Workspace",
+    "title": "What would you like to build today?",
+    "hint": "Type your query below. Press Enter to send, Shift+Enter for a new line."
+  },
+  "composer": {
+    "inputPlaceholder": "Ask Devnuby anything…",
+    "attach": "Attach",
+    "photo": "Photo",
+    "attachFile": "Attach file",
+    "webSearch": "Web search",
+    "extendedThinking": "Extended thinking",
+    "voice": "Voice input",
+    "send": "Send message",
+    "enterToSend": "Enter to send",
+    "disclaimer": "Devnuby may make mistakes. Verify important information."
+  },
+  "model": {
+    "title": "Model",
+    "selectModel": "Select model",
+    "reasoning": "Reasoning",
+    "reasoningLevels": {
+      "0": "Off",
+      "1": "Low",
+      "2": "Medium",
+      "3": "High",
+      "4": "Max"
+    },
+    "powerful": "Powerful",
+    "fast": "Fast"
+  },
+  "message": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "regenerate": "Regenerate",
+    "copyCode": "Copy"
+  },
+  "toast": {
+    "newChatStarted": "New conversation started",
+    "linkCopied": "Link copied to clipboard",
+    "chatRenamed": "Conversation renamed",
+    "chatDuplicated": "Conversation duplicated",
+    "chatExported": "Conversation exported as Markdown",
+    "chatDeleted": "Conversation deleted",
+    "featureUnavailable": "Feature not available in demo",
+    "toolActive": "{tool} enabled",
+    "toolInactive": "{tool} disabled",
+    "darkTheme": "Dark theme",
+    "lightTheme": "Light theme",
+    "modelChanged": "Model: {model}",
+    "reasoningChanged": "Reasoning: {level}"
+  },
+  "settings": {
+    "title": "Settings",
+    "profileTab": "Profile",
+    "appearanceTab": "Appearance",
+    "languageTab": "Language",
+    "modelsTab": "Models & API",
+    "saveChanges": "Save changes",
+    "saved": "Settings saved"
+  },
+  "login": {
+    "title": "Welcome back",
+    "subtitle": "Sign in to your Devnuby AI account to continue",
+    "google": "Continue with Google",
+    "emailLabel": "Email",
+    "emailPlaceholder": "name@domain.com",
+    "passwordLabel": "Password",
+    "submit": "Sign in with Email",
+    "or": "or continue with",
+    "backToChat": "Back to Chat",
+    "terms": "By signing in, you agree to Devnuby's Terms of Service and Privacy Policy."
+  }
+}

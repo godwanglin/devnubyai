@@ -1,0 +1,105 @@
+{
+  "brand": {
+    "name": "Devnuby",
+    "tagline": "Ruang kerja percakapan AI"
+  },
+  "nav": {
+    "newChat": "Percakapan baru",
+    "searchPlaceholder": "Cari percakapan...",
+    "today": "Hari ini",
+    "yesterday": "Kemarin",
+    "last7Days": "7 hari terakhir",
+    "emptyHistory": "Tidak ada percakapan yang cocok.",
+    "monthlyQuota": "Kuota bulan ini",
+    "quotaResetsIn": "resets {days} hari lagi",
+    "accountOptions": "Opsi akun",
+    "hideSidebar": "Sembunyikan sidebar",
+    "showSidebar": "Tampilkan sidebar",
+    "settings": "Pengaturan akun",
+    "usage": "Penggunaan & kuota",
+    "logout": "Keluar",
+    "login": "Masuk"
+  },
+  "topbar": {
+    "share": "Bagikan percakapan",
+    "toggleTheme": "Ganti tema",
+    "moreOptions": "Opsi lain",
+    "rename": "Ganti nama percakapan",
+    "duplicate": "Buat duplikat",
+    "exportMarkdown": "Ekspor sebagai Markdown",
+    "deleteChat": "Hapus percakapan"
+  },
+  "welcome": {
+    "kicker": "Ruang kerja Devnuby",
+    "title": "Mau kerjakan apa hari ini?",
+    "hint": "Tulis pertanyaan di bawah. Tekan Enter untuk mengirim, Shift+Enter untuk baris baru."
+  },
+  "composer": {
+    "inputPlaceholder": "Tanyakan apa saja ke Devnuby…",
+    "attach": "Tambahkan",
+    "photo": "Foto",
+    "attachFile": "Lampirkan file",
+    "webSearch": "Pencarian web",
+    "extendedThinking": "Pemikiran diperluas",
+    "voice": "Input suara",
+    "send": "Kirim pesan",
+    "enterToSend": "Enter untuk kirim",
+    "disclaimer": "Devnuby bisa membuat kesalahan. Periksa kembali informasi yang penting."
+  },
+  "model": {
+    "title": "Model",
+    "selectModel": "Pilih model",
+    "reasoning": "Reasoning",
+    "reasoningLevels": {
+      "0": "Mati",
+      "1": "Rendah",
+      "2": "Sedang",
+      "3": "Tinggi",
+      "4": "Maks"
+    },
+    "powerful": "Powerful",
+    "fast": "Fast"
+  },
+  "message": {
+    "copy": "Salin",
+    "copied": "Tersalin",
+    "regenerate": "Buat ulang",
+    "copyCode": "Salin"
+  },
+  "toast": {
+    "newChatStarted": "Percakapan baru dimulai",
+    "linkCopied": "Tautan disalin ke clipboard",
+    "chatRenamed": "Percakapan diganti nama",
+    "chatDuplicated": "Duplikat percakapan dibuat",
+    "chatExported": "Percakapan diekspor sebagai Markdown",
+    "chatDeleted": "Percakapan dihapus",
+    "featureUnavailable": "Fitur belum tersedia di versi demo",
+    "toolActive": "{tool} aktif",
+    "toolInactive": "{tool} nonaktif",
+    "darkTheme": "Mode gelap",
+    "lightTheme": "Mode terang",
+    "modelChanged": "Model: {model}",
+    "reasoningChanged": "Reasoning: {level}"
+  },
+  "settings": {
+    "title": "Pengaturan",
+    "profileTab": "Profil",
+    "appearanceTab": "Tampilan",
+    "languageTab": "Bahasa",
+    "modelsTab": "Model & API",
+    "saveChanges": "Simpan perubahan",
+    "saved": "Pengaturan tersimpan"
+  },
+  "login": {
+    "title": "Selamat datang kembali",
+    "subtitle": "Masuk ke akun Devnuby AI kamu untuk melanjutkan",
+    "google": "Masuk dengan Google",
+    "emailLabel": "Email",
+    "emailPlaceholder": "nama@domain.com",
+    "passwordLabel": "Kata sandi",
+    "submit": "Masuk dengan Email",
+    "or": "atau lanjutkan dengan",
+    "backToChat": "Kembali ke Percakapan",
+    "terms": "Dengan masuk, kamu menyetujui Ketentuan Layanan dan Kebijakan Privasi Devnuby."
+  }
+}

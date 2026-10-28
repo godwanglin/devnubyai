@@ -1,0 +1,38 @@
+[
+  {
+    "id": "claude-sonnet-4-5",
+    "shortName": "Sonnet 4.5",
+    "fullName": "Claude Sonnet 4.5",
+    "meta": "200k",
+    "description": "Konteks 200k · seimbang & serbaguna",
+    "category": "Powerful",
+    "badge": "Default"
+  },
+  {
+    "id": "claude-opus-4-5",
+    "shortName": "Opus 4.5",
+    "fullName": "Claude Opus 4.5",
+    "meta": "Deep Think",
+    "description": "Pemikiran panjang · paling akurat",
+    "category": "Powerful",
+    "badge": "Pro"
+  },
+  {
+    "id": "devnuby-lite",
+    "shortName": "Devnuby Lite",
+    "fullName": "Devnuby Lite",
+    "meta": "Fast",
+    "description": "Respons cepat · biaya rendah",
+    "category": "Fast",
+    "badge": null
+  },
+  {
+    "id": "claude-haiku",
+    "shortName": "Haiku",
+    "fullName": "Claude Haiku",
+    "meta": "Economy",
+    "description": "Hemat · untuk tugas sederhana",
+    "category": "Fast",
+    "badge": null
+  }
+]

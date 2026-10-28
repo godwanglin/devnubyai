@@ -1,0 +1,122 @@
+[
+  {
+    "id": "sess-code-showcase",
+    "slug": "code-render-preview-showcase",
+    "title": "Showcase render kode: Python, JS, PHP & Go",
+    "updatedAt": "2026-10-28T12:00:00Z",
+    "group": "today",
+    "model": "claude-sonnet-4-5",
+    "messages": [
+      {
+        "id": "m-showcase-user",
+        "role": "user",
+        "content": "Bisa berikan perbandingan implementasi REST API endpoint & database query sederhana dalam Python (FastAPI), JavaScript/TypeScript (Node/Express), PHP (Laravel), dan Go?",
+        "createdAt": "2026-10-28T12:00:00Z"
+      },
+      {
+        "id": "m-showcase-assistant",
+        "role": "assistant",
+        "content": "Tentu! Berikut adalah contoh kode komparatif di berbagai bahasa populer lengkap dengan syntax highlight, struktur query, dan tombol salin pada setiap blok:\n\n### 1. Python (FastAPI + Pydantic)\nContoh endpoint asynchronous dengan validasi tipe data bawaan:\n\n```python\nfrom fastapi import FastAPI, HTTPException, Depends\nfrom pydantic import BaseModel, EmailStr\nfrom typing import List, Optional\nimport asyncpg\n\napp = FastAPI(title=\"Devnuby AI Core Service\")\n\nclass UserPayload(BaseModel):\n    username: str\n    email: EmailStr\n    role: Optional[str] = \"developer\"\n\n@app.post(\"/api/v1/users\", status_code=201)\nasync def create_user(payload: UserPayload):\n    # Query database secara async dengan parameter terisolasi\n    query = \"\"\"\n        INSERT INTO users (username, email, role)\n        VALUES ($1, $2, $3)\n        RETURNING id, created_at;\n    \"\"\"\n    try:\n        row = await db.fetchrow(query, payload.username, payload.email, payload.role)\n        return {\"status\": \"ok\", \"user_id\": row[\"id\"], \"data\": payload.dict()}\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=str(exc))\n```\n\n---\n\n### 2. JavaScript / TypeScript (Node.js + Express)\nContoh controller Express modern menggunakan TypeScript & async/await:\n\n```typescript\nimport { Request, Response, NextFunction } from \"express\";\nimport { db } from \"./database\";\n\ninterface CreateProjectBody {\n  name: string;\n  repositoryUrl: string;\n  isPrivate?: boolean;\n}\n\nexport async function handleCreateProject(\n  req: Request<{}, {}, CreateProjectBody>,\n  res: Response,\n  next: NextFunction\n): Promise<void> {\n  const { name, repositoryUrl, isPrivate = true } = req.body;\n\n  if (!name || !repositoryUrl) {\n    res.status(400).json({ error: \"Name and repository URL are required\" });\n    return;\n  }\n\n  try {\n    const [project] = await db(\"projects\")\n      .insert({\n        name,\n        repository_url: repositoryUrl,\n        is_private: isPrivate,\n        created_at: new Date(),\n      })\n      .returning([\"id\", \"name\", \"created_at\"]);\n\n    res.status(201).json({ success: true, data: project });\n  } catch (err) {\n    next(err);\n  }\n}\n```\n\n---\n\n### 3. PHP (Laravel Controller & Eloquent)\nContoh Controller REST API berstandar PSR-12 dengan Form Request Validation:\n\n```php\n<?php\n\nnamespace App\\Http\\Controllers\\Api;\n\nuse App\\Http\\Controllers\\Controller;\nuse App\\Models\\Invoice;\nuse Illuminate\\Http\\JsonResponse;\nuse Illuminate\\Http\\Request;\n\nclass InvoiceController extends Controller\n{\n    /**\n     * Dapatkan daftar invoice dengan filter status dan pagination.\n     */\n    public function index(Request $request): JsonResponse\n    {\n        $validated = $request->validate([\n            'status'   => 'nullable|string|in:paid,pending,void',\n            'per_page' => 'nullable|integer|min:5|max:100',\n        ]);\n\n        $invoices = Invoice::query()\n            ->when($validated['status'] ?? null, function ($query, $status) {\n                return $query->where('status', $status);\n            })\n            ->with('customer:id,name,email')\n            ->latest()\n            ->paginate($validated['per_page'] ?? 15);\n\n        return response()->json([\n            'success' => true,\n            'data'    => $invoices,\n        ]);\n    }\n}\n```\n\n---\n\n### 4. Go (Golang Standard Library `net/http`)\nContoh server Go berkinerja tinggi tanpa dependensi eksternal yang berlebihan:\n\n```go\npackage main\n\nimport (\n\t\"encoding/json\"\n\t\"log\"\n\t\"net/http\"\n\t\"time\"\n)\n\ntype SessionResponse struct {\n\tID        string    `json:\"id\"`\n\tModel     string    `json:\"model\"`\n\tActive    bool      `json:\"active\"`\n\tCreatedAt time.Time `json:\"created_at\"`\n}\n\nfunc sessionHandler(w http.ResponseWriter, r *http.Request) {\n\tw.Header().Set(\"Content-Type\", \"application/json\")\n\n\tif r.Method != http.MethodGet {\n\t\thttp.Error(w, `{\"error\": \"Method not allowed\"}`, http.StatusMethodNotAllowed)\n\t\treturn\n\t}\n\n\tresp := SessionResponse{\n\t\tID:        \"sess-preview-demo\",\n\t\tModel:     \"claude-sonnet-4-5\",\n\t\tActive:    true,\n\t\tCreatedAt: time.Now().UTC(),\n\t}\n\n\tif err := json.NewEncoder(w).Encode(resp); err != nil {\n\t\tlog.Printf(\"Failed to encode response: %v\", err)\n\t}\n}\n\nfunc main() {\n\thttp.HandleFunc(\"/api/v1/session\", sessionHandler)\n\tlog.Println(\"Devnuby Go backend running on :8080\")\n\tlog.Fatal(http.ListenAndServe(\":8080\", nil))\n}\n```\n\n---\n\n### 5. Bash & PostgreSQL Script\nPerintah CLI untuk verifikasi dan menjalankan migrasi skema tabel:\n\n```bash\n# Verifikasi konektivitas ke database PostgreSQL lokal\npg_isready -h localhost -p 5432 -U devnuby_user\n\n# Eksekusi migrasi tabel\npsql -h localhost -d devnuby_db -U devnuby_user -c \"\\\n  CREATE TABLE IF NOT EXISTS chat_sessions (\\\n    id VARCHAR(64) PRIMARY KEY,\\\n    user_id UUID NOT NULL,\\\n    model_name VARCHAR(50) NOT NULL,\\\n    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()\\\n  );\"\n```\n\nSetiap code block di atas otomatis dilengkapi syntax highlighting, nama bahasa yang terdeteksi, dan tombol **Salin** di pojok kanan atas.",
+        "createdAt": "2026-10-28T12:00:08Z"
+      }
+    ]
+  },
+  {
+    "id": "sess-billing-api",
+    "slug": "billing-api-rest-endpoints",
+    "title": "Ringkasan endpoint REST untuk API billing",
+    "updatedAt": "2026-10-27T10:30:00Z",
+    "group": "today",
+    "model": "claude-sonnet-4-5",
+    "messages": [
+      {
+        "id": "m1",
+        "role": "user",
+        "content": "Buatkan contoh endpoint REST untuk API billing dengan pagination dan autentikasi bearer token.",
+        "createdAt": "2026-10-27T10:30:00Z"
+      },
+      {
+        "id": "m2",
+        "role": "assistant",
+        "content": "Tentu. Untuk API billing dengan **pagination** dan **bearer auth**, pola umumnya seperti ini:\n\n## Contoh permintaan\n\n```http\nGET /api/v1/invoices?page=2&per_page=20\nAuthorization: Bearer <token>\nAccept: application/json\n```\n\n## Catatan implementasi\n\n1. Verifikasi token via middleware, jangan di controller.\n2. Query dengan `offset/limit`, jangan `SELECT *`.\n3. Kembalikan header `Link` rel=\"next\" untuk navigasi kursor.\n\n| Field | Tipe | Wajib | Catatan |\n| --- | --- | --- | --- |\n| page | int | ya | Mulai dari 1 |\n| per_page | int | tidak | Default 20, maks 100 |\n| status | string | tidak | `paid`, `unpaid`, `void` |\n\n> Rate limit: 600 permintaan / menit per token. Lampirkan `X-Request-Id` untuk pelacakan.\n\nBalasan standar: `{ data: [...], meta: { page, per_page, total } }`",
+        "createdAt": "2026-10-27T10:30:05Z"
+      }
+    ]
+  },
+  {
+    "id": "sess-worker-race",
+    "slug": "worker-queue-race-condition",
+    "title": "Bug race condition di worker queue",
+    "updatedAt": "2026-10-27T08:15:00Z",
+    "group": "today",
+    "model": "claude-opus-4-5",
+    "messages": [
+      {
+        "id": "m3",
+        "role": "user",
+        "content": "Telusuri penyebab race condition pada worker queue dan usulkan perbaikannya.",
+        "createdAt": "2026-10-27T08:15:00Z"
+      },
+      {
+        "id": "m4",
+        "role": "assistant",
+        "content": "## Penyebab race condition di worker queue\n\nBiasanya dari **dua sumber**:\n\n- Pekerja mengambil *job* yang sama sebelum status di-flip\n- *Shared state* di-mutasi tanpa lock\n\n## Perbaikan\n\n1. **Atomic claim** — jangan SELECT lalu UPDATE, lakukan dalam satu pernyataan:\n\n```sql\nUPDATE jobs\nSET worker = $1, status = 'running', claimed_at = now()\nWHERE id = $2 AND status = 'pending'\nRETURNING *;\n```\n\nCek `affected_rows`. Kalau 0, job sudah diambil pekerja lain.\n\n2. **Pisahkan queue** per resource bila konflik tinggi.\n3. **Idempotency key** agar retry tidak dobel-eksekusi.",
+        "createdAt": "2026-10-27T08:15:08Z"
+      }
+    ]
+  },
+  {
+    "id": "sess-sidebar-refactor",
+    "slug": "sidebar-react-refactor",
+    "title": "Refactor komponen sidebar ke React",
+    "updatedAt": "2026-10-27T06:00:00Z",
+    "group": "today",
+    "model": "claude-sonnet-4-5",
+    "messages": []
+  },
+  {
+    "id": "sess-db-migration",
+    "slug": "zero-downtime-postgres-migration",
+    "title": "Strategi migrasi database tanpa downtime",
+    "updatedAt": "2026-10-27T04:20:00Z",
+    "group": "today",
+    "model": "claude-opus-4-5",
+    "messages": []
+  },
+  {
+    "id": "sess-cli-docs",
+    "slug": "cli-technical-documentation",
+    "title": "Menulis ulang technical documentation CLI",
+    "updatedAt": "2026-10-26T14:10:00Z",
+    "group": "yesterday",
+    "model": "devnuby-lite",
+    "messages": []
+  },
+  {
+    "id": "sess-ws-sse",
+    "slug": "websocket-vs-sse-comparison",
+    "title": "Perbandingan WebSocket vs SSE untuk live update",
+    "updatedAt": "2026-10-26T11:00:00Z",
+    "group": "yesterday",
+    "model": "claude-sonnet-4-5",
+    "messages": []
+  },
+  {
+    "id": "sess-email-notif",
+    "slug": "email-notification-system-design",
+    "title": "Rancangan sistem notifikasi email",
+    "updatedAt": "2026-10-24T09:00:00Z",
+    "group": "week",
+    "model": "claude-sonnet-4-5",
+    "messages": []
+  },
+  {
+    "id": "sess-query-opt",
+    "slug": "slow-query-optimization-log-table",
+    "title": "Optimasi query lambat pada tabel log",
+    "updatedAt": "2026-10-22T16:45:00Z",
+    "group": "week",
+    "model": "claude-sonnet-4-5",
+    "messages": []
+  }
+]

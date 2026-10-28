@@ -1,0 +1,13 @@
+{
+  "id": "u_001",
+  "name": "Aiden",
+  "email": "aiden@devnuby.dev",
+  "initials": "AD",
+  "plan": "Pro",
+  "planLabel": "Rencana Pro",
+  "avatarUrl": null,
+  "quota": {
+    "usedPercent": 62,
+    "resetInDays": 12
+  }
+}

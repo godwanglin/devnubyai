@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devnuby — Percakapan AI</title>
+<script>
+  // Apply theme before first paint to avoid a flash of the wrong theme.
+  // Stored preference wins; otherwise follow the device preference.
+  (function () {
+    try {
+      var saved = localStorage.getItem("devnuby-theme");
+      var theme = saved === "light" || saved === "dark"
+        ? saved
+        : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.colorScheme = theme;
+    } catch (e) {
+      document.documentElement.dataset.theme = "light";
+    }
+  })();
+</script>
+<meta name="description" content="Ruang kerja percakapan AI: riwayat obrolan, multi-model, dan jawaban yang mengalir langsung.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232563EB' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 18 18 4'/%3E%3Cpath d='M14 4h6v6'/%3E%3Cpath d='M20 10a8 8 0 1 1-6-7'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- reusable icon set (Lucide-derived, 24x24 stroke) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-mark" viewBox="0 0 24 24"><path d="M4 18 18 4"/><path d="M14 4h6v6"/><path d="M20 10a8 8 0 1 1-6-7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21 11.5 12.3 20a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7L10 17.7a1.7 1.7 0 0 1-2.4-2.4l7.6-7.6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11A8 8 0 0 0 6.3 6.3L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M4 13a8 8 0 0 0 13.7 4.7L20 15.5"/><path d="M20 20v-4.5h-4.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m9 8-5 4 5 4M15 8l5 4-5 4"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></symbol>
+</svg>
+
+<div class="app" id="app">
+
+  <!-- ───────────── sidebar ───────────── -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigasi dan riwayat percakapan">
+    <div class="sidebar__top">
+      <a class="brand" href="#">
+        <span class="brand__mark"><svg class="icon"><use href="#i-mark"/></svg></span>
+        <span class="brand__name">Devnuby</span>
+      </a>
+      <button class="icon-btn" type="button" data-action="collapse-sidebar" aria-label="Sembunyikan sidebar" title="Sembunyikan sidebar">
+        <svg class="icon"><use href="#i-panel"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar__body">
+      <button class="btn-new" type="button" data-action="new-chat">
+        <svg class="icon"><use href="#i-plus"/></svg>
+        <span>Percakapan baru</span>
+      </button>
+
+      <div class="field-search">
+        <svg class="icon field-search__icon"><use href="#i-search"/></svg>
+        <input type="search" id="historySearch" placeholder="Cari percakapan" aria-label="Cari percakapan" autocomplete="off">
+      </div>
+
+      <nav class="history" id="history" aria-label="Riwayat percakapan">
+        <p class="history__group">Hari ini</p>
+        <ul class="history__list" data-group="today">
+          <li><button class="history__item" type="button" data-text="Ringkasan endpoint REST untuk API billing">Ringkasan endpoint REST untuk API billing</button></li>
+          <li><button class="history__item" type="button" data-text="Bug race condition di worker queue">Bug race condition di worker queue</button></li>
+          <li><button class="history__item" type="button" data-text="Refactor komponen sidebar ke React">Refactor komponen sidebar ke React</button></li>
+          <li><button class="history__item" type="button" data-text="Strategi migrasi database tanpa downtime">Strategi migrasi database tanpa downtime</button></li>
+        </ul>
+
+        <p class="history__group">Kemarin</p>
+        <ul class="history__list" data-group="yesterday">
+          <li><button class="history__item" type="button" data-text="Menulis ulang technical documentation CLI">Menulis ulang technical documentation CLI</button></li>
+          <li><button class="history__item" type="button" data-text="Perbandingan WebSocket vs SSE untuk live update">Perbandingan WebSocket vs SSE untuk live update</button></li>
+        </ul>
+
+        <p class="history__group">7 hari terakhir</p>
+        <ul class="history__list" data-group="week">
+          <li><button class="history__item" type="button" data-text="Rancangan sistem notifikasi email">Rancangan sistem notifikasi email</button></li>
+          <li><button class="history__item" type="button" data-text="Optimasi query lambat pada tabel log">Optimasi query lambat pada tabel log</button></li>
+        </ul>
+
+        <p class="history__empty" id="historyEmpty" hidden>Tidak ada percakapan yang cocok.</p>
+      </nav>
+    </div>
+
+    <div class="sidebar__foot">
+      <div class="quota">
+        <div class="quota__row">
+          <span class="quota__label">Kuota bulan ini</span>
+          <span class="quota__value">62%</span>
+        </div>
+        <div class="quota__meter"><span class="quota__fill" style="width:62%"></span></div>
+        <p class="quota__note"> resets 12 hari lagi</p>
+      </div>
+
+      <div class="account">
+        <span class="account__avatar" aria-hidden="true">AD</span>
+        <span class="account__text">
+          <span class="account__name">Aiden</span>
+          <span class="account__plan">Rencana Pro</span>
+        </span>
+        <div class="popover popover--end" id="accountWrap">
+          <button class="icon-btn icon-btn--sm" type="button" data-action="toggle-popover" aria-haspopup="menu" aria-expanded="false" aria-label="Opsi akun" data-popover="accountMenu">
+            <svg class="icon"><use href="#i-more"/></svg>
+          </button>
+          <div class="dropdown dropdown--up" id="accountMenu" role="menu" hidden>
+            <button class="dropdown__item" type="button" role="menuitem" data-action="profile">
+              <svg class="icon icon--sm"><use href="#i-settings"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Pengaturan akun</span></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-action="usage">
+              <svg class="icon icon--sm"><use href="#i-globe"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Penggunaan &amp; kuota</span></span>
+            </button>
+            <div class="dropdown__sep"></div>
+            <button class="dropdown__item" type="button" role="menuitem" data-action="logout">
+              <svg class="icon icon--sm"><use href="#i-logout"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Keluar</span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim" data-action="close-sidebar" hidden></div>
+
+  <!-- ───────────── main ───────────── -->
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn topbar__menu" type="button" data-action="open-sidebar" aria-label="Tampilkan sidebar" title="Tampilkan sidebar">
+        <svg class="icon"><use href="#i-panel"/></svg>
+      </button>
+
+      <button class="icon-btn topbar__expand" type="button" data-action="expand-sidebar" aria-label="Tampilkan sidebar" title="Tampilkan sidebar">
+        <svg class="icon"><use href="#i-panel"/></svg>
+      </button>
+
+      <div class="chat-title" id="chatTitle">
+        <span class="chat-title__label" id="chatTitleLabel">Percakapan baru</span>
+      </div>
+
+      <div class="topbar__actions">
+        <button class="icon-btn" type="button" data-action="share" aria-label="Bagikan percakapan">
+          <svg class="icon"><use href="#i-share"/></svg>
+        </button>
+        <button class="icon-btn" type="button" data-action="toggle-theme" aria-label="Ganti tema" aria-pressed="false">
+          <svg class="icon icon--moon"><use href="#i-moon"/></svg>
+        </button>
+        <div class="popover" id="moreWrap">
+          <button class="icon-btn" type="button" data-action="toggle-popover" aria-haspopup="menu" aria-expanded="false" aria-label="Opsi lain" data-popover="moreMenu">
+            <svg class="icon"><use href="#i-more"/></svg>
+          </button>
+          <div class="dropdown" id="moreMenu" role="menu" hidden>
+            <button class="dropdown__item" type="button" role="menuitem" data-action="rename">
+              <svg class="icon icon--sm"><use href="#i-edit"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Ganti nama percakapan</span></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-action="duplicate">
+              <svg class="icon icon--sm"><use href="#i-copy"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Buat duplikat</span></span>
+            </button>
+            <button class="dropdown__item" type="button" role="menuitem" data-action="export">
+              <svg class="icon icon--sm"><use href="#i-download"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Ekspor sebagai Markdown</span></span>
+            </button>
+            <div class="dropdown__sep"></div>
+            <button class="dropdown__item dropdown__item--danger" type="button" role="menuitem" data-action="clear">
+              <svg class="icon icon--sm"><use href="#i-trash"/></svg>
+              <span class="dropdown__text"><span class="dropdown__title">Hapus percakapan</span></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- thread -->
+    <section class="thread" id="thread" tabindex="-1">
+      <div class="thread__inner" id="threadInner">
+
+        <div class="welcome" id="welcome">
+          <p class="welcome__kicker">Ruang kerja Devnuby</p>
+          <h1 class="welcome__title">
+            <span class="welcome__prompt" aria-hidden="true">&gt;</span>
+            <span class="welcome__text">Mau kerjakan apa hari ini?</span>
+            <span class="caret" aria-hidden="true"></span>
+          </h1>
+          <p class="welcome__hint">Tulis pertanyaan di bawah. Tekan <kbd>Enter</kbd> untuk mengirim, <kbd>Shift</kbd>+<kbd>Enter</kbd> untuk baris baru.</p>
+
+          <ul class="suggest" id="suggest">
+            <li><button type="button" class="suggest__btn" data-prompt="Buatkan contoh endpoint REST untuk API billing dengan pagination dan autentikasi bearer token.">Contoh endpoint REST untuk API billing</button></li>
+            <li><button type="button" class="suggest__btn" data-prompt="Bantu saya menulis dokumentasi CLI dalam bahasa Indonesia yang singkat dan mudah dibaca.">Dokumentasi CLI berbahasa Indonesia</button></li>
+            <li><button type="button" class="suggest__btn" data-prompt="Telusuri penyebab race condition pada worker queue dan usulkan perbaikannya.">Telusuri race condition pada worker queue</button></li>
+            <li><button type="button" class="suggest__btn" data-prompt="Buat rencana migrasi database ke PostgreSQL tanpa downtime.">Rencana migrasi database tanpa downtime</button></li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- composer -->
+    <div class="composer-wrap">
+      <form class="composer" id="composer" autocomplete="off">
+        <label class="sr-only" for="input">Pesan</label>
+        <textarea id="input" class="composer__input" rows="1" placeholder="Tanyakan apa saja ke Devnuby…"></textarea>
+
+        <div class="composer__bar">
+          <div class="composer__left">
+            <div class="popover" id="attachWrap">
+              <button class="icon-btn icon-btn--sm" type="button" data-action="toggle-popover" aria-haspopup="menu" aria-expanded="false" aria-label="Tambahkan" data-popover="attachMenu">
+                <svg class="icon"><use href="#i-plus"/></svg>
+              </button>
+              <div class="dropdown" id="attachMenu" role="menu" hidden>
+                <button class="dropdown__item" type="button" role="menuitem" data-action="attach">
+                  <svg class="icon icon--sm"><use href="#i-clip"/></svg>
+                  <span class="dropdown__text"><span class="dropdown__title">Lampirkan file</span></span>
+                </button>
+                <button class="dropdown__item" type="button" role="menuitem" data-tool="Web" aria-pressed="false">
+                  <svg class="icon icon--sm"><use href="#i-globe"/></svg>
+                  <span class="dropdown__text"><span class="dropdown__title">Web</span></span>
+                </button>
+                <button class="dropdown__item" type="button" role="menuitem" data-tool="Kode" aria-pressed="false">
+                  <svg class="icon icon--sm"><use href="#i-code"/></svg>
+                  <span class="dropdown__text"><span class="dropdown__title">Kode</span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer__right">
+            <div class="model" id="model">
+              <button class="model__btn" type="button" aria-haspopup="listbox" aria-expanded="false" data-action="toggle-model" id="modelBtn" title="Pilih model">
+                <span class="model__name" id="modelName">Sonnet 4.5</span>
+                <svg class="icon icon--sm model__caret"><use href="#i-chevron-down"/></svg>
+              </button>
+
+              <!-- single dropdown shell, two swappable views inside -->
+              <div class="dropdown model-dropdown" id="modelMenu" role="dialog" aria-label="Pengaturan model" hidden>
+                <div class="model-views" id="modelViews">
+
+                  <!-- view 1: quick switcher -->
+                  <div class="model-view is-active" data-view="quick">
+                    <div class="model-dropdown__head">
+                      <span class="model-dropdown__title">Model</span>
+                    </div>
+
+                    <button class="model-card" type="button" data-action="open-catalog" id="modelCard">
+                      <span class="model-card__icon" aria-hidden="true">
+                        <svg class="icon icon--sm"><use href="#i-mark"/></svg>
+                      </span>
+                      <span class="model-card__text">
+                        <span class="model-card__name" id="modelCardName">Claude Sonnet 4.5</span>
+                        <span class="model-card__desc" id="modelCardDesc">Konteks 200k</span>
+                      </span>
+                      <svg class="icon icon--sm model-card__chev"><use href="#i-chevron-right"/></svg>
+                    </button>
+
+                    <div class="reasoning">
+                      <div class="reasoning__head">
+                        <span class="reasoning__label">Reasoning</span>
+                        <span class="reasoning__value" id="reasoningValue">Sedang</span>
+                      </div>
+                      <input type="range" min="0" max="4" step="1" value="2" class="reasoning__slider" id="reasoningSlider" aria-label="Tingkat reasoning">
+                      <div class="reasoning__ticks">
+                        <span>Mati</span>
+                        <span>Rendah</span>
+                        <span>Sedang</span>
+                        <span>Tinggi</span>
+                        <span>Maks</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- view 2: model catalog -->
+                  <div class="model-view" data-view="catalog">
+                    <div class="model-dropdown__head">
+                      <button class="icon-btn icon-btn--sm model-back" type="button" data-action="back-to-quick" aria-label="Kembali">
+                        <svg class="icon"><use href="#i-chevron-right"/></svg>
+                      </button>
+                      <span class="model-dropdown__title">Pilih model</span>
+                    </div>
+
+                    <div class="catalog">
+                      <p class="catalog__group">Powerful</p>
+                      <button class="catalog__item" type="button" role="option" data-model="Sonnet 4.5" data-meta="200k" data-full="Claude Sonnet 4.5" data-desc="Konteks 200k · seimbang">
+                        <span class="catalog__icon"><svg class="icon icon--sm"><use href="#i-mark"/></svg></span>
+                        <span class="catalog__text">
+                          <span class="catalog__name">Claude Sonnet 4.5</span>
+                          <span class="catalog__desc">Konteks 200k · seimbang</span>
+                        </span>
+                        <svg class="icon icon--sm catalog__check"><use href="#i-check"/></svg>
+                      </button>
+                      <button class="catalog__item" type="button" role="option" data-model="Opus 4.5" data-meta="Pemikiran panjang" data-full="Claude Opus 4.5" data-desc="Pemikiran panjang · paling akurat">
+                        <span class="catalog__icon"><svg class="icon icon--sm"><use href="#i-mark"/></svg></span>
+                        <span class="catalog__text">
+                          <span class="catalog__name">Claude Opus 4.5</span>
+                          <span class="catalog__desc">Pemikiran panjang · paling akurat</span>
+                        </span>
+                        <svg class="icon icon--sm catalog__check"><use href="#i-check"/></svg>
+                      </button>
+
+                      <p class="catalog__group">Fast</p>
+                      <button class="catalog__item" type="button" role="option" data-model="Devnuby Lite" data-meta="Respons cepat" data-full="Devnuby Lite" data-desc="Respons cepat · biaya rendah">
+                        <span class="catalog__icon"><svg class="icon icon--sm"><use href="#i-mark"/></svg></span>
+                        <span class="catalog__text">
+                          <span class="catalog__name">Devnuby Lite</span>
+                          <span class="catalog__desc">Respons cepat · biaya rendah</span>
+                        </span>
+                        <svg class="icon icon--sm catalog__check"><use href="#i-check"/></svg>
+                      </button>
+                      <button class="catalog__item" type="button" role="option" data-model="Haiku" data-meta="Hemat" data-full="Claude Haiku" data-desc="Hemat · untuk tugas sederhana">
+                        <span class="catalog__icon"><svg class="icon icon--sm"><use href="#i-mark"/></svg></span>
+                        <span class="catalog__text">
+                          <span class="catalog__name">Claude Haiku</span>
+                          <span class="catalog__desc">Hemat · untuk tugas sederhana</span>
+                        </span>
+                        <svg class="icon icon--sm catalog__check"><use href="#i-check"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <button class="icon-btn icon-btn--sm" type="button" data-action="mic" aria-label="Input suara">
+              <svg class="icon"><use href="#i-mic"/></svg>
+            </button>
+
+            <div class="tooltip-wrap">
+              <button class="send" type="submit" id="sendBtn" aria-label="Kirim pesan" disabled>
+                <svg class="icon"><use href="#i-arrow-up"/></svg>
+              </button>
+              <span class="tooltip" role="tooltip" id="sendTooltip">Enter untuk kirim</span>
+            </div>
+          </div>
+        </div>
+      </form>
+
+      <p class="disclaimer">Devnuby bisa membuat kesalahan. Periksa kembali informasi yang penting.</p>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

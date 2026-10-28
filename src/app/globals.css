@@ -1,26 +1,538 @@
 @import "tailwindcss";
 
+/* ── Design tokens ─────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --surface: #f8fafc;
+  --panel: #ffffff;
+  --panel-elevated: #ffffff;
+  --border: #e2e8f0;
+  --divider: #e2e8f0;
+  --hover: #f1f5f9;
+
+  --ink: #0f172a;
+  --muted: #475569;
+  --placeholder: #94a3b8;
+  --link: #2563eb;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-active: #1e40af;
+  --accent-text: #ffffff;
+  --accent-soft: #dbeafe;
+
+  --bubble-user: #2563eb;
+  --bubble-user-text: #ffffff;
+  --bubble-ai: #f1f5f9;
+  --bubble-ai-text: #0f172a;
+
+  --glass-bg: rgba(255, 255, 255, 0.38);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-blur: blur(3px) saturate(180%);
+  --glass-shadow: 0 12px 40px -8px rgba(15, 23, 42, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  --glass-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0) 45%
+  );
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #000000;
+  --panel: #0a0a0a;
+  --panel-elevated: #111111;
+  --border: #292929;
+  --divider: #242424;
+  --hover: #1a1a1a;
+
+  --ink: #ededed;
+  --muted: #a1a1a1;
+  --placeholder: #808080;
+  --link: #ededed;
+
+  --accent: #ededed;
+  --accent-hover: #222222;
+  --accent-active: #bfbfbf;
+  --accent-text: #0a0a0a;
+  --accent-soft: #202020;
+
+  --bubble-user: #202020;
+  --bubble-user-text: #ededed;
+  --bubble-ai: #111111;
+  --bubble-ai-text: #ededed;
+
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.11);
+  --glass-blur: blur(3px) saturate(180%);
+  --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.09) inset;
+  --glass-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0) 40%
+  );
+}
+
+/* Tailwind theme bridge */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-panel-elevated: var(--panel-elevated);
+  --color-border-subtle: var(--border);
+  --color-hover: var(--hover);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-placeholder: var(--placeholder);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-bubble-user: var(--bubble-user);
+  --color-bubble-ai: var(--bubble-ai);
+
+  --font-ui: var(--font-jakarta);
+  --font-body: var(--font-inter);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ── Overlay animations ────────────────────────────────────────── */
+/* Hand-rolled (tailwindcss-animate is not installed). Declared inside
+   @layer components so Tailwind v4's utilities cannot strip them. */
+@layer components {
+  @keyframes overlay-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes overlay-out {
+    from {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes typewriter-fade {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .typewriter-fade-in {
+    animation: typewriter-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Popover / dropdown panels */
+  .popover-panel {
+    animation: overlay-in 130ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .popover-panel[data-state="closing"] {
+    animation: overlay-out 110ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Tooltip */
+  .tooltip-panel {
+    animation: overlay-in 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    animation: fade-in 160ms ease-out both;
+  }
+
+  .modal-panel {
+    animation: overlay-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Toast: animate vertically; horizontal centering comes from the translate utility. */
+  .toast-panel {
+    animation: rise-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Frosted hover: still clearly visible, but translucent + blurred */
+  .glass-hover {
+    position: relative;
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px transparent;
+    transition: background-color 160ms var(--ease-out, ease),
+      box-shadow 160ms var(--ease-out, ease);
+  }
+
+  /* backdrop-filter can't animate smoothly, so a pseudo-element fades it in */
+  .glass-hover::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    -webkit-backdrop-filter: blur(10px) saturate(165%);
+    backdrop-filter: blur(10px) saturate(165%);
+    transition: opacity 160ms var(--ease-out, ease);
+  }
+
+  .glass-hover:hover::before,
+  .glass-hover[data-highlighted="true"]::before {
+    opacity: 1;
+  }
+
+  .glass-hover:hover,
+  .glass-hover[data-highlighted="true"] {
+    /* low alpha keeps it airy instead of a solid block */
+    background-color: rgba(255, 255, 255, 0.045);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  }
+
+  /* keep content above the frosted layer */
+  .glass-hover > * {
+    position: relative;
+    z-index: 1;
   }
 }
 
+/* Light theme: a touch more tint so hover still reads on white glass */
+[data-theme="light"] .glass-hover:hover,
+[data-theme="light"] .glass-hover[data-highlighted="true"] {
+  background-color: rgba(15, 23, 42, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover-panel,
+  .popover-panel[data-state="closing"],
+  .tooltip-panel,
+  .modal-overlay,
+  .modal-panel,
+  .toast-panel,
+  .typewriter-fade-in {
+    animation-duration: 0.01ms;
+  }
+}
+
+/* ── Base ──────────────────────────────────────────────────────── */
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  height: 100%;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* No focus rings — state is conveyed by color/background instead */
+button:focus,
+button:focus-visible,
+a:focus,
+a:focus-visible,
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+[tabindex]:focus,
+[tabindex]:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* ── Custom scrollbars ─────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Glass utility ─────────────────────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  background-image: var(--glass-sheen);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+/* ── Markdown surface ──────────────────────────────────────────── */
+.prose-chat {
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.prose-chat > *:first-child {
+  margin-top: 0;
+}
+
+.prose-chat > *:last-child {
+  margin-bottom: 0;
+}
+
+.prose-chat p {
+  margin: 0 0 1em;
+}
+
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.prose-chat h1 {
+  font-size: 1.5em;
+  margin: 1.6em 0 0.6em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose-chat h2 {
+  font-size: 1.28em;
+  margin: 1.5em 0 0.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose-chat h3 {
+  font-size: 1.12em;
+  margin: 1.4em 0 0.4em;
+}
+
+.prose-chat h4 {
+  font-size: 1em;
+  margin: 1.2em 0 0.35em;
+}
+
+.prose-chat ul,
+.prose-chat ol {
+  margin: 0 0 1em;
+  padding-left: 1.5em;
+}
+
+.prose-chat li {
+  margin: 0.25em 0;
+}
+
+.prose-chat ul {
+  list-style: none;
+  padding-left: 1.4em;
+}
+
+.prose-chat ul > li {
+  position: relative;
+}
+
+.prose-chat ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.05em;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.prose-chat ol {
+  list-style: decimal;
+}
+
+.prose-chat ol > li::marker {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.prose-chat blockquote {
+  margin: 0 0 1em;
+  padding: 0.4em 0 0.4em 1em;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+.prose-chat code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.88em;
+}
+
+.prose-chat :not(pre) > code {
+  padding: 0.12em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-active);
+  word-break: break-word;
+}
+
+.prose-chat pre {
+  margin: 0 0 1.1em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.prose-chat pre code {
+  display: block;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #e2e8f0;
+  background: transparent;
+}
+
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.1em;
+  font-size: 14px;
+}
+
+.prose-chat th,
+.prose-chat td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose-chat th {
+  background: var(--hover);
+  font-weight: 600;
+}
+
+.prose-chat tr:nth-child(even) td {
+  background: var(--hover);
+}
+
+.prose-chat hr {
+  border: 0;
+  height: 1px;
+  background: var(--border);
+  margin: 1.6em 0;
+}
+
+.prose-chat a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+
+.prose-chat strong {
+  font-weight: 600;
+}
+
+/* ── Highlight.js token colours (dark code blocks) ─────────────── */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in {
+  color: #c792ea;
+}
+.hljs-string,
+.hljs-attr {
+  color: #c3e88d;
+}
+.hljs-number,
+.hljs-literal {
+  color: #f78c6c;
+}
+.hljs-comment {
+  color: #6b7a8f;
+  font-style: italic;
+}
+.hljs-title,
+.hljs-function {
+  color: #82aaff;
+}
+.hljs-variable,
+.hljs-template-variable {
+  color: #f07178;
+}
+
+/* ── Motion preferences ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
