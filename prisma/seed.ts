@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db as prisma } from "../src/lib/db";
 import { encryptSecret } from "../src/lib/crypto/vault";
+import type { InputJsonValue } from "../src/generated/internal/prismaNamespace";
 
 async function main() {
   console.log("🌱 Starting Devnuby AI database seeding...");
@@ -74,7 +75,7 @@ async function main() {
 
   // 3. Seed App Settings (Zero hardcoded values in routing code)
   console.log("-> Seeding app settings...");
-  const defaultSettings: Array<{ key: string; value: unknown }> = [
+  const defaultSettings: Array<{ key: string; value: InputJsonValue }> = [
     { key: "routing.primary_first", value: true },
     { key: "routing.max_attempts", value: 3 },
     {
@@ -82,6 +83,10 @@ async function main() {
       value: [408, 409, 425, 429, 500, 502, 503, 504],
     },
     { key: "routing.fallback_on_model_not_found", value: true },
+    {
+      key: "routing.fallback_on_errors",
+      value: ["timeout", "network", "http_5xx", "rate_limited", "model_not_found", "auth"],
+    },
     { key: "routing.circuit_failure_threshold", value: 5 },
     { key: "routing.circuit_cooldown_seconds", value: 60 },
     { key: "routing.cache_ttl_seconds", value: 30 },
@@ -96,7 +101,7 @@ async function main() {
       update: {},
       create: {
         settingKey: s.key,
-        value: s.value as any,
+        value: s.value,
       },
     });
   }
@@ -159,7 +164,7 @@ async function main() {
     // Clean .env: remove plain-text gateway secrets
     const envPath = path.join(process.cwd(), ".env");
     if (fs.existsSync(envPath)) {
-      let envContent = fs.readFileSync(envPath, "utf8");
+      const envContent = fs.readFileSync(envPath, "utf8");
       const lines = envContent.split(/\r?\n/);
       const filteredLines = lines.filter((line) => {
         const trimmed = line.trim();

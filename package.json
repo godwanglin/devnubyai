@@ -11,6 +11,7 @@
     "db:seed": "prisma db seed",
     "db:verify": "tsx scripts/verify-seed.ts",
     "db:explain": "tsx scripts/explain-queries.ts",
+    "test:routing": "tsx scripts/test-routing.ts",
     "user:promote": "tsx scripts/promote-user.ts"
   },
   "dependencies": {
