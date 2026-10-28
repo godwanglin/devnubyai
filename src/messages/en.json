@@ -68,7 +68,14 @@
     "copy": "Copy",
     "copied": "Copied",
     "regenerate": "Regenerate",
-    "copyCode": "Copy"
+    "copyCode": "Copy",
+    "generating": "Generating...",
+    "readAloud": "Read aloud",
+    "share": "Share",
+    "more": "More",
+    "like": "Good response",
+    "dislike": "Bad response",
+    "feedbackRecorded": "Thank you for your feedback!"
   },
   "toast": {
     "newChatStarted": "New conversation started",

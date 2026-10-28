@@ -4,11 +4,12 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { ChatTopbar } from "./chat-topbar";
 import { Composer } from "./composer";
@@ -20,56 +21,8 @@ import { getLocalStorage, setLocalStorage } from "@/lib/storage";
 import { useToast } from "@/providers/toast-provider";
 import type { Message, ReasoningLevel, Session } from "@/types";
 
-interface SsePayload {
-  messageId?: string;
-  userMessageId?: string;
-  delta?: string;
-  message?: string;
-}
-
-/** Reads a POST-based SSE body and invokes `onEvent` for each complete event block. */
-async function readSseStream(
-  body: ReadableStream<Uint8Array>,
-  onEvent: (event: string, payload: SsePayload) => void
-) {
-  const reader = body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const blocks = buffer.split("\n\n");
-    buffer = blocks.pop() ?? "";
-
-    for (const block of blocks) {
-      let eventName = "message";
-      let dataStr = "";
-      for (const line of block.trim().split("\n")) {
-        if (line.startsWith("event:")) eventName = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataStr = line.slice(5).trim();
-      }
-      if (!dataStr) continue;
-
-      let payload: SsePayload;
-      try {
-        payload = JSON.parse(dataStr) as SsePayload;
-      } catch {
-        continue;
-      }
-      onEvent(eventName, payload);
-    }
-  }
-}
-
 function errorMessage(err: unknown, fallback: string) {
   return err instanceof Error && err.message ? err.message : fallback;
-}
-
-function isAbortError(err: unknown) {
-  return err instanceof DOMException && err.name === "AbortError";
 }
 
 const DEFAULT_MODEL_ID = "";
@@ -136,7 +89,6 @@ async function loadSessions(): Promise<Session[] | null> {
       messages: [],
     }));
   } catch {
-    // Offline or network error
     return null;
   }
 }
@@ -151,6 +103,52 @@ function classifyDateGroup(isoString: string): "today" | "yesterday" | "week" | 
   if (diffDays <= 1) return "yesterday";
   if (diffDays < 7) return "week";
   return "earlier";
+}
+
+/**
+ * Extracts concatenated text content from an AI SDK UIMessage.
+ */
+function extractUIMessageText(msg: UIMessage): string {
+  let text = "";
+  for (const part of msg.parts) {
+    if (part.type === "text") {
+      text += part.text;
+    }
+  }
+  return text;
+}
+
+/**
+ * Maps an array of AI SDK UIMessages into the UI's simple Message format.
+ */
+function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
+  return uiMessages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      id: m.id,
+      role: m.role as "user" | "assistant",
+      content: extractUIMessageText(m),
+      createdAt: new Date().toISOString(),
+    }));
+}
+
+/**
+ * Maps database messages to AI SDK UIMessage format.
+ */
+function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[] {
+  return items
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      id: m.id,
+      role: m.role as "user" | "assistant",
+      parts: [
+        {
+          type: "text",
+          text: m.content,
+          state: "done",
+        },
+      ],
+    }));
 }
 
 export function ChatShell() {
@@ -168,15 +166,9 @@ export function ChatShell() {
     readReasoningPref,
     () => DEFAULT_REASONING
   );
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isThinking, setIsThinking] = useState(false);
-  const [streamingId, setStreamingId] = useState<string | null>(null);
 
   // Live sessions list from API
   const [sessions, setSessions] = useState<Session[]>([]);
-  const abortCtrlRef = useRef<AbortController | null>(null);
-  // Chat + assistant message currently streaming, used by the Stop action
-  const activeStreamRef = useRef<{ chatId: string; messageId: string } | null>(null);
 
   // Extract current chat publicId from /c/[id]
   const currentChatId = useMemo(() => {
@@ -191,18 +183,39 @@ export function ChatShell() {
       ? storedModelId
       : models[0].id;
 
-  // Chat created by handleSend in this view: its messages are already in state
+  // Track chat created in the current view before URL change completes
   const [ownedChatId, setOwnedChatId] = useState<string | null>(null);
+  const activeChatId = currentChatId || ownedChatId;
 
-  // Opening a different chat drops the previous chat's messages
-  const [prevChatId, setPrevChatId] = useState(currentChatId);
-  if (prevChatId !== currentChatId) {
-    setPrevChatId(currentChatId);
-    if (currentChatId !== ownedChatId) {
-      setMessages([]);
-      setOwnedChatId(null);
-    }
-  }
+  // Stable transport wired to the active chat endpoint or root fallback
+  const chatTransport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: activeChatId ? `/api/v1/chats/${activeChatId}/messages` : "/api/v1/chats",
+        credentials: "same-origin",
+        prepareSendMessagesRequest: ({ id, messages: reqMessages, trigger, messageId }) => {
+          const effectiveChatId = activeChatId || id;
+          if (trigger === "regenerate-message" && messageId) {
+            return {
+              api: `/api/v1/chats/${effectiveChatId}/messages/${messageId}/regenerate`,
+              body: {
+                model: currentModelId || undefined,
+              },
+            };
+          }
+          const lastUser = [...reqMessages].reverse().find((m) => m.role === "user");
+          const text = lastUser ? extractUIMessageText(lastUser) : "";
+          return {
+            api: `/api/v1/chats/${effectiveChatId}/messages`,
+            body: {
+              content: text,
+              model: currentModelId || undefined,
+            },
+          };
+        },
+      }),
+    [activeChatId, currentModelId]
+  );
 
   // Refresh session list from `/api/v1/chats`
   const fetchSessions = useCallback(() => {
@@ -210,6 +223,45 @@ export function ChatShell() {
       if (items) setSessions(items);
     });
   }, []);
+
+  // Hook into AI SDK useChat
+  const {
+    messages: uiMessages,
+    setMessages: setUiMessages,
+    sendMessage,
+    regenerate,
+    stop,
+    status,
+  } = useChat({
+    id: activeChatId ?? undefined,
+    transport: chatTransport,
+    throttle: 30,
+    onError: (err) => {
+      toast(errorMessage(err, "Failed to process message"));
+    },
+    onFinish: () => {
+      fetchSessions();
+    },
+  });
+
+  // Track the ID of the assistant message being streamed or pending
+  const streamingId = useMemo(() => {
+    if (status !== "submitted" && status !== "streaming") return null;
+    const lastMsg = uiMessages[uiMessages.length - 1];
+    return lastMsg?.role === "assistant" ? lastMsg.id : null;
+  }, [status, uiMessages]);
+
+  const isThinking = status === "submitted";
+
+  // Opening a different chat drops the previous chat's messages
+  const [prevChatId, setPrevChatId] = useState(currentChatId);
+  if (prevChatId !== currentChatId) {
+    setPrevChatId(currentChatId);
+    if (currentChatId !== ownedChatId) {
+      setUiMessages([]);
+      setOwnedChatId(null);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -221,7 +273,7 @@ export function ChatShell() {
     };
   }, [pathname]);
 
-  // Fetch messages when opening `/c/[id]`
+  // Fetch initial messages when opening `/c/[id]`
   useEffect(() => {
     if (!currentChatId || currentChatId === ownedChatId) return;
 
@@ -241,16 +293,7 @@ export function ChatShell() {
         const items: ApiMessageItem[] = json.data ?? [];
         if (!active) return;
 
-        const mapped: Message[] = items
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            createdAt: m.createdAt,
-          }));
-
-        setMessages(mapped);
+        setUiMessages(mapApiMessagesToUIMessages(items));
       } catch {
         // Failed to load messages
       }
@@ -259,7 +302,7 @@ export function ChatShell() {
     return () => {
       active = false;
     };
-  }, [currentChatId, ownedChatId, router]);
+  }, [currentChatId, ownedChatId, router, setUiMessages]);
 
   const activeSession = useMemo(() => {
     if (!currentChatId) return null;
@@ -268,24 +311,13 @@ export function ChatShell() {
 
   const currentTitle = activeSession?.title || t("welcome.title");
 
-  // Consume SSE stream from `/api/v1/chats/[chatId]/messages`
+  // Send message via AI SDK useChat
   const handleSend = useCallback(
     async (text: string) => {
-      const tempUserId = `u_${Date.now()}`;
-      const tempUserMsg: Message = {
-        id: tempUserId,
-        role: "user",
-        content: text,
-        createdAt: new Date().toISOString(),
-      };
-
-      setMessages((prev) => [...prev, tempUserMsg]);
-      setIsThinking(true);
-
-      let targetChatId = currentChatId;
+      let targetChatId = currentChatId || ownedChatId;
 
       try {
-        // 1. If currently on home page "/", create a new chat session first
+        // If on home page, create session first so targetChatId is established
         if (!targetChatId) {
           const createRes = await fetch("/api/v1/chats", {
             method: "POST",
@@ -305,99 +337,30 @@ export function ChatShell() {
           const createData = await createRes.json();
           targetChatId = createData.data.id;
           setOwnedChatId(targetChatId);
-          // Switch URL to /c/[id] without full page reload
           window.history.pushState(null, "", `/c/${targetChatId}`);
           fetchSessions();
         }
 
-        const abortCtrl = new AbortController();
-        abortCtrlRef.current = abortCtrl;
-
-        // 2. POST to `/api/v1/chats/[chatId]/messages` with streaming SSE
-        const res = await fetch(`/api/v1/chats/${targetChatId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content: text,
-            model: currentModelId || undefined,
-          }),
-          signal: abortCtrl.signal,
-          credentials: "same-origin",
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || "Failed to send message");
-        }
-
-        if (!res.body) {
-          throw new Error("No response body received from server");
-        }
-
-        let assistantMessageId: string | null = null;
-        let assistantContent = "";
-
-        await readSseStream(res.body, (eventName, payload) => {
-          if (eventName === "meta" && payload.messageId) {
-            setIsThinking(false);
-            const newAssistantId = payload.messageId;
-            assistantMessageId = newAssistantId;
-            setStreamingId(newAssistantId);
-            activeStreamRef.current = { chatId: targetChatId!, messageId: newAssistantId };
-
-            const userMessageId = payload.userMessageId;
-            setMessages((prev) => [
-              ...prev.map((m) =>
-                userMessageId && m.id === tempUserId ? { ...m, id: userMessageId } : m
-              ),
-              {
-                id: newAssistantId,
-                role: "assistant",
-                content: "",
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-          } else if (eventName === "delta") {
-            setIsThinking(false);
-            assistantContent += payload.delta || "";
-            const content = assistantContent;
-            const id = assistantMessageId;
-            if (id) {
-              setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content } : m)));
-            }
-          } else if (eventName === "error") {
-            toast(payload.message || "An error occurred");
-          } else if (eventName === "done") {
-            setStreamingId(null);
-          }
-        });
-
-        fetchSessions();
+        await sendMessage({ text });
       } catch (err) {
-        if (!isAbortError(err)) {
-          toast(errorMessage(err, "Failed to process message"));
-        }
-      } finally {
-        setIsThinking(false);
-        setStreamingId(null);
-        abortCtrlRef.current = null;
-        activeStreamRef.current = null;
+        toast(errorMessage(err, "Failed to process message"));
       }
     },
-    [currentChatId, currentModelId, fetchSessions, toast]
+    [currentChatId, ownedChatId, currentModelId, sendMessage, fetchSessions, toast]
   );
 
-  // Stop the in-flight generation: tell the server to abort, then drop the client stream
-  const handleStop = useCallback(() => {
-    const active = activeStreamRef.current;
-    if (active) {
-      fetch(`/api/v1/chats/${active.chatId}/messages/${active.messageId}/stop`, {
+  // Stop the in-flight generation: notify backend via /stop then abort client-side stream
+  const handleStop = useCallback(async () => {
+    const chatId = activeChatId;
+    const lastMsg = uiMessages[uiMessages.length - 1];
+    if (chatId && lastMsg && lastMsg.role === "assistant") {
+      fetch(`/api/v1/chats/${chatId}/messages/${lastMsg.id}/stop`, {
         method: "POST",
         credentials: "same-origin",
       }).catch(() => {});
     }
-    abortCtrlRef.current?.abort();
-  }, []);
+    await stop();
+  }, [activeChatId, uiMessages, stop]);
 
   function handleModelChange(id: string) {
     writePref(MODEL_KEY, id);
@@ -407,71 +370,16 @@ export function ChatShell() {
     writePref(REASONING_KEY, level);
   }
 
-  // Regenerate assistant response
+  // Regenerate assistant response via useChat
   const handleRegenerate = useCallback(
     async (messageId: string) => {
-      if (!currentChatId) return;
-
-      setIsThinking(true);
-      const abortCtrl = new AbortController();
-      abortCtrlRef.current = abortCtrl;
-
       try {
-        const res = await fetch(
-          `/api/v1/chats/${currentChatId}/messages/${messageId}/regenerate`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: currentModelId || undefined }),
-            signal: abortCtrl.signal,
-            credentials: "same-origin",
-          }
-        );
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || "Failed to regenerate message");
-        }
-
-        if (!res.body) return;
-
-        let assistantContent = "";
-
-        // Reset assistant message text in state
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, content: "" } : m))
-        );
-        setStreamingId(messageId);
-        activeStreamRef.current = { chatId: currentChatId, messageId };
-
-        await readSseStream(res.body, (eventName, payload) => {
-            if (eventName === "meta") {
-              setIsThinking(false);
-            } else if (eventName === "delta") {
-              setIsThinking(false);
-              assistantContent += payload.delta || "";
-              const content = assistantContent;
-              setMessages((prev) =>
-                prev.map((m) => (m.id === messageId ? { ...m, content } : m))
-              );
-            } else if (eventName === "error") {
-              toast(payload.message || "An error occurred");
-            } else if (eventName === "done") {
-              setStreamingId(null);
-            }
-        });
+        await regenerate({ messageId });
       } catch (err) {
-        if (!isAbortError(err)) {
-          toast(errorMessage(err, "Failed to regenerate"));
-        }
-      } finally {
-        setIsThinking(false);
-        setStreamingId(null);
-        abortCtrlRef.current = null;
-        activeStreamRef.current = null;
+        toast(errorMessage(err, "Failed to regenerate"));
       }
     },
-    [currentChatId, currentModelId, toast]
+    [regenerate, toast]
   );
 
   async function handleDeleteChat() {
@@ -487,6 +395,8 @@ export function ChatShell() {
       router.push("/");
     }
   }
+
+  const domainMessages = useMemo(() => mapUIMessagesToDomain(uiMessages), [uiMessages]);
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--surface)]">
@@ -512,11 +422,11 @@ export function ChatShell() {
         />
 
         <div className="flex-1 overflow-y-auto">
-          {messages.length === 0 && !isThinking ? (
+          {domainMessages.length === 0 && !isThinking ? (
             <Welcome onSelectPrompt={handleSend} />
           ) : (
             <MessageList
-              messages={messages}
+              messages={domainMessages}
               isThinking={isThinking}
               streamingId={streamingId}
               onRegenerate={handleRegenerate}
@@ -527,7 +437,7 @@ export function ChatShell() {
         <Composer
           onSend={handleSend}
           onStop={handleStop}
-          disabled={isThinking || streamingId !== null}
+          disabled={status === "submitted" || status === "streaming"}
           currentModelId={currentModelId}
           onModelChange={handleModelChange}
           reasoningLevel={reasoningLevel}

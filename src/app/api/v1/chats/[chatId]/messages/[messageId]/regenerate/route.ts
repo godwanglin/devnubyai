@@ -4,8 +4,8 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
-import { getSseResponseHeaders } from "@/lib/chat/sse";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
+import { createUIMessageStreamResponse } from "ai";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const regenerateSchema = z.object({
@@ -115,9 +115,11 @@ export async function POST(request: Request, context: RouteContext) {
       clientSignal: request.signal,
     });
 
-    return new Response(stream, {
-      status: 200,
-      headers: getSseResponseHeaders(requestId),
+    return createUIMessageStreamResponse({
+      stream,
+      headers: {
+        "x-request-id": requestId,
+      },
     });
   } catch (err) {
     return jsonError(err, { requestId });

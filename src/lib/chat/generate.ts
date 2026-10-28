@@ -3,10 +3,16 @@ import { ApiError } from "@/lib/api/response";
 import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool } from "@/lib/tools";
-import { formatSseChunk } from "@/lib/chat/sse";
 import { recordUserUsage } from "@/lib/chat/quota";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
 import type { ChatMessageInput, ToolCallInput } from "@/lib/gateways/types";
+import {
+  createUIMessageStream,
+  smoothStream,
+  toUIMessageChunk,
+  type TextStreamPart,
+  type UIMessageChunk,
+} from "ai";
 
 export interface StreamGenerationOptions {
   userId: bigint;
@@ -66,13 +72,56 @@ export async function resolveCatalogModel(
 }
 
 /**
- * Core SSE streaming generator. Runs the multi-turn tool loop against the
- * Phase 3 smart routing executor, writes intermediate tokens to the client,
- * executes tools locally, persists final state to DB, and tracks usage.
+ * Adapts raw TextStreamParts into a smoothed word-by-word stream using AI SDK's smoothStream helper.
+ * Buffers are flushed with a sentinel step finish chunk on completion.
+ */
+async function* createSmoothedTextPipeline(
+  source: AsyncIterable<TextStreamPart<Record<string, never>>>
+): AsyncIterable<TextStreamPart<Record<string, never>>> {
+  const smoother = smoothStream<Record<string, never>>({
+    delayInMs: 10,
+    chunking: "word",
+  })({ tools: {} });
+
+  const writer = smoother.writable.getWriter();
+  const reader = smoother.readable.getReader();
+
+  const feeder = (async () => {
+    try {
+      for await (const chunk of source) {
+        await writer.write(chunk);
+      }
+      await writer.close();
+    } catch (err) {
+      try {
+        await writer.abort(err);
+      } catch {}
+    }
+  })();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      yield value;
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {}
+    await feeder.catch(() => {});
+  }
+}
+
+/**
+ * Core AI SDK UI message stream generator. Runs the multi-turn tool loop against the
+ * DB-driven smart routing executor (executeWithFallback), translates gateway events
+ * to AI SDK UIMessageChunks with word smoothing, executes tools, persists final
+ * state to DB, and tracks usage.
  */
 export function createChatGenerationStream(
   options: StreamGenerationOptions
-): ReadableStream<Uint8Array> {
+): ReadableStream<UIMessageChunk> {
   const {
     userId,
     userPublicId,
@@ -89,36 +138,15 @@ export function createChatGenerationStream(
 
   const streamController = registerStream(assistantMessagePublicId);
   const combinedSignal = AbortSignal.any([clientSignal, streamController.signal]);
-  const encoder = new TextEncoder();
 
-  return new ReadableStream({
-    async start(controller) {
+  return createUIMessageStream({
+    execute: async ({ writer }) => {
       let fullContent = "";
       let fullReasoning = "";
       let promptTokens = 0;
       let completionTokens = 0;
-      let isDone = false;
-      let pingInterval: NodeJS.Timeout | null = null;
-
-      const safeSend = (chunk: string) => {
-        if (!isDone && controller.desiredSize !== null) {
-          try {
-            controller.enqueue(encoder.encode(chunk));
-          } catch {
-            // Client closed connection
-          }
-        }
-      };
-
-      pingInterval = setInterval(() => {
-        safeSend(formatSseChunk({ event: "ping", data: {} }));
-      }, 15000);
 
       const cleanup = () => {
-        if (pingInterval) {
-          clearInterval(pingInterval);
-          pingInterval = null;
-        }
         unregisterStream(assistantMessagePublicId, streamController);
       };
 
@@ -134,20 +162,21 @@ export function createChatGenerationStream(
           data: { catalogModelId: resolvedModel.id },
         });
 
-        // Emit meta event with the resolved model's public id
-        safeSend(
-          formatSseChunk({
-            event: "meta",
-            data: {
-              messageId: assistantMessagePublicId,
-              userMessageId: userMessagePublicId,
-              model: resolvedModel.publicId,
-            },
-          })
-        );
+        // 1. Emit start chunk with assistant messageId and meta
+        writer.write({
+          type: "start",
+          messageId: assistantMessagePublicId,
+          messageMetadata: {
+            messageId: assistantMessagePublicId,
+            userMessageId: userMessagePublicId,
+            model: resolvedModel.publicId,
+            requestId,
+          },
+        });
 
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
         let remainingToolRounds = resolvedModel.supportsTools ? 3 : 0;
+        let stepIndex = 0;
 
         while (true) {
           if (combinedSignal.aborted) {
@@ -166,46 +195,78 @@ export function createChatGenerationStream(
             },
           });
 
-          // Join tool call fragments by stable output index (or callId fallback)
           const toolCallsByIndex = new Map<number | string, AccumulatedToolCall>();
           let turnContent = "";
 
-          for await (const event of gatewayStream) {
+          const textPartId = `text_${assistantMessagePublicId}_${stepIndex}`;
+          const reasoningPartId = `reasoning_${assistantMessagePublicId}_${stepIndex}`;
+          let hasEmittedTextStart = false;
+          let hasEmittedReasoningStart = false;
+
+          // Bridge gateway events to TextStreamParts for smoothStream
+          async function* rawTextPartsGenerator(): AsyncIterable<
+            TextStreamPart<Record<string, never>>
+          > {
+            for await (const event of gatewayStream) {
+              if (combinedSignal.aborted) {
+                throw new Error("CLIENT_ABORTED");
+              }
+
+              if (event.type === "delta") {
+                turnContent += event.text;
+                fullContent += event.text;
+                if (!hasEmittedTextStart) {
+                  hasEmittedTextStart = true;
+                  yield { type: "text-start", id: textPartId };
+                }
+                yield { type: "text-delta", id: textPartId, text: event.text };
+              } else if (event.type === "reasoning") {
+                fullReasoning += event.text;
+                if (!hasEmittedReasoningStart) {
+                  hasEmittedReasoningStart = true;
+                  yield { type: "reasoning-start", id: reasoningPartId };
+                }
+                yield {
+                  type: "reasoning-delta",
+                  id: reasoningPartId,
+                  text: event.text,
+                };
+              } else if (event.type === "tool_call") {
+                const key =
+                  event.index !== undefined ? event.index : event.callId || "call_0";
+                const existing = toolCallsByIndex.get(key) || {
+                  callId: event.callId || "",
+                  name: event.name || "",
+                  args: "",
+                };
+                if (event.callId && !existing.callId) existing.callId = event.callId;
+                if (event.name && !existing.name) existing.name = event.name;
+                existing.args += event.argumentsDelta;
+                toolCallsByIndex.set(key, existing);
+              } else if (event.type === "usage") {
+                promptTokens += event.promptTokens;
+                completionTokens += event.completionTokens;
+              }
+            }
+
+            if (hasEmittedReasoningStart) {
+              yield { type: "reasoning-end", id: reasoningPartId };
+            }
+            if (hasEmittedTextStart) {
+              yield { type: "text-end", id: textPartId };
+            }
+          }
+
+          // Consume smoothed text/reasoning parts and emit AI SDK UI chunks
+          for await (const smoothedPart of createSmoothedTextPipeline(
+            rawTextPartsGenerator()
+          )) {
             if (combinedSignal.aborted) {
               throw new Error("CLIENT_ABORTED");
             }
-
-            if (event.type === "delta") {
-              turnContent += event.text;
-              fullContent += event.text;
-              safeSend(
-                formatSseChunk({
-                  event: "delta",
-                  data: { delta: event.text },
-                })
-              );
-            } else if (event.type === "reasoning") {
-              fullReasoning += event.text;
-              safeSend(
-                formatSseChunk({
-                  event: "reasoning",
-                  data: { delta: event.text },
-                })
-              );
-            } else if (event.type === "tool_call") {
-              const key = event.index !== undefined ? event.index : event.callId || "call_0";
-              const existing = toolCallsByIndex.get(key) || {
-                callId: event.callId || "",
-                name: event.name || "",
-                args: "",
-              };
-              if (event.callId && !existing.callId) existing.callId = event.callId;
-              if (event.name && !existing.name) existing.name = event.name;
-              existing.args += event.argumentsDelta;
-              toolCallsByIndex.set(key, existing);
-            } else if (event.type === "usage") {
-              promptTokens += event.promptTokens;
-              completionTokens += event.completionTokens;
+            const chunk = toUIMessageChunk(smoothedPart, { sendReasoning: true });
+            if (chunk) {
+              writer.write(chunk);
             }
           }
 
@@ -215,6 +276,7 @@ export function createChatGenerationStream(
 
           if (assembledCalls.length > 0 && remainingToolRounds > 0) {
             remainingToolRounds -= 1;
+            stepIndex += 1;
 
             const toolInputs: ToolCallInput[] = assembledCalls.map((c, idx) => ({
               id: c.callId || `call_${idx}`,
@@ -232,17 +294,6 @@ export function createChatGenerationStream(
             for (const tool of toolInputs) {
               const effectiveCallId = tool.id;
 
-              safeSend(
-                formatSseChunk({
-                  event: "tool",
-                  data: {
-                    id: effectiveCallId,
-                    name: tool.name,
-                    status: "running",
-                  },
-                })
-              );
-
               let parsedArgs: Record<string, unknown> = {};
               try {
                 parsedArgs = tool.arguments ? JSON.parse(tool.arguments) : {};
@@ -250,24 +301,35 @@ export function createChatGenerationStream(
                 parsedArgs = {};
               }
 
+              writer.write({
+                type: "tool-input-available",
+                toolCallId: effectiveCallId,
+                toolName: tool.name,
+                input: parsedArgs,
+                dynamic: true,
+              });
+
               const result = await executeTool(tool.name, parsedArgs, {
                 userId: userPublicId,
                 sessionId: sessionPublicId,
                 signal: combinedSignal,
               });
 
-              safeSend(
-                formatSseChunk({
-                  event: "tool",
-                  data: {
-                    id: effectiveCallId,
-                    name: tool.name,
-                    status: result.success ? "completed" : "failed",
-                    output: result.data,
-                    error: result.error?.message,
-                  },
-                })
-              );
+              if (result.success) {
+                writer.write({
+                  type: "tool-output-available",
+                  toolCallId: effectiveCallId,
+                  output: result.data ?? {},
+                  dynamic: true,
+                });
+              } else {
+                writer.write({
+                  type: "tool-output-error",
+                  toolCallId: effectiveCallId,
+                  errorText: result.error?.message || "Tool execution failed",
+                  dynamic: true,
+                });
+              }
 
               currentMessages.push({
                 role: "tool",
@@ -282,7 +344,7 @@ export function createChatGenerationStream(
           break;
         }
 
-        // Persist final completed message
+        // Persist final completed message to DB
         await db.chatMessage.update({
           where: { id: assistantMessageId },
           data: {
@@ -299,19 +361,11 @@ export function createChatGenerationStream(
           console.error("[USAGE_RECORD_ERROR]", err);
         });
 
-        safeSend(
-          formatSseChunk({
-            event: "done",
-            data: {
-              finishReason: "stop",
-              usage: {
-                promptTokens,
-                completionTokens,
-                totalTokens: promptTokens + completionTokens,
-              },
-            },
-          })
-        );
+        writer.write({
+          type: "finish",
+          finishReason: "stop",
+        });
+        writer.setOutcome({ status: "completed" });
       } catch (streamErr: unknown) {
         const errAny = streamErr as Record<string, unknown>;
         const isAbort =
@@ -339,44 +393,26 @@ export function createChatGenerationStream(
           .catch(() => {});
 
         if (isAbort) {
-          safeSend(
-            formatSseChunk({
-              event: "done",
-              data: {
-                finishReason: "abort",
-                usage: { promptTokens, completionTokens },
-              },
-            })
-          );
+          writer.write({
+            type: "abort",
+            reason: "Client stopped generation",
+          });
+          writer.setOutcome({ status: "aborted" });
         } else {
-          // Normalize public error: never leak raw gateway URLs or internal details
           let publicMessage = "The model is temporarily unavailable.";
-          let publicCode = "MODEL_UNAVAILABLE";
 
           if (streamErr instanceof ApiError) {
             publicMessage = streamErr.message;
-            publicCode = streamErr.code;
           }
 
-          safeSend(
-            formatSseChunk({
-              event: "error",
-              data: {
-                code: publicCode,
-                message: publicMessage,
-                requestId,
-              },
-            })
-          );
+          writer.write({
+            type: "error",
+            errorText: publicMessage,
+          });
+          writer.setOutcome({ status: "failed", error: streamErr });
         }
       } finally {
         cleanup();
-        isDone = true;
-        try {
-          controller.close();
-        } catch {
-          // Stream already closed
-        }
       }
     },
   });

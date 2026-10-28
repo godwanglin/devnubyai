@@ -40,7 +40,7 @@ export function MessageList({
           }
         />
       ))}
-      {isThinking && <TypingIndicator />}
+      {isThinking && !streamingId && <TypingIndicator />}
       <div ref={endRef} className="h-px" />
     </div>
   );

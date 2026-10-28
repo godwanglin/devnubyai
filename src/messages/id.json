@@ -68,7 +68,14 @@
     "copy": "Salin",
     "copied": "Tersalin",
     "regenerate": "Buat ulang",
-    "copyCode": "Salin"
+    "copyCode": "Salin",
+    "generating": "Sedang membuat...",
+    "readAloud": "Bacakan",
+    "share": "Bagikan",
+    "more": "Lainnya",
+    "like": "Tanggapan bagus",
+    "dislike": "Tanggapan buruk",
+    "feedbackRecorded": "Terima kasih atas masukan Anda!"
   },
   "toast": {
     "newChatStarted": "Percakapan baru dimulai",
