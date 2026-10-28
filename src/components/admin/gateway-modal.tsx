@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
+import { CustomSelect } from "@/components/ui/custom-select";
 import type { SanitizedGatewayDto } from "@/lib/gateways/admin-service";
 
 interface GatewayModalProps {
@@ -167,14 +168,15 @@ function GatewayFormInner({ gateway, onClose, onSaved }: FormInnerProps) {
           <label className="block text-xs font-medium text-[var(--muted)] mb-1">
             {t("admin.gateways.wireApi")}
           </label>
-          <select
+          <CustomSelect<"chat" | "responses">
+            options={[
+              { value: "chat", label: "chat (OpenAI wire)" },
+              { value: "responses", label: "responses (Anthropic wire)" },
+            ]}
             value={wireApi}
-            onChange={(e) => setWireApi(e.target.value as "chat" | "responses")}
-            className="w-full px-3 py-2 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-sm outline-none focus:border-[var(--accent)]"
-          >
-            <option value="chat">chat (OpenAI wire)</option>
-            <option value="responses">responses (Anthropic wire)</option>
-          </select>
+            onChange={setWireApi}
+            size="md"
+          />
         </div>
       </div>
 
