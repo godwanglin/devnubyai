@@ -253,6 +253,46 @@
       "updateSuccess": "Model updated successfully",
       "deleteSuccess": "Model deleted / archived successfully",
       "emptyList": "No public models configured yet."
+    },
+    "logs": {
+      "title": "Logs & Audit",
+      "description": "Inspect administrative mutation audit trails and live AI routing telemetry.",
+      "subtabs": {
+        "audit": "Admin Audit Trail",
+        "telemetry": "Routing Telemetry"
+      },
+      "refresh": "Refresh",
+      "searchPlaceholderAudit": "Search by action or entity ID...",
+      "searchPlaceholderTelemetry": "Search by request ID or error...",
+      "filterEntity": "Entity Type",
+      "filterAllEntities": "All Entities",
+      "filterOutcome": "Outcome",
+      "outcomeAll": "All Outcomes",
+      "outcomeSuccess": "Success",
+      "outcomeFallback": "Fallback",
+      "outcomeFailed": "Failed",
+      "outcomeAborted": "Aborted",
+      "actor": "Actor",
+      "action": "Action",
+      "entity": "Entity",
+      "timestamp": "Timestamp",
+      "viewDiff": "Inspect State",
+      "modalTitle": "Audit State Diff: {action}",
+      "beforeState": "Before State",
+      "afterState": "After State",
+      "noState": "No state snapshot recorded",
+      "requestId": "Request ID",
+      "gateway": "Gateway",
+      "model": "Model",
+      "attempt": "Attempt",
+      "outcome": "Outcome",
+      "latency": "Latency / TTFT",
+      "tokens": "Tokens (In / Out)",
+      "error": "Error Class",
+      "emptyAudit": "No admin audit logs found.",
+      "emptyTelemetry": "No routing telemetry records found.",
+      "pagination": "Page {page} of {totalPages} ({total} entries)",
+      "close": "Close"
     }
   }
 }

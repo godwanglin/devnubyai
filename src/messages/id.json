@@ -253,6 +253,46 @@
       "updateSuccess": "Model berhasil diperbarui",
       "deleteSuccess": "Model berhasil dihapus / dinonaktifkan",
       "emptyList": "Belum ada model publik yang terkonfigurasi."
+    },
+    "logs": {
+      "title": "Log & Audit",
+      "description": "Pantau jejak audit mutasi admin dan telemetri eksekusi routing chat live.",
+      "subtabs": {
+        "audit": "Jejak Audit Admin",
+        "telemetry": "Telemetri Routing"
+      },
+      "refresh": "Muat Ulang",
+      "searchPlaceholderAudit": "Cari berdasarkan aksi atau ID entitas...",
+      "searchPlaceholderTelemetry": "Cari berdasarkan ID request atau error...",
+      "filterEntity": "Tipe Entitas",
+      "filterAllEntities": "Semua Entitas",
+      "filterOutcome": "Hasil",
+      "outcomeAll": "Semua Hasil",
+      "outcomeSuccess": "Berhasil",
+      "outcomeFallback": "Fallback",
+      "outcomeFailed": "Gagal",
+      "outcomeAborted": "Dibatalkan",
+      "actor": "Pelaku",
+      "action": "Aksi",
+      "entity": "Entitas",
+      "timestamp": "Waktu",
+      "viewDiff": "Periksa State",
+      "modalTitle": "Perbandingan State Audit: {action}",
+      "beforeState": "State Sebelumnya",
+      "afterState": "State Sesudahnya",
+      "noState": "Tidak ada snapshot state",
+      "requestId": "ID Request",
+      "gateway": "Gateway",
+      "model": "Model",
+      "attempt": "Percobaan",
+      "outcome": "Hasil",
+      "latency": "Latensi / TTFT",
+      "tokens": "Token (Masuk / Keluar)",
+      "error": "Kelas Error",
+      "emptyAudit": "Belum ada log audit admin.",
+      "emptyTelemetry": "Belum ada catatan telemetri routing.",
+      "pagination": "Halaman {page} dari {totalPages} ({total} entri)",
+      "close": "Tutup"
     }
   }
 }

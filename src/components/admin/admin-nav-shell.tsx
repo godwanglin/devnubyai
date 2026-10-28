@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Server, Database, Sparkles, Settings2, FileText } from "lucide-react";
+import { ArrowLeft, Server, Database, Sparkles, FileText } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
 
@@ -32,11 +32,6 @@ export function AdminNavShell({ children }: { children: React.ReactNode }) {
       href: "/admin/model-catalog",
       labelKey: "admin.tabs.chatCatalog",
       icon: <Sparkles className="w-4 h-4" />,
-    },
-    {
-      href: "/admin/routing",
-      labelKey: "admin.tabs.routing",
-      icon: <Settings2 className="w-4 h-4" />,
     },
     {
       href: "/admin/logs",
