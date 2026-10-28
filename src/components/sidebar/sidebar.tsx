@@ -12,6 +12,7 @@ import {
   Globe,
   LogOut,
   Sparkles,
+  Shield,
 } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import { DropdownSeparator } from "@/components/ui/dropdown";
@@ -283,6 +284,17 @@ export function Sidebar({
                   <SettingsIcon className="w-3.5 h-3.5 text-[var(--muted)]" />
                   <span>{t("nav.settings")}</span>
                 </Link>
+
+                {user.role === "admin" && (
+                  <Link
+                    href="/admin/gateway"
+                    onClick={onCloseMobile}
+                    className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)]"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    <span>{t("nav.adminCatalog")}</span>
+                  </Link>
+                )}
 
                 <button
                   type="button"

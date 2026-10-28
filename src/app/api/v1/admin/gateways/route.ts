@@ -1,45 +1,33 @@
 import { requireAdmin } from "@/lib/auth/session";
-import { db } from "@/lib/db";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import {
+  createAdminGateway,
+  createGatewaySchema,
+  listSanitizedGateways,
+} from "@/lib/gateways/admin-service";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
 
   try {
-    // Defense-in-depth: requireAdmin verifies user authentication AND role='admin'
     await requireAdmin();
+    const gateways = await listSanitizedGateways();
+    return jsonSuccess({ gateways }, { requestId });
+  } catch (err) {
+    return jsonError(err, { requestId });
+  }
+}
 
-    const gateways = await db.gateway.findMany({
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        baseUrl: true,
-        wireApi: true,
-        modelsPath: true,
-        apiKeyLast4: true,
-        isPrimary: true,
-        isEnabled: true,
-        priority: true,
-        timeoutMs: true,
-        firstTokenTimeoutMs: true,
-        healthStatus: true,
-        lastSuccessAt: true,
-        lastFailureAt: true,
-        lastSyncedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: [{ isPrimary: "desc" }, { priority: "asc" }],
-    });
+export async function POST(request: Request) {
+  const requestId = getRequestId(request);
 
-    // Convert BigInt id to string for JSON serialization
-    const serialized = gateways.map((g) => ({
-      ...g,
-      id: g.id.toString(),
-    }));
+  try {
+    const adminUser = await requireAdmin();
+    const body = await request.json().catch(() => ({}));
+    const parsed = createGatewaySchema.parse(body);
 
-    return jsonSuccess({ gateways: serialized }, { requestId });
+    const created = await createAdminGateway(parsed, adminUser.id);
+    return jsonSuccess({ gateway: created }, { requestId, status: 201 });
   } catch (err) {
     return jsonError(err, { requestId });
   }

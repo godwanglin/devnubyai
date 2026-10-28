@@ -116,11 +116,14 @@ export function invalidateRoutingSettingsCache(): void {
  * Bumps `routing.version` in DB and clears the memory cache so every cached
  * candidate resolution becomes stale immediately.
  */
-export async function bumpRoutingVersion(userId?: bigint | null): Promise<number> {
+export async function bumpRoutingVersion(
+  userId?: bigint | null,
+  client: { appSetting: typeof db.appSetting } = db
+): Promise<number> {
   const current = await getRoutingSettings({ forceRefresh: true });
   const nextVersion = current.version + 1;
 
-  await db.appSetting.update({
+  await client.appSetting.update({
     where: { settingKey: SETTING_KEYS.version },
     data: { value: nextVersion, updatedBy: userId ?? null },
   });
