@@ -38,12 +38,16 @@ export interface UserProfile {
   name: string;
   email: string;
   initials: string;
+  role?: string;
   plan: string;
   planLabel: string;
   avatarUrl: string | null;
   quota: {
     usedPercent: number;
     resetInDays: number;
+    usedTokens?: number;
+    limitTokens?: number | null;
+    requestCount?: number;
   };
 }
 

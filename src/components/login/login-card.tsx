@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Sparkles } from "lucide-react";
@@ -16,24 +16,27 @@ export function LoginCard() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Surface OAuth callback failures (?error=...) once after mount
+  useEffect(() => {
+    const error = new URLSearchParams(window.location.search).get("error");
+    if (error) {
+      toast(error === "access_denied" ? "Login Google dibatalkan" : "Login gagal, silakan coba lagi");
+      router.replace("/login");
+    }
+  }, [toast, router]);
+
   function handleGoogleLogin() {
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast("Berhasil masuk dengan akun Google");
-      router.push("/");
-    }, 900);
+    // Full navigation: the server sets state/PKCE cookies and redirects to Google
+    // (a route handler, not a page, so client-side router.push does not apply)
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = "/api/v1/auth/google";
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast(`Selamat datang kembali, ${email.split("@")[0]}!`);
-      router.push("/");
-    }, 800);
+    toast("Login email belum tersedia, gunakan akun Google");
   }
 
   return (

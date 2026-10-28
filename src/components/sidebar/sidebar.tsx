@@ -14,11 +14,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
-import { DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
+import { DropdownSeparator } from "@/components/ui/dropdown";
 import { useI18n } from "@/providers/i18n-provider";
+import { useAccount } from "@/providers/account-provider";
 import { cn } from "@/lib/cn";
-import userData from "@/data/user.json";
-import type { Session, UserProfile } from "@/types";
+import type { Session } from "@/types";
 
 interface SidebarProps {
   sessions: Session[];
@@ -36,10 +36,16 @@ export function Sidebar({
   onCloseMobile,
 }: SidebarProps) {
   const { t, locale, setLocale } = useI18n();
+  const { user, loading, stale, logout } = useAccount();
   const pathname = usePathname();
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const user = userData as UserProfile;
+
+  async function handleLogout() {
+    onCloseMobile();
+    await logout();
+    router.push("/login");
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -186,11 +192,29 @@ export function Sidebar({
 
         {/* Footer: quota + account */}
         <div className="p-3.5 border-t border-[var(--border)] space-y-3">
+          {!user && loading ? (
+            <AccountSkeleton />
+          ) : !user ? (
+            <Link
+              href="/login"
+              onClick={onCloseMobile}
+              className="flex items-center justify-center w-full py-2 rounded-[10px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-sm font-semibold text-[var(--accent-text)] transition-colors"
+            >
+              {t("nav.login")}
+            </Link>
+          ) : (
+          <div
+            aria-busy={stale}
+            className={cn(
+              "space-y-3 transition-[filter,opacity] duration-300",
+              stale && "blur-[2px] opacity-60 pointer-events-none select-none"
+            )}
+          >
           <div>
             <div className="flex justify-between text-xs mb-1.5">
               <span className="text-[var(--muted)]">{t("nav.monthlyQuota")}</span>
               <span className="font-semibold text-[var(--ink)]">
-                {user.quota.usedPercent}%
+                {user.quota.limitTokens === null ? "∞" : `${user.quota.usedPercent}%`}
               </span>
             </div>
             <div className="h-1 rounded-full bg-[var(--border)] overflow-hidden">
@@ -257,20 +281,45 @@ export function Sidebar({
 
                 <DropdownSeparator />
 
-                <Link
-                  href="/login"
-                  onClick={onCloseMobile}
-                  className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-red-500 hover:bg-red-500/10"
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-red-500 hover:bg-red-500/10 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>{t("nav.logout")}</span>
-                </Link>
+                </button>
               </div>
             </Popover>
           </div>
+          </div>
+          )}
         </div>
       </aside>
     </>
+  );
+}
+
+/** Placeholder with the same footprint as the quota + account block, shown before any data exists. */
+function AccountSkeleton() {
+  return (
+    <div className="space-y-3 animate-pulse" aria-busy="true">
+      <div>
+        <div className="flex justify-between mb-1.5">
+          <span className="h-3 w-24 rounded bg-[var(--hover)]" />
+          <span className="h-3 w-8 rounded bg-[var(--hover)]" />
+        </div>
+        <div className="h-1 rounded-full bg-[var(--hover)]" />
+        <span className="block h-2.5 w-20 mt-2 rounded bg-[var(--hover)]" />
+      </div>
+      <div className="flex items-center gap-2.5 p-1.5">
+        <span className="w-7 h-7 rounded-full bg-[var(--hover)]" />
+        <div className="flex-1 space-y-1.5">
+          <span className="block h-3 w-28 rounded bg-[var(--hover)]" />
+          <span className="block h-2.5 w-16 rounded bg-[var(--hover)]" />
+        </div>
+      </div>
+    </div>
   );
 }
 

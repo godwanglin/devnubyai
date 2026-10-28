@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useRef, useEffect, useLayoutEffect, useState, useMemo } from "react";
+import React, { useRef, useLayoutEffect, useState, useMemo } from "react";
 import { Check, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import { useI18n } from "@/providers/i18n-provider";
-import modelsData from "@/data/models.json";
+import { useAccount } from "@/providers/account-provider";
 import type { ModelOption, ReasoningLevel } from "@/types";
 
 interface ModelSelectorProps {
@@ -29,12 +29,13 @@ export function ModelSelector({
   onReasoningChange,
 }: ModelSelectorProps) {
   const { t } = useI18n();
+  // Public catalog comes live from the DB (admin-managed); no static fallback
+  const { models } = useAccount();
   const [view, setView] = useState<"quick" | "catalog">("quick");
   const [isOpen, setIsOpen] = useState(false);
 
-  const models = modelsData as ModelOption[];
   const currentModel = useMemo(
-    () => models.find((m) => m.id === currentModelId) || models[0],
+    () => models.find((m) => m.id === currentModelId) ?? models[0] ?? null,
     [models, currentModelId]
   );
 
@@ -44,16 +45,9 @@ export function ModelSelector({
   // already correct (an "auto" height would expand to fit the taller catalog).
   const [trackHeight, setTrackHeight] = useState<number>(208);
 
-  const useIsomorphicLayoutEffect =
-    typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
   // Measure before the browser paints whenever view or model settings change.
-  useIsomorphicLayoutEffect(() => {
-    if (!isOpen) {
-      setView("quick");
-      setTrackHeight(208);
-      return;
-    }
+  useLayoutEffect(() => {
+    if (!isOpen) return;
 
     const el = view === "quick" ? quickRef.current : catalogRef.current;
     if (!el) return;
@@ -71,10 +65,15 @@ export function ModelSelector({
     return () => observer.disconnect();
   }, [isOpen, view, currentModelId, reasoningLevel]);
 
-  function handleSelect(id: string) {
-    onModelChange(id);
+  function close() {
     setIsOpen(false);
     setView("quick");
+    setTrackHeight(208);
+  }
+
+  function handleSelect(id: string) {
+    onModelChange(id);
+    close();
   }
 
   const powerfulModels = models.filter((m) => m.category === "Powerful");
@@ -86,8 +85,8 @@ export function ModelSelector({
     <Popover
       isOpen={isOpen}
       onOpenChange={(open) => {
-        setIsOpen(open);
-        if (!open) setView("quick");
+        if (open) setIsOpen(true);
+        else close();
       }}
       side="top"
       align="end"
@@ -97,7 +96,7 @@ export function ModelSelector({
           type="button"
           className="inline-flex items-center gap-1 px-2 py-1.5 rounded-[10px] text-[13px] font-semibold text-[var(--ink)] hover:bg-[var(--hover)] transition-colors cursor-pointer"
         >
-          <span>{currentModel.shortName}</span>
+          <span>{currentModel?.shortName ?? t("model.noModels")}</span>
           <ChevronDown className="w-3.5 h-3.5 text-[var(--placeholder)]" />
         </button>
       }
@@ -135,10 +134,10 @@ export function ModelSelector({
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-[var(--ink)] truncate">
-                  {currentModel.fullName}
+                  {currentModel?.fullName ?? t("model.noModels")}
                 </span>
                 <span className="block text-xs text-[var(--muted)] truncate">
-                  {currentModel.description}
+                  {currentModel?.description ?? t("model.noModelsHint")}
                 </span>
               </span>
               <ChevronRight className="w-4 h-4 text-[var(--placeholder)] shrink-0" />
@@ -183,9 +182,14 @@ export function ModelSelector({
             </div>
 
             <div className="max-h-[340px] overflow-y-auto">
+              {models.length === 0 && (
+                <p className="px-2 py-3 text-xs text-[var(--muted)]">{t("model.noModelsHint")}</p>
+              )}
+              {powerfulModels.length > 0 && (
               <p className="px-2 py-1 text-[11px] font-semibold text-[var(--placeholder)]">
                 {t("model.powerful")}
               </p>
+              )}
               {powerfulModels.map((m) => (
                 <ModelItem
                   key={m.id}
@@ -195,9 +199,11 @@ export function ModelSelector({
                 />
               ))}
 
+              {fastModels.length > 0 && (
               <p className="px-2 py-1 mt-2 text-[11px] font-semibold text-[var(--placeholder)]">
                 {t("model.fast")}
               </p>
+              )}
               {fastModels.map((m) => (
                 <ModelItem
                   key={m.id}

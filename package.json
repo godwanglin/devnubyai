@@ -10,7 +10,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:verify": "tsx scripts/verify-seed.ts",
-    "db:explain": "tsx scripts/explain-queries.ts"
+    "db:explain": "tsx scripts/explain-queries.ts",
+    "user:promote": "tsx scripts/promote-user.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1158.0",
@@ -28,7 +29,8 @@
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@lobehub/icons-static-svg": "^1.101.0",

@@ -1,14 +1,40 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
-import userData from "@/data/user.json";
+import { useAccount } from "@/providers/account-provider";
 
 export function ProfileTab() {
   const { t } = useI18n();
   const { toast } = useToast();
-  const user = userData as any;
+  const { user } = useAccount();
+
+  if (!user) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold text-[var(--ink)]">
+          {t("settings.profileTab")}
+        </h2>
+        <p className="text-xs text-[var(--muted)]">
+          Kamu belum masuk. Masuk dengan akun Google untuk melihat profil dan kuota.
+        </p>
+        <Link
+          href="/login"
+          className="inline-block px-4 py-2 rounded-[10px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-sm font-semibold text-[var(--accent-text)] transition-colors"
+        >
+          {t("nav.login")}
+        </Link>
+      </div>
+    );
+  }
+
+  const limitTokens = user.quota.limitTokens;
+  const quotaDisplay =
+    limitTokens == null
+      ? "Unlimited (∞)"
+      : `${user.quota.usedPercent}% (${(user.quota.usedTokens ?? 0).toLocaleString()} / ${limitTokens.toLocaleString()} tokens)`;
 
   return (
     <div className="space-y-5">
@@ -30,10 +56,10 @@ export function ProfileTab() {
         <Field label="Name" value={user.name} />
         <Field label="Email" value={user.email} />
         <Field label="Plan" value={user.planLabel} />
-        <Field
-          label={t("nav.monthlyQuota")}
-          value={`${user.quota.usedPercent}%`}
-        />
+        <Field label="Role" value={user.role ?? "user"} />
+        <div className="col-span-2">
+          <Field label={t("nav.monthlyQuota")} value={quotaDisplay} />
+        </div>
       </div>
 
       <button
@@ -57,3 +83,4 @@ function Field({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+

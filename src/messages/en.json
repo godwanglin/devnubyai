@@ -58,7 +58,9 @@
       "4": "Max"
     },
     "powerful": "Powerful",
-    "fast": "Fast"
+    "fast": "Fast",
+    "noModels": "No models available",
+    "noModelsHint": "Admin has not configured active catalog models yet."
   },
   "message": {
     "copy": "Copy",

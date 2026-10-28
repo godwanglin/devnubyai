@@ -8,17 +8,20 @@ import { Composer } from "./composer";
 import { MessageList } from "./message-list";
 import { Welcome } from "./welcome";
 import { useI18n } from "@/providers/i18n-provider";
+import { useAccount } from "@/providers/account-provider";
 import { getLocalStorage, setLocalStorage } from "@/lib/storage";
 import type { Message, ReasoningLevel } from "@/types";
 import sessionsData from "@/data/sessions.json";
 
 const STORAGE_KEY = "devnuby-messages";
 
-const DEFAULT_MODEL_ID = "claude-sonnet-4-5";
+// Empty until the live catalog loads; the first active model (admin sort order) becomes the default
+const DEFAULT_MODEL_ID = "";
 const DEFAULT_REASONING: ReasoningLevel = "2";
 
 export function ChatShell() {
-  const { t } = useI18n(); 
+  const { t } = useI18n();
+  const { models } = useAccount();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -49,6 +52,14 @@ export function ChatShell() {
     const session = sessions.find((item: any) => item.slug === slug || item.id === slug);
     setMessages(storedMessages.length > 0 ? storedMessages : (session?.messages ?? []));
   }, [pathname, sessions]);
+
+  // Keep the selection valid against the live DB catalog (model may be disabled by admin)
+  useEffect(() => {
+    if (models.length === 0) return;
+    if (!models.some((m) => m.id === currentModelId)) {
+      setCurrentModelId(models[0].id);
+    }
+  }, [models, currentModelId]);
 
   useEffect(() => {
     if (pathname !== "/" && messages.length > 0) {

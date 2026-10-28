@@ -58,7 +58,9 @@
       "4": "Maks"
     },
     "powerful": "Powerful",
-    "fast": "Fast"
+    "fast": "Fast",
+    "noModels": "Belum ada model",
+    "noModelsHint": "Admin belum menambahkan model aktif di katalog."
   },
   "message": {
     "copy": "Salin",
