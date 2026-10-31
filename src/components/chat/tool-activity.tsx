@@ -5,6 +5,7 @@ import {
   AlertCircle,
   ChevronDown,
   FileCode,
+  FileSpreadsheet,
   FileText,
   Globe,
   Hash,
@@ -12,6 +13,7 @@ import {
   Image as ImageIcon,
   Loader2,
   NotebookPen,
+  Presentation,
   Terminal,
   Wrench,
 } from "lucide-react";
@@ -49,6 +51,13 @@ function baseName(value: unknown, fallback: string): string {
   return value.split(/[\\/]/).pop() || fallback;
 }
 
+/** Mirrors the Office tools, which append the extension when the model omits it. */
+function officeFilename(value: unknown, extension: string): string {
+  const name = baseName(value, "");
+  if (!name) return extension.slice(1).toUpperCase();
+  return name.toLowerCase().endsWith(extension) ? name : `${name}${extension}`;
+}
+
 /** Formats tool call details into human-friendly label (e.g. "Membaca data.csv#1-100") */
 function describeTool(tool: ToolActivity, t: Translate): string {
   const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<
@@ -65,6 +74,12 @@ function describeTool(tool: ToolActivity, t: Translate): string {
     }
     case "write_file":
       return t("message.toolWriteFile", { target: baseName(input.filename, "file") });
+    case "create_document":
+      return t("message.toolCreateDocument", { target: officeFilename(input.filename, ".docx") });
+    case "create_spreadsheet":
+      return t("message.toolCreateSpreadsheet", { target: officeFilename(input.filename, ".xlsx") });
+    case "create_presentation":
+      return t("message.toolCreatePresentation", { target: officeFilename(input.filename, ".pptx") });
     case "edit_file":
       return t("message.toolEditFile", {
         target: baseName(input.filename || input.fileId, "file"),
@@ -102,6 +117,12 @@ function ToolGlyph({ name, className }: { name?: string; className?: string }) {
     case "write_file":
     case "edit_file":
       return <FileCode className={className} />;
+    case "create_document":
+      return <FileText className={className} />;
+    case "create_spreadsheet":
+      return <FileSpreadsheet className={className} />;
+    case "create_presentation":
+      return <Presentation className={className} />;
     case "vision_tool":
       return <ImageIcon className={className} />;
     case "execute_code":
