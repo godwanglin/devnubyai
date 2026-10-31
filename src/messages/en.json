@@ -445,6 +445,8 @@
       "description": "Global behavior of the AI assistant, stored in the database.",
       "maxToolRounds": "Max tool rounds per reply",
       "maxToolRoundsHint": "How many times the AI may call tools (web search, code, files) while answering one message. Higher allows deeper research; the cap only guards against runaway loops. Range 1–{max}.",
+      "toolDebug": "AI Tool Debug Mode",
+      "toolDebugHint": "When enabled, every tool call (successful or failed) along with its arguments and outputs is logged to the database (tool_execution_logs table). Keep off in production for privacy and performance.",
       "save": "Save",
       "saving": "Saving...",
       "saved": "Settings saved",

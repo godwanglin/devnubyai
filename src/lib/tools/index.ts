@@ -8,6 +8,9 @@ import { deepSearchTool } from "./deep-search";
 import { writeFileTool } from "./write-file";
 import { editFileTextTool } from "./edit-file-text";
 import { readFileTool } from "./read-file";
+import { createSpreadsheetTool } from "./create-spreadsheet";
+import { createDocumentTool } from "./create-document";
+import { createPresentationTool } from "./create-presentation";
 import { interactiveQuizTool } from "./interactive-quiz";
 import { executeCodeTool } from "./execute-code";
 import { calculateTool } from "./calculate";
@@ -21,6 +24,9 @@ export * from "./deep-search";
 export * from "./write-file";
 export * from "./edit-file-text";
 export * from "./read-file";
+export * from "./create-spreadsheet";
+export * from "./create-document";
+export * from "./create-presentation";
 export * from "./vision-tool";
 export * from "./interactive-quiz";
 export * from "./execute-code";
@@ -43,6 +49,9 @@ export const devnubyTools: RegisteredTool[] = [
   writeFileTool,
   editFileTextTool,
   readFileTool,
+  createSpreadsheetTool,
+  createDocumentTool,
+  createPresentationTool,
   // visionTool, // Disabled in favor of native multimodal Base64 injection
   interactiveQuizTool,
   executeCodeTool,

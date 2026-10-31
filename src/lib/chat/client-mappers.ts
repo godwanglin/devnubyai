@@ -127,7 +127,16 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
             reasoningDurationSec = meta.durationSec;
           }
         } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
-          const tool = part as DynamicToolUIPart & { durationSec?: number };
+          const tool = part as DynamicToolUIPart & {
+            durationSec?: number;
+            startedAt?: number;
+            endedAt?: number;
+          };
+          const meta = (tool.toolMetadata ?? {}) as Record<string, unknown>;
+          const rawDuration = typeof tool.durationSec === "number" ? tool.durationSec : meta.durationSec;
+          const rawStartedAt = typeof tool.startedAt === "number" ? tool.startedAt : meta.startedAt;
+          const rawEndedAt = typeof tool.endedAt === "number" ? tool.endedAt : meta.endedAt;
+
           toolCalls.push({
             id: tool.toolCallId,
             name: tool.toolName ?? part.type.slice("tool-".length),
@@ -139,7 +148,9 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
                   : tool.state === "output-error"
                     ? "error"
                     : "running",
-            durationSec: typeof tool.durationSec === "number" ? tool.durationSec : undefined,
+            durationSec: typeof rawDuration === "number" ? rawDuration : undefined,
+            startedAt: typeof rawStartedAt === "number" ? rawStartedAt : undefined,
+            endedAt: typeof rawEndedAt === "number" ? rawEndedAt : undefined,
             input: tool.input,
             output: tool.state === "output-available" ? tool.output : undefined,
             error: tool.state === "output-error" ? tool.errorText : undefined,

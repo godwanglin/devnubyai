@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -219,6 +219,28 @@ export function ToolActivityList({
     return out;
   }, [tools, liveChartsMap]);
 
+  const isRunning = (tools ?? []).some(isRunningTool);
+
+  // Live total duration calculation for running tools (hooks stay above the early returns)
+  const [liveTotalDuration, setLiveTotalDuration] = useState(0);
+  useEffect(() => {
+    if (!isRunning) return;
+    const tick = () => {
+      const now = Date.now();
+      const sum = tools.reduce((acc, tool) => {
+        if (tool.state === "completed" || tool.state === "error") {
+          return acc + (tool.durationSec ?? 0);
+        }
+        const start = tool.startedAt ?? now;
+        return acc + Math.max(1, Math.round((now - start) / 1000));
+      }, 0);
+      setLiveTotalDuration(sum);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [isRunning, tools]);
+
   if (!tools || tools.length === 0) return null;
 
   const searchTools = tools.filter(isSearchTool);
@@ -229,9 +251,11 @@ export function ToolActivityList({
     return <SearchActivityAccordion tools={searchTools} />;
   }
 
-  const isRunning = tools.some(isRunningTool);
   const failedCount = tools.filter((tool) => tool.state === "error").length;
-  const totalDuration = tools.reduce((sum, tool) => sum + (tool.durationSec ?? 0), 0);
+
+  const totalDuration = isRunning
+    ? liveTotalDuration
+    : tools.reduce((sum, tool) => sum + (tool.durationSec ?? 0), 0);
 
   const title =
     tools.length === 1
@@ -287,7 +311,7 @@ export function ToolActivityList({
             </span>
           ) : null}
 
-          {!isRunning && totalDuration > 0 ? (
+          {totalDuration > 0 ? (
             <span className="font-mono text-[11.5px] text-[var(--muted)] shrink-0">
               ({totalDuration}s)
             </span>
@@ -390,8 +414,26 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
   const isRunning = isRunningTool(tool);
   const isError = tool.state === "error";
 
-  return (
-    <div className="flex items-center gap-2 py-1 text-[13px] select-none">
+  // Live timer: ticks while running, then locks to server-reported durationSec
+  const [liveSec, setLiveSec] = useState(0);
+  useEffect(() => {
+    if (!isRunning) return;
+    const start = tool.startedAt ?? Date.now();
+    const tick = () => setLiveSec(Math.max(1, Math.round((Date.now() - start) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [isRunning, tool.startedAt]);
+
+  const displaySec = isRunning
+    ? liveSec
+    : (tool.durationSec !== undefined && tool.durationSec > 0 ? tool.durationSec : undefined);
+
+  const [showError, setShowError] = useState(false);
+  const canExpandError = isError && Boolean(tool.error);
+
+  const rowContent = (
+    <>
       {isRunning ? (
         <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-[var(--muted)]" />
       ) : isError ? (
@@ -411,10 +453,40 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
         const stats = extractDiffStats(tool);
         return stats ? <DiffBadge stats={stats} /> : null;
       })()}
-      {!isRunning && tool.durationSec !== undefined && tool.durationSec > 0 ? (
+      {displaySec !== undefined ? (
         <span className="font-mono text-[11px] text-[var(--muted)]/80 shrink-0">
-          ({tool.durationSec}s)
+          ({displaySec}s)
         </span>
+      ) : null}
+      {canExpandError ? (
+        <ChevronDown
+          className={cn(
+            "w-3 h-3 shrink-0 text-red-400/70 transition-transform duration-200",
+            showError && "rotate-180"
+          )}
+        />
+      ) : null}
+    </>
+  );
+
+  if (!canExpandError) {
+    return <div className="flex items-center gap-2 py-1 text-[13px] select-none">{rowContent}</div>;
+  }
+
+  return (
+    <div className="py-1">
+      <button
+        type="button"
+        onClick={() => setShowError((v) => !v)}
+        aria-expanded={showError}
+        className="flex items-center gap-2 text-[13px] select-none cursor-pointer rounded-[6px] -ml-1 px-1 hover:bg-[var(--hover)] transition-colors"
+      >
+        {rowContent}
+      </button>
+      {showError ? (
+        <pre className="mt-1 ml-5 max-w-[620px] whitespace-pre-wrap break-words rounded-[8px] border border-red-400/20 bg-red-400/5 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-red-400/90">
+          {tool.error}
+        </pre>
       ) : null}
     </div>
   );

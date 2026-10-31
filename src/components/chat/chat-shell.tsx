@@ -272,7 +272,9 @@ export function ChatShell() {
     stop,
     status,
   } = useChat({
+    id: activeChatId ?? undefined,
     transport: chatTransport,
+    resume: true,
     throttle: 30,
     onError: (err) => {
       const quota = parseQuotaError(err);

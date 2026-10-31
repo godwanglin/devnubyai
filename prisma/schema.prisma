@@ -385,6 +385,31 @@ model RoutingAttempt {
   @@map("routing_attempts")
 }
 
+/// Append-only debug trace of every tool call, written only while the admin
+/// setting `chat.tool_debug` is on. No foreign keys, like routing_attempts.
+model ToolExecutionLog {
+  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  requestId   String?  @map("request_id") @db.Char(36)
+  userId      BigInt?  @map("user_id") @db.UnsignedBigInt
+  sessionId   BigInt?  @map("session_id") @db.UnsignedBigInt
+  messageId   BigInt?  @map("message_id") @db.UnsignedBigInt
+  toolCallId  String   @map("tool_call_id") @db.VarChar(128)
+  toolName    String   @map("tool_name") @db.VarChar(64)
+  success     Boolean
+  errorCode   String?  @map("error_code") @db.VarChar(32)
+  errorText   String?  @map("error_text") @db.Text
+  rawArgs     String?  @map("raw_args") @db.MediumText
+  input       Json?
+  output      Json?
+  durationMs  Int      @map("duration_ms") @db.UnsignedInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([createdAt], map: "idx_tool_logs_created")
+  @@index([toolName, success, createdAt], map: "idx_tool_logs_tool")
+  @@index([sessionId, createdAt], map: "idx_tool_logs_session")
+  @@map("tool_execution_logs")
+}
+
 model UserUsagePeriod {
   userId           BigInt   @map("user_id") @db.UnsignedBigInt
   periodStart      DateTime @map("period_start") @db.Date

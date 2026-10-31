@@ -445,6 +445,8 @@
       "description": "Perilaku global asisten AI, disimpan di database.",
       "maxToolRounds": "Maks. ronde tool per balasan",
       "maxToolRoundsHint": "Berapa kali AI boleh memanggil tool (web search, kode, file) saat menjawab satu pesan. Makin tinggi makin dalam risetnya; batas ini hanya pengaman dari loop tanpa akhir. Rentang 1–{max}.",
+      "toolDebug": "Mode Debug Tool AI",
+      "toolDebugHint": "Ketika aktif, semua eksekusi tool (berhasil maupun gagal) beserta argumen dan output-nya dicatat ke database (tabel tool_execution_logs). Matikan untuk menjaga privasi dan performa.",
       "save": "Simpan",
       "saving": "Menyimpan...",
       "saved": "Pengaturan tersimpan",

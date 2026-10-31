@@ -4,13 +4,14 @@ import { ApiError } from "@/lib/api/response";
 import { GatewayError, isUpstreamRateLimitText } from "@/lib/routing/errors";
 import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
-import { devnubyTools, executeTool } from "@/lib/tools";
+import { devnubyTools, executeTool, type ToolExecutionResult } from "@/lib/tools";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
 import { recordUserUsage } from "@/lib/chat/quota";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
 import { startStreamHub } from "@/lib/chat/stream-hub";
 import { getChatSettings } from "@/lib/chat/settings";
+import { recordToolExecutionLog } from "@/lib/chat/tool-log";
 import { DEFAULT_TIME_ZONE } from "@/lib/chat/timezone";
 import { buildSystemPrompt } from "@/lib/chat/system-prompts";
 import { formatFileSize } from "@/lib/files/policy";
@@ -272,7 +273,9 @@ export function createChatGenerationStream(
               })
             : Promise.resolve([]),
           db.user.findUnique({ where: { id: userId }, select: { name: true } }),
-          resolvedModel.supportsTools ? getChatSettings() : Promise.resolve({ maxToolRounds: 0 }),
+          resolvedModel.supportsTools
+            ? getChatSettings()
+            : Promise.resolve({ maxToolRounds: 0, toolDebug: false }),
         ]);
 
         // If tools are supported, inject comprehensive tool guidelines and active session files
@@ -324,7 +327,14 @@ export function createChatGenerationStream(
               "- Use `write_file` when creating a brand-new file from scratch or when completely rewriting an entire document.",
               "- When editing, `edit_file` updates the exact same file in session storage and returns a unified diff.",
               "- If the user asks to revert or undo a change, you can call `edit_file` to invert the diff or restore the previous text snippet.",
-              "- Do NOT edit raw binary files (PDF/DOCX) with `edit_file`. For PDFs, explain changes in chat or create a revised markdown/HTML version."
+              "- Do NOT edit raw binary files with `edit_file`.",
+              "",
+              "## 9. Creating Binary Documents & Spreadsheets (`create_document`, `create_spreadsheet`, `create_presentation`)",
+              "- When the user asks to create, export, or generate Microsoft Office documents:",
+              "  * Word Document (.docx) for CVs, resumes, cover letters, formal proposals, memos, contracts, and reports: ALWAYS use `create_document` with structured sections (headings, styled paragraphs, bullet lists, numbered lists, and tables).",
+              "  * Excel Spreadsheet (.xlsx) for budgets, financial plans, schedules, matrices, or data tables: ALWAYS use `create_spreadsheet` with sheet names, structured headers, cell data, and Excel formulas (e.g. { formula: '=SUM(B2:B10)' }).",
+              "  * PowerPoint Presentation (.pptx) for pitch decks, slides, quarterly reviews, and presentations: ALWAYS use `create_presentation` with structured slides, bullet points, and speaker notes.",
+              "  * NEVER write fake mock binary strings into `write_file`. Always use these dedicated binary document tools so real, valid Office files are generated and immediately previewable/downloadable."
             ].join("\n"),
           });
 
@@ -524,12 +534,21 @@ export function createChatGenerationStream(
             for (const tool of toolInputs) {
               const effectiveCallId = tool.id;
 
+              // Malformed or truncated JSON (common when a large payload hits the output
+              // token cap) must not run the tool with `{}`: report it so the model can retry.
               let parsedArgs: Record<string, unknown> = {};
+              let argsError: string | null = null;
               try {
                 parsedArgs = tool.arguments ? JSON.parse(tool.arguments) : {};
-              } catch {
-                parsedArgs = {};
+              } catch (parseErr) {
+                const reason = parseErr instanceof Error ? parseErr.message : "invalid JSON";
+                argsError =
+                  `Tool arguments are not valid JSON (${reason}; received ${tool.arguments.length} chars, ` +
+                  `possibly truncated by the output token limit). Call the tool again with complete, ` +
+                  `valid JSON; for large content, send less per call.`;
               }
+
+              const toolStart = Date.now();
 
               writer.write({
                 type: "tool-input-available",
@@ -537,15 +556,37 @@ export function createChatGenerationStream(
                 toolName: tool.name,
                 input: parsedArgs,
                 dynamic: true,
+                toolMetadata: { startedAt: toolStart },
               });
 
-              const toolStart = Date.now();
-              const result = await executeTool(tool.name, parsedArgs, {
-                userId: userPublicId,
-                sessionId: sessionPublicId,
-                signal: combinedSignal,
-              });
-              const toolDurationSec = Math.max(1, Math.round((Date.now() - toolStart) / 1000));
+              const result: ToolExecutionResult = argsError
+                ? { success: false, error: { code: "INVALID_PARAM", message: argsError } }
+                : await executeTool(tool.name, parsedArgs, {
+                    userId: userPublicId,
+                    sessionId: sessionPublicId,
+                    signal: combinedSignal,
+                  });
+              const toolEnd = Date.now();
+              const toolDurationSec = Math.max(1, Math.round((toolEnd - toolStart) / 1000));
+
+              // Record tool run to database if and only if debug mode is turned on
+              if (chatSettings.toolDebug) {
+                recordToolExecutionLog({
+                  requestId,
+                  userId,
+                  sessionId,
+                  messageId: assistantMessageId,
+                  toolCallId: effectiveCallId,
+                  toolName: tool.name,
+                  success: result.success,
+                  errorCode: result.error?.code,
+                  errorText: result.error?.message,
+                  rawArgs: tool.arguments || undefined,
+                  input: parsedArgs,
+                  output: result.data,
+                  durationMs: toolEnd - toolStart,
+                });
+              }
 
               executedToolParts.push({
                 type: "dynamic-tool",
@@ -553,6 +594,8 @@ export function createChatGenerationStream(
                 toolName: tool.name,
                 state: result.success ? "output-available" : "output-error",
                 durationSec: toolDurationSec,
+                startedAt: toolStart,
+                endedAt: toolEnd,
                 input: parsedArgs,
                 output: result.success
                   ? sanitizeToolOutputForStorage(tool.name, result.data)
@@ -566,6 +609,11 @@ export function createChatGenerationStream(
                   toolCallId: effectiveCallId,
                   output: result.data ?? {},
                   dynamic: true,
+                  toolMetadata: {
+                    durationSec: toolDurationSec,
+                    startedAt: toolStart,
+                    endedAt: toolEnd,
+                  },
                 });
               } else {
                 writer.write({
@@ -573,6 +621,11 @@ export function createChatGenerationStream(
                   toolCallId: effectiveCallId,
                   errorText: result.error?.message || "Tool execution failed",
                   dynamic: true,
+                  toolMetadata: {
+                    durationSec: toolDurationSec,
+                    startedAt: toolStart,
+                    endedAt: toolEnd,
+                  },
                 });
               }
 

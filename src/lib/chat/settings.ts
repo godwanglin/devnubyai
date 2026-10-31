@@ -11,6 +11,7 @@ export { chatSettingsSchema, type ChatSettings };
  */
 const SETTING_KEYS = {
   maxToolRounds: "chat.max_tool_rounds",
+  toolDebug: "chat.tool_debug",
 } as const;
 
 export class ChatConfigError extends Error {

@@ -5,6 +5,10 @@ export interface ToolActivity {
   name: string;
   state: "streaming" | "running" | "completed" | "error";
   durationSec?: number;
+  /** Unix timestamp (ms) when the tool execution started on the server */
+  startedAt?: number;
+  /** Unix timestamp (ms) when the tool execution finished on the server */
+  endedAt?: number;
   input?: unknown;
   output?: unknown;
   error?: string;

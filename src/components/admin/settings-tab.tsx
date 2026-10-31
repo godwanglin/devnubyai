@@ -13,6 +13,7 @@ export function SettingsTab() {
 
   const [saved, setSaved] = useState<ChatSettings | null>(null);
   const [maxToolRounds, setMaxToolRounds] = useState("");
+  const [toolDebug, setToolDebug] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export function SettingsTab() {
         if (!active) return;
         setSaved(json.data.settings);
         setMaxToolRounds(String(json.data.settings.maxToolRounds));
+        setToolDebug(Boolean(json.data.settings.toolDebug));
       })
       .catch((err) => toast(err instanceof Error && err.message ? err.message : t("admin.settings.loadFailed")));
     return () => {
@@ -34,7 +36,8 @@ export function SettingsTab() {
   const parsedRounds = Number(maxToolRounds);
   const isValid =
     Number.isInteger(parsedRounds) && parsedRounds >= 1 && parsedRounds <= MAX_TOOL_ROUNDS_LIMIT;
-  const isDirty = saved !== null && parsedRounds !== saved.maxToolRounds;
+  const isDirty =
+    saved !== null && (parsedRounds !== saved.maxToolRounds || toolDebug !== saved.toolDebug);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -45,12 +48,13 @@ export function SettingsTab() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ maxToolRounds: parsedRounds }),
+        body: JSON.stringify({ maxToolRounds: parsedRounds, toolDebug }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.data?.settings) throw new Error(json?.error?.message);
       setSaved(json.data.settings);
       setMaxToolRounds(String(json.data.settings.maxToolRounds));
+      setToolDebug(Boolean(json.data.settings.toolDebug));
       toast(t("admin.settings.saved"));
     } catch (err) {
       toast(err instanceof Error && err.message ? err.message : t("admin.settings.saveFailed"));
@@ -95,6 +99,36 @@ export function SettingsTab() {
             <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
               {t("admin.settings.maxToolRoundsHint", { max: String(MAX_TOOL_ROUNDS_LIMIT) })}
             </p>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 pt-4 border-t border-[var(--border)]">
+            <div>
+              <label
+                htmlFor="tool-debug"
+                className="block text-xs font-medium text-[var(--ink)] mb-0.5"
+              >
+                {t("admin.settings.toolDebug")}
+              </label>
+              <p className="text-[11.5px] leading-relaxed text-[var(--muted)]">
+                {t("admin.settings.toolDebugHint")}
+              </p>
+            </div>
+            <button
+              id="tool-debug"
+              type="button"
+              role="switch"
+              aria-checked={toolDebug}
+              onClick={() => setToolDebug((v) => !v)}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                toolDebug ? "bg-[var(--accent)]" : "bg-[var(--border)]"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  toolDebug ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
           </div>
 
           <div className="flex justify-end">
