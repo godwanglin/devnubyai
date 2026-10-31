@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { Sidebar } from "@/components/sidebar/sidebar";
@@ -499,12 +500,18 @@ export function ChatShell() {
         const createData = await createRes.json();
         const createdSession = mapApiSessionToDomain(createData.data);
         targetChatId = createdSession.id;
-        setOwnedChatId(targetChatId);
-        setSessions((prev) => [
-          createdSession,
-          ...prev.filter((s) => s.id !== createdSession.id),
-        ]);
-        window.history.pushState(null, "", `/c/${targetChatId}`);
+
+        // Synchronously flush state before router navigation to prevent useChatHistory
+        // from clearing optimistic messages on route change
+        flushSync(() => {
+          setOwnedChatId(targetChatId);
+          setSessions((prev) => [
+            createdSession,
+            ...prev.filter((s) => s.id !== createdSession.id),
+          ]);
+        });
+
+        router.replace(`/c/${targetChatId}`);
         fetchSessions();
       }
 

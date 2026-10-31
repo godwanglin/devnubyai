@@ -43,13 +43,17 @@ export function useChatHistory({
   if (prevChatId !== currentChatId) {
     setPrevChatId(currentChatId);
     setFetchedSessionMeta(null);
-    if (!currentChatId) {
+    if (!currentChatId && !ownedChatId) {
       setUiMessages([]);
-      setOwnedChatId(null);
       setOlderCursor(null);
       setIsLoadingOlder(false);
       setIsLoadingMessages(false);
-    } else if (currentChatId !== ownedChatId) {
+    } else if (currentChatId === ownedChatId || (!currentChatId && ownedChatId)) {
+      // Chat session was just created locally by the current user: do not reset messages,
+      // and do not set isLoadingMessages to true because the initial message is being streamed.
+      setIsLoadingOlder(false);
+      setIsLoadingMessages(false);
+    } else {
       setUiMessages([]);
       setOwnedChatId(null);
       setOlderCursor(null);
