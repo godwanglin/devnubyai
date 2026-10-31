@@ -27,6 +27,7 @@ export interface ApiMessageItem {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
   reasoning?: string | null;
+  reasoningDurationSec?: number;
   parts?: unknown;
   status: string;
   attachments?: MessageAttachment[];
@@ -117,9 +118,8 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         messageQuotesMap.set(m.id, msgMeta.quotes);
       }
       const feedback = messageFeedbackMap.get(m.id) ?? null;
-      let reasoning = "";
       let isReasoningStreaming = false;
-      let reasoningDurationSec: number | undefined = undefined;
+      let currentReasoningDurationSec: number | undefined = undefined;
       const toolCalls: ToolActivity[] = [];
       const segments: MessageSegment[] = [];
 
@@ -133,12 +133,24 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
             segments.push({ type: "text", text: part.text });
           }
         } else if (part.type === "reasoning") {
-          reasoning += (reasoning && part.text ? "\n\n" : "") + part.text;
+          // Push each reasoning block as its own segment to enable per-step accordion rendering
+          if (part.text.trim()) {
+            segments.push({
+              type: "reasoning",
+              text: part.text,
+              durationSec: part.state === "streaming" ? undefined : currentReasoningDurationSec,
+            });
+          }
           if (part.state === "streaming") isReasoningStreaming = true;
         } else if ((part as { type?: string }).type === "reasoning-meta") {
           const meta = part as { type: string; durationSec?: number };
           if (typeof meta.durationSec === "number") {
-            reasoningDurationSec = meta.durationSec;
+            currentReasoningDurationSec = meta.durationSec;
+            // If the last segment was reasoning, update its duration
+            const lastSeg = segments[segments.length - 1];
+            if (lastSeg && lastSeg.type === "reasoning") {
+              lastSeg.durationSec = currentReasoningDurationSec;
+            }
           }
         } else if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
           const tool = part as DynamicToolUIPart & {
@@ -179,16 +191,26 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         }
       }
 
+      // Compute aggregate reasoning for backward compatibility (ThinkingAccordion in message-bubble)
+      const fullReasoning = segments
+        .filter((s) => s.type === "reasoning")
+        .map((s) => s.text)
+        .join("\n\n");
+
+      const aggregateReasoningDuration = segments
+        .filter((s): s is { type: "reasoning"; text: string; durationSec: number } => s.type === "reasoning" && typeof (s as { durationSec?: number }).durationSec === "number")
+        .reduce((sum, s) => sum + (s.durationSec ?? 0), 0);
+
       return {
         id: m.id,
         role: m.role as "user" | "assistant",
         content: extractUIMessageText(m),
         createdAt,
-        reasoning: reasoning || null,
-        reasoningDurationSec,
+        reasoning: fullReasoning || null,
+        reasoningDurationSec: aggregateReasoningDuration || undefined,
         isReasoningStreaming,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-        segments: toolCalls.length > 0 ? segments : undefined,
+        segments: segments.length > 0 ? segments : undefined,
         attachments: attachments && attachments.length > 0 ? attachments : undefined,
         quotes: quotes && quotes.length > 0 ? quotes : undefined,
         feedback,
@@ -254,4 +276,20 @@ export function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[]
         ],
       };
     });
-}
+  }
+
+  /**
+   * Map legacy assistant messages (stored with m.reasoning + m.reasoningDurationSec)
+   * to segments array including reasoning segments for backward compatibility.
+   */
+  export function legacyMessageToSegments(m: ApiMessageItem): MessageSegment[] {
+    const segments: MessageSegment[] = [];
+    if (m.reasoning && m.reasoning.trim()) {
+      segments.push({
+        type: "reasoning",
+        text: m.reasoning,
+        durationSec: m.reasoningDurationSec,
+      });
+    }
+    return segments;
+  }

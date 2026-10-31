@@ -344,27 +344,33 @@ export const MessageBubble = memo(function MessageBubble({
 
   return (
     <div id={`message-${message.id}`} className="py-4 group min-w-0">
-      {message.reasoning ? (
-        <ThinkingAccordion
-          content={message.reasoning}
-          durationSec={message.reasoningDurationSec}
-          isStreaming={isStreaming && message.isReasoningStreaming && !hasContent}
-        />
-      ) : null}
-
       {message.segments?.length ? (
-        // Agent timeline: each step's prose followed by the tools it ran, in order
+        // Agent timeline: each step's prose, reasoning (thought), or tools it ran, in order
         message.segments.map((segment, idx) => {
           const isLast = idx === message.segments!.length - 1;
-          return segment.type === "tools" ? (
-            <ToolActivityList
-              key={`tools-${segment.tools[0]?.id ?? idx}`}
-              tools={segment.tools}
-              messageId={message.id}
-              chatId={chatId}
-              isMessageStreaming={isStreaming}
-            />
-          ) : (
+          if (segment.type === "tools") {
+            return (
+              <ToolActivityList
+                key={`tools-${segment.tools[0]?.id ?? idx}`}
+                tools={segment.tools}
+                messageId={message.id}
+                chatId={chatId}
+                isMessageStreaming={isStreaming}
+              />
+            );
+          }
+          if (segment.type === "reasoning") {
+            return (
+              <ThinkingAccordion
+                key={`reasoning-${idx}`}
+                content={segment.text}
+                durationSec={segment.durationSec}
+                isStreaming={isStreaming && idx === message.segments!.length - 1 && !hasContent}
+              />
+            );
+          }
+          // text segment
+          return (
             <div
               key={`text-${idx}`}
               className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}

@@ -14,9 +14,10 @@ export interface ToolActivity {
   error?: string;
 }
 
-/** One block of an assistant reply in chronological order: prose, or a run of tool calls. */
+/** One block of an assistant reply in chronological order: prose, reasoning (thought), or a run of tool calls. */
 export type MessageSegment =
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string; durationSec?: number }
   | { type: "tools"; tools: ToolActivity[] };
 
 export interface MessageAttachment {

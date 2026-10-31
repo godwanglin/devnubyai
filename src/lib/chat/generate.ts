@@ -385,6 +385,8 @@ export function createChatGenerationStream(
         let reasoningDurationSec: number | null = null;
         // Set once the model must answer in prose from what it already gathered
         let forceFinalAnswer = false;
+        // Track if we've pushed reasoning for the current step
+        let hasPushedReasoningForStep = false;
 
         while (true) {
           if (combinedSignal.aborted) {
@@ -502,6 +504,17 @@ export function createChatGenerationStream(
             }
           }
 
+          // Persist reasoning for this step if it happened
+          if (!hasPushedReasoningForStep && fullReasoning.trim()) {
+            executedToolParts.push({
+              type: "reasoning",
+              text: fullReasoning,
+              state: "done",
+              durationSec: reasoningDurationSec ?? undefined,
+            });
+            hasPushedReasoningForStep = true;
+          }
+
           // Consume smoothed text/reasoning parts and emit AI SDK UI chunks
           for await (const smoothedPart of createSmoothedTextPipeline(
             rawTextPartsGenerator()
@@ -526,6 +539,12 @@ export function createChatGenerationStream(
           );
 
           if (assembledCalls.length > 0 && remainingToolRounds > 0 && !forceFinalAnswer) {
+            // Reset reasoning tracking for next step
+            fullReasoning = "";
+            reasoningStartTime = null;
+            reasoningDurationSec = null;
+            hasPushedReasoningForStep = false;
+
             remainingToolRounds -= 1;
             stepIndex += 1;
 
