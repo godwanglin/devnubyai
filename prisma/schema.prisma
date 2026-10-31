@@ -1,10 +1,10 @@
-// Devnuby AI — MariaDB 10.11 schema.
+// Devnuby AI — PostgreSQL 16 schema.
 // Design doc: .plans/01-database-schema.md
 //
 // Some DB rules cannot be expressed in PSL and live only in the SQL migrations:
-// CHECK constraints, per-column charset/collation, ON UPDATE CURRENT_TIMESTAMP(3),
-// and the generated column gateways.primary_marker. Write new migrations with
-// `prisma migrate diff` and review them by hand before `prisma migrate deploy`.
+// CHECK constraints, and the partial unique index on gateways(is_primary)
+// (WHERE is_primary = true). Write new migrations with `prisma migrate diff`
+// and review them by hand before `prisma migrate deploy`.
 
 generator client {
   provider = "prisma-client"
@@ -12,34 +12,34 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
 // ───────────── Users & auth ─────────────
 
 model Plan {
-  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id                 BigInt   @id @default(autoincrement()) 
   slug               String   @unique(map: "uq_plans_slug") @db.VarChar(32)
   name               String   @db.VarChar(80)
   description        String?  @db.VarChar(255)
-  priceMonthly       Int      @default(0) @map("price_monthly") @db.UnsignedInt
-  priceYearly        Int      @default(0) @map("price_yearly") @db.UnsignedInt
+  priceMonthly       Int      @default(0) @map("price_monthly") 
+  priceYearly        Int      @default(0) @map("price_yearly") 
   currency           String   @default("IDR") @db.VarChar(8)
   discountMonthlyType  String?  @map("discount_monthly_type") @db.VarChar(16)
-  discountMonthlyValue Int?     @map("discount_monthly_value") @db.UnsignedInt
+  discountMonthlyValue Int?     @map("discount_monthly_value") 
   discountYearlyType   String?  @map("discount_yearly_type") @db.VarChar(16)
-  discountYearlyValue  Int?     @map("discount_yearly_value") @db.UnsignedInt
-  monthlyTokenLimit  BigInt?  @map("monthly_token_limit") @db.UnsignedBigInt
-  weeklyTokenLimit   BigInt?  @map("weekly_token_limit") @db.UnsignedBigInt
-  fiveHourTokenLimit BigInt?  @map("five_hour_token_limit") @db.UnsignedBigInt
-  dailyRequestLimit  Int?     @map("daily_request_limit") @db.UnsignedInt
-  requestsPerMinute  Int?     @map("requests_per_minute") @db.UnsignedSmallInt
+  discountYearlyValue  Int?     @map("discount_yearly_value") 
+  monthlyTokenLimit  BigInt?  @map("monthly_token_limit") 
+  weeklyTokenLimit   BigInt?  @map("weekly_token_limit") 
+  fiveHourTokenLimit BigInt?  @map("five_hour_token_limit") 
+  dailyRequestLimit  Int?     @map("daily_request_limit") 
+  requestsPerMinute  Int?     @map("requests_per_minute") 
   badge              String?  @db.VarChar(32)
   features           Json?
   isActive           Boolean  @default(true) @map("is_active")
-  sortOrder          Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
-  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  sortOrder          Int      @default(100) @map("sort_order") 
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   users         User[]
   modelAccesses PlanModelAccess[]
@@ -49,17 +49,17 @@ model Plan {
 }
 
 model User {
-  id          BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  id          BigInt    @id @default(autoincrement()) 
   publicId    String    @unique(map: "uq_users_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
   email       String    @unique(map: "uq_users_email") @db.VarChar(320)
   name        String    @db.VarChar(120)
   avatarUrl   String?   @map("avatar_url") @db.VarChar(2048)
   role        String    @default("user") @db.VarChar(16)
   status      String    @default("active") @db.VarChar(16)
-  planId      BigInt?   @map("plan_id") @db.UnsignedBigInt
-  lastLoginAt DateTime? @map("last_login_at") @db.DateTime(3)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  planId      BigInt?   @map("plan_id") 
+  lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   plan             Plan?              @relation(fields: [planId], references: [id], onDelete: SetNull, map: "fk_users_plan")
   authAccounts     AuthAccount[]
@@ -80,11 +80,11 @@ model User {
 }
 
 model AuthAccount {
-  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  userId            BigInt   @map("user_id") @db.UnsignedBigInt
+  id                BigInt   @id @default(autoincrement()) 
+  userId            BigInt   @map("user_id") 
   provider          String   @db.VarChar(32)
   providerAccountId String   @map("provider_account_id") @db.VarChar(191)
-  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_auth_accounts_user")
 
@@ -94,13 +94,13 @@ model AuthAccount {
 }
 
 model AuthSession {
-  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  userId    BigInt   @map("user_id") @db.UnsignedBigInt
-  tokenHash Bytes    @unique(map: "uq_auth_sessions_token") @map("token_hash") @db.Binary(32)
-  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  id        BigInt   @id @default(autoincrement()) 
+  userId    BigInt   @map("user_id") 
+  tokenHash Bytes    @unique(map: "uq_auth_sessions_token") @map("token_hash") @db.ByteA
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
   ipAddress String?  @map("ip_address") @db.VarChar(45)
   userAgent String?  @map("user_agent") @db.VarChar(512)
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_auth_sessions_user")
 
@@ -112,31 +112,31 @@ model AuthSession {
 // ───────────── Gateways & upstream catalog ─────────────
 
 model Gateway {
-  id                  BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  id                  BigInt    @id @default(autoincrement()) 
   slug                String    @unique(map: "uq_gateways_slug") @db.VarChar(64)
   name                String    @db.VarChar(120)
   baseUrl             String    @map("base_url") @db.VarChar(2048)
   wireApi             String    @default("chat") @map("wire_api") @db.VarChar(16)
   modelsPath          String    @default("/models") @map("models_path") @db.VarChar(255)
-  apiKeyCiphertext    Bytes     @map("api_key_ciphertext") @db.VarBinary(1024)
+  apiKeyCiphertext    Bytes     @map("api_key_ciphertext") @db.ByteA
   apiKeyLast4         String?   @map("api_key_last4") @db.Char(4)
   extraHeaders        Json?     @map("extra_headers")
   isPrimary           Boolean   @default(false) @map("is_primary")
   /// GENERATED column (IF(is_primary = 1, 1, NULL)) PERSISTENT — read-only, never write it.
   /// Its UNIQUE index guarantees at most one primary gateway.
-  primaryMarker       Int?      @unique(map: "uq_gateways_single_primary") @map("primary_marker") @db.TinyInt
+  primaryMarker       Int?      @unique(map: "uq_gateways_single_primary") @map("primary_marker") @db.SmallInt
   isEnabled           Boolean   @default(true) @map("is_enabled")
-  priority            Int       @default(100) @db.UnsignedSmallInt
-  timeoutMs           Int       @default(120000) @map("timeout_ms") @db.UnsignedInt
-  firstTokenTimeoutMs Int       @default(20000) @map("first_token_timeout_ms") @db.UnsignedInt
+  priority            Int       @default(100) 
+  timeoutMs           Int       @default(120000) @map("timeout_ms") 
+  firstTokenTimeoutMs Int       @default(20000) @map("first_token_timeout_ms") 
   healthStatus        String    @default("unknown") @map("health_status") @db.VarChar(16)
-  consecutiveFailures Int       @default(0) @map("consecutive_failures") @db.UnsignedSmallInt
-  circuitOpenUntil    DateTime? @map("circuit_open_until") @db.DateTime(3)
-  lastSuccessAt       DateTime? @map("last_success_at") @db.DateTime(3)
-  lastFailureAt       DateTime? @map("last_failure_at") @db.DateTime(3)
-  lastSyncedAt        DateTime? @map("last_synced_at") @db.DateTime(3)
-  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  consecutiveFailures Int       @default(0) @map("consecutive_failures") 
+  circuitOpenUntil    DateTime? @map("circuit_open_until") @db.Timestamptz(3)
+  lastSuccessAt       DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastFailureAt       DateTime? @map("last_failure_at") @db.Timestamptz(3)
+  lastSyncedAt        DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   upstreamModels UpstreamModel[]
 
@@ -145,16 +145,16 @@ model Gateway {
 }
 
 model UpstreamModel {
-  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  gatewayId   BigInt   @map("gateway_id") @db.UnsignedBigInt
+  id          BigInt   @id @default(autoincrement()) 
+  gatewayId   BigInt   @map("gateway_id") 
   modelKey    String   @map("model_key") @db.VarChar(191)
   ownedBy     String?  @map("owned_by") @db.VarChar(120)
   isAvailable Boolean  @default(true) @map("is_available")
   rawMetadata Json?    @map("raw_metadata")
-  firstSeenAt DateTime @map("first_seen_at") @db.DateTime(3)
-  lastSeenAt  DateTime @map("last_seen_at") @db.DateTime(3)
-  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  firstSeenAt DateTime @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt  DateTime @map("last_seen_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   gateway Gateway             @relation(fields: [gatewayId], references: [id], onDelete: Cascade, map: "fk_upstream_models_gateway")
   routes  CatalogModelRoute[]
@@ -168,14 +168,14 @@ model UpstreamModel {
 // ───────────── Public catalog ─────────────
 
 model ModelProvider {
-  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id        BigInt   @id @default(autoincrement()) 
   slug      String   @unique(map: "uq_model_providers_slug") @db.VarChar(32)
   name      String   @db.VarChar(80)
   logoKey   String   @map("logo_key") @db.VarChar(64)
   logoUrl   String?  @map("logo_url") @db.VarChar(2048)
-  sortOrder Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  sortOrder Int      @default(100) @map("sort_order") 
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   catalogModels CatalogModel[]
 
@@ -183,28 +183,28 @@ model ModelProvider {
 }
 
 model CatalogModel {
-  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id                BigInt   @id @default(autoincrement()) 
   publicId          String   @unique(map: "uq_catalog_models_public_id") @map("public_id") @db.VarChar(128)
   displayName       String   @map("display_name") @db.VarChar(120)
   shortName         String   @map("short_name") @db.VarChar(60)
   description       String?  @db.VarChar(500)
-  providerId        BigInt   @map("provider_id") @db.UnsignedBigInt
+  providerId        BigInt   @map("provider_id") 
   category          String   @default("powerful") @db.VarChar(16)
   badge             String?  @db.VarChar(32)
-  contextWindow     Int?     @map("context_window") @db.UnsignedInt
-  maxOutputTokens   Int?     @map("max_output_tokens") @db.UnsignedInt
+  contextWindow     Int?     @map("context_window") 
+  maxOutputTokens   Int?     @map("max_output_tokens") 
   supportsVision    Boolean  @default(false) @map("supports_vision")
   supportsTools     Boolean  @default(false) @map("supports_tools")
   supportsReasoning Boolean  @default(false) @map("supports_reasoning")
   status            String   @default("draft") @db.VarChar(16)
-  sortOrder         Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
+  sortOrder         Int      @default(100) @map("sort_order") 
 
   inputPricePerMillion  Decimal  @default(0.0000) @map("input_price_per_million") @db.Decimal(10, 4)
   outputPricePerMillion Decimal  @default(0.0000) @map("output_price_per_million") @db.Decimal(10, 4)
   pricingCurrency       String   @default("USD") @map("pricing_currency") @db.VarChar(8)
 
-  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   provider     ModelProvider       @relation(fields: [providerId], references: [id], onDelete: Restrict, map: "fk_catalog_models_provider")
   routes       CatalogModelRoute[]
@@ -218,10 +218,10 @@ model CatalogModel {
 }
 
 model PlanModelAccess {
-  id             BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
-  planId         BigInt       @map("plan_id") @db.UnsignedBigInt
-  catalogModelId BigInt       @map("catalog_model_id") @db.UnsignedBigInt
-  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  id             BigInt       @id @default(autoincrement()) 
+  planId         BigInt       @map("plan_id") 
+  catalogModelId BigInt       @map("catalog_model_id") 
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade, map: "fk_pma_plan")
   catalogModel CatalogModel @relation(fields: [catalogModelId], references: [id], onDelete: Cascade, map: "fk_pma_model")
@@ -232,14 +232,14 @@ model PlanModelAccess {
 }
 
 model CatalogModelRoute {
-  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  catalogModelId  BigInt   @map("catalog_model_id") @db.UnsignedBigInt
-  upstreamModelId BigInt   @map("upstream_model_id") @db.UnsignedBigInt
-  priority        Int      @db.UnsignedSmallInt
+  id              BigInt   @id @default(autoincrement()) 
+  catalogModelId  BigInt   @map("catalog_model_id") 
+  upstreamModelId BigInt   @map("upstream_model_id") 
+  priority        Int      
   isEnabled       Boolean  @default(true) @map("is_enabled")
   paramOverrides  Json?    @map("param_overrides")
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   catalogModel  CatalogModel  @relation(fields: [catalogModelId], references: [id], onDelete: Cascade, map: "fk_routes_catalog_model")
   upstreamModel UpstreamModel @relation(fields: [upstreamModelId], references: [id], onDelete: Cascade, map: "fk_routes_upstream_model")
@@ -253,8 +253,8 @@ model CatalogModelRoute {
 model AppSetting {
   settingKey String   @id @map("setting_key") @db.VarChar(64)
   value      Json
-  updatedBy  BigInt?  @map("updated_by") @db.UnsignedBigInt
-  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  updatedBy  BigInt?  @map("updated_by") 
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   updatedByUser User? @relation(fields: [updatedBy], references: [id], onDelete: SetNull, map: "fk_app_settings_user")
 
@@ -265,14 +265,14 @@ model AppSetting {
 /// Admin-managed system prompts; active ones are joined by sortOrder and sent
 /// first on every chat request, with {placeholders} filled per request.
 model SystemPrompt {
-  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id        BigInt   @id @default(autoincrement()) 
   publicId  String   @unique(map: "uq_system_prompts_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
   name      String   @db.VarChar(120)
   content   String   @db.Text
   isActive  Boolean  @default(true) @map("is_active")
-  sortOrder Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  sortOrder Int      @default(100) @map("sort_order") 
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([isActive, sortOrder], map: "idx_system_prompts_active")
   @@map("system_prompts")
@@ -281,19 +281,19 @@ model SystemPrompt {
 // ───────────── Chat ─────────────
 
 model ChatSession {
-  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  id             BigInt    @id @default(autoincrement()) 
   /// UUIDv7 used in the URL: /c/[uuid]
   publicId       String    @unique(map: "uq_chat_sessions_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
-  userId         BigInt    @map("user_id") @db.UnsignedBigInt
+  userId         BigInt    @map("user_id") 
   title          String    @default("New chat") @db.VarChar(200)
-  catalogModelId BigInt?   @map("catalog_model_id") @db.UnsignedBigInt
+  catalogModelId BigInt?   @map("catalog_model_id") 
   isPinned       Boolean   @default(false) @map("is_pinned")
   isArchived     Boolean   @default(false) @map("is_archived")
   shareToken     String?   @unique(map: "uq_chat_sessions_share_token") @map("share_token") @db.Char(36)
-  sharedAt       DateTime? @map("shared_at") @db.DateTime(3)
-  lastMessageAt  DateTime  @default(now()) @map("last_message_at") @db.DateTime(3)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  sharedAt       DateTime? @map("shared_at") @db.Timestamptz(3)
+  lastMessageAt  DateTime  @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_chat_sessions_user")
   catalogModel CatalogModel? @relation(fields: [catalogModelId], references: [id], onDelete: SetNull, map: "fk_chat_sessions_model")
@@ -308,20 +308,20 @@ model ChatSession {
 }
 
 model ChatMessage {
-  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id               BigInt   @id @default(autoincrement()) 
   publicId         String   @unique(map: "uq_chat_messages_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
-  sessionId        BigInt   @map("session_id") @db.UnsignedBigInt
+  sessionId        BigInt   @map("session_id") 
   role             String   @db.VarChar(16)
-  content          String   @db.MediumText
-  reasoning        String?  @db.MediumText
+  content          String   @db.Text
+  reasoning        String?  @db.Text
   parts            Json?
-  catalogModelId   BigInt?  @map("catalog_model_id") @db.UnsignedBigInt
+  catalogModelId   BigInt?  @map("catalog_model_id") 
   status           String   @default("completed") @db.VarChar(16)
   errorCode        String?  @map("error_code") @db.VarChar(64)
-  promptTokens     Int?     @map("prompt_tokens") @db.UnsignedInt
-  completionTokens Int?     @map("completion_tokens") @db.UnsignedInt
-  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  promptTokens     Int?     @map("prompt_tokens") 
+  completionTokens Int?     @map("completion_tokens") 
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   session      ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade, map: "fk_chat_messages_session")
   catalogModel CatalogModel? @relation(fields: [catalogModelId], references: [id], onDelete: SetNull, map: "fk_chat_messages_model")
@@ -334,17 +334,17 @@ model ChatMessage {
 }
 
 model SessionFile {
-  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id         BigInt   @id @default(autoincrement()) 
   publicId   String   @unique(map: "uq_session_files_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
-  userId     BigInt   @map("user_id") @db.UnsignedBigInt
-  sessionId  BigInt   @map("session_id") @db.UnsignedBigInt
-  messageId  BigInt?  @map("message_id") @db.UnsignedBigInt
+  userId     BigInt   @map("user_id") 
+  sessionId  BigInt   @map("session_id") 
+  messageId  BigInt?  @map("message_id") 
   filename   String   @db.VarChar(128)
   storageKey String   @unique(map: "uq_session_files_storage_key") @map("storage_key") @db.VarChar(512)
   mimeType   String   @map("mime_type") @db.VarChar(127)
-  sizeBytes  BigInt   @map("size_bytes") @db.UnsignedBigInt
+  sizeBytes  BigInt   @map("size_bytes") 
   source     String   @db.VarChar(16)
-  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_session_files_user")
   session ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade, map: "fk_session_files_session")
@@ -359,12 +359,12 @@ model SessionFile {
 // ───────────── Observability & quota ─────────────
 
 model UserUsagePeriod {
-  userId           BigInt   @map("user_id") @db.UnsignedBigInt
+  userId           BigInt   @map("user_id") 
   periodStart      DateTime @map("period_start") @db.Date
-  requestCount     Int      @default(0) @map("request_count") @db.UnsignedInt
-  promptTokens     BigInt   @default(0) @map("prompt_tokens") @db.UnsignedBigInt
-  completionTokens BigInt   @default(0) @map("completion_tokens") @db.UnsignedBigInt
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  requestCount     Int      @default(0) @map("request_count") 
+  promptTokens     BigInt   @default(0) @map("prompt_tokens") 
+  completionTokens BigInt   @default(0) @map("completion_tokens") 
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_usage_user")
 
@@ -373,16 +373,16 @@ model UserUsagePeriod {
 }
 
 model UserUsageWindow {
-  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  userId           BigInt   @map("user_id") @db.UnsignedBigInt
+  id               BigInt   @id @default(autoincrement()) 
+  userId           BigInt   @map("user_id") 
   windowType       String   @map("window_type") @db.VarChar(16)
   windowKey        String   @map("window_key") @db.VarChar(32)
-  windowStart      DateTime @map("window_start") @db.DateTime(3)
-  windowEnd        DateTime @map("window_end") @db.DateTime(3)
-  requestCount     Int      @default(0) @map("request_count") @db.UnsignedInt
-  promptTokens     BigInt   @default(0) @map("prompt_tokens") @db.UnsignedBigInt
-  completionTokens BigInt   @default(0) @map("completion_tokens") @db.UnsignedBigInt
-  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  windowStart      DateTime @map("window_start") @db.Timestamptz(3)
+  windowEnd        DateTime @map("window_end") @db.Timestamptz(3)
+  requestCount     Int      @default(0) @map("request_count") 
+  promptTokens     BigInt   @default(0) @map("prompt_tokens") 
+  completionTokens BigInt   @default(0) @map("completion_tokens") 
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_usage_window_user")
 
@@ -392,14 +392,14 @@ model UserUsageWindow {
 }
 
 model AdminAuditLog {
-  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  actorUserId BigInt?  @map("actor_user_id") @db.UnsignedBigInt
+  id          BigInt   @id @default(autoincrement()) 
+  actorUserId BigInt?  @map("actor_user_id") 
   action      String   @db.VarChar(64)
   entityType  String   @map("entity_type") @db.VarChar(32)
   entityId    String?  @map("entity_id") @db.VarChar(128)
   beforeState Json?    @map("before_state")
   afterState  Json?    @map("after_state")
-  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull, map: "fk_audit_actor")
 
@@ -412,7 +412,7 @@ model AdminAuditLog {
 // ───────────── Payments & transactions ─────────────
 
 model PaymentMethod {
-  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id           BigInt   @id @default(autoincrement()) 
   publicId     String   @unique(map: "uq_payment_methods_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
   name         String   @db.VarChar(120)
   code         String   @unique(map: "uq_payment_methods_code") @db.VarChar(64)
@@ -422,14 +422,14 @@ model PaymentMethod {
   imagePath    String?  @map("image_path") @db.VarChar(512)
   description  String?  @db.VarChar(255)
   instructions String?  @db.Text
-  minAmount    Int      @default(1000) @map("min_amount") @db.UnsignedInt
-  maxAmount    Int?     @map("max_amount") @db.UnsignedInt
+  minAmount    Int      @default(1000) @map("min_amount") 
+  maxAmount    Int?     @map("max_amount") 
   feeType      String   @default("none") @map("fee_type") @db.VarChar(16)
-  feeValue     Int      @default(0) @map("fee_value") @db.UnsignedInt
+  feeValue     Int      @default(0) @map("fee_value") 
   isActive     Boolean  @default(true) @map("is_active")
-  sortOrder    Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
-  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  sortOrder    Int      @default(100) @map("sort_order") 
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   transactions PaymentTransaction[]
 
@@ -438,16 +438,16 @@ model PaymentMethod {
 }
 
 model PaymentTransaction {
-  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  id                 BigInt    @id @default(autoincrement()) 
   publicId           String    @unique(map: "uq_payment_transactions_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
   invoiceNumber      String    @unique(map: "uq_payment_transactions_invoice") @map("invoice_number") @db.VarChar(64)
-  userId             BigInt?   @map("user_id") @db.UnsignedBigInt
-  paymentMethodId    BigInt?   @map("payment_method_id") @db.UnsignedBigInt
+  userId             BigInt?   @map("user_id") 
+  paymentMethodId    BigInt?   @map("payment_method_id") 
   paymentMethodCode  String    @map("payment_method_code") @db.VarChar(64)
   paymentMethodName  String    @map("payment_method_name") @db.VarChar(120)
-  amount             Int       @db.UnsignedInt
-  fee                Int       @default(0) @db.UnsignedInt
-  totalAmount        Int       @map("total_amount") @db.UnsignedInt
+  amount             Int       
+  fee                Int       @default(0) 
+  totalAmount        Int       @map("total_amount") 
   currency           String    @default("IDR") @db.VarChar(8)
   status             String    @default("PENDING") @db.VarChar(24)
   paymentCode        String?   @map("payment_code") @db.VarChar(128)
@@ -460,12 +460,12 @@ model PaymentTransaction {
   metadata           Json?
   dokuResponse       Json?     @map("doku_response")
   manualNotes        String?   @map("manual_notes") @db.Text
-  manualUpdatedBy    BigInt?   @map("manual_updated_by") @db.UnsignedBigInt
-  manualUpdatedAt    DateTime? @map("manual_updated_at") @db.DateTime(3)
-  paidAt             DateTime? @map("paid_at") @db.DateTime(3)
-  expiredAt          DateTime? @map("expired_at") @db.DateTime(3)
-  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  manualUpdatedBy    BigInt?   @map("manual_updated_by") 
+  manualUpdatedAt    DateTime? @map("manual_updated_at") @db.Timestamptz(3)
+  paidAt             DateTime? @map("paid_at") @db.Timestamptz(3)
+  expiredAt          DateTime? @map("expired_at") @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user                User?          @relation(fields: [userId], references: [id], onDelete: SetNull, map: "fk_transactions_user")
   paymentMethod       PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull, map: "fk_transactions_method")
@@ -480,14 +480,14 @@ model PaymentTransaction {
 
 // ───────────── User memory notes (AI tool: memory_note) ─────────────
 model UserNote {
-  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id        BigInt   @id @default(autoincrement()) 
   publicId  String   @unique(map: "uq_user_notes_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
-  userId    BigInt   @map("user_id") @db.UnsignedBigInt
-  sessionId BigInt?  @map("session_id") @db.UnsignedBigInt
+  userId    BigInt   @map("user_id") 
+  sessionId BigInt?  @map("session_id") 
   title     String   @db.VarChar(200)
-  content   String   @db.MediumText
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user    User         @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_user_notes_user")
   session ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull, map: "fk_user_notes_session")

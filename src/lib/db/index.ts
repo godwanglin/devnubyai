@@ -1,12 +1,14 @@
 import { PrismaClient } from "@/generated/client";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
 // Bump when the Prisma schema changes so dev HMR swaps in a client with the new models
-const PRISMA_SCHEMA_VERSION = "20261030_system_prompts";
+const PRISMA_SCHEMA_VERSION = "20261031_postgres_migration";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
   prismaSchemaVersion?: string;
+  pgPool?: Pool;
 };
 
 function createPrismaClient(): PrismaClient {
@@ -17,16 +19,15 @@ function createPrismaClient(): PrismaClient {
     );
   }
 
-  // Pool options only apply to an object config, so expand DATABASE_URL into one
-  const url = new URL(databaseUrl);
-  const adapter = new PrismaMariaDb({
-    host: url.hostname,
-    port: url.port ? Number(url.port) : 3306,
-    user: decodeURIComponent(url.username),
-    password: decodeURIComponent(url.password),
-    database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-    connectionLimit: 10,
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
+
+  globalForPrisma.pgPool = pool;
+  const adapter = new PrismaPg(pool);
 
   return new PrismaClient({
     adapter,
@@ -43,9 +44,12 @@ function createPrismaClient(): PrismaClient {
 // ("pool is closed"). The stale pool is closed later so in-flight queries can finish.
 if (globalForPrisma.prisma && globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION) {
   const stale = globalForPrisma.prisma;
+  const stalePool = globalForPrisma.pgPool;
   globalForPrisma.prisma = undefined;
+  globalForPrisma.pgPool = undefined;
   setTimeout(() => {
     stale.$disconnect().catch(() => {});
+    stalePool?.end().catch(() => {});
   }, 60_000).unref?.();
 }
 
