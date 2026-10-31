@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
-import { cn } from "@/lib/cn";
+import { DocumentThumbnailsSidebar, THUMB_WIDTH } from "./document-thumbnails-sidebar";
 
 export interface PdfThumbnailsSidebarProps {
   doc: PDFDocumentProxy;
@@ -16,8 +16,6 @@ export interface PdfThumbnailsSidebarProps {
   onSelectPage: (pageNumber: number) => void;
 }
 
-const THUMB_WIDTH = 82;
-
 export function PdfThumbnailsSidebar({
   doc,
   pages,
@@ -25,96 +23,25 @@ export function PdfThumbnailsSidebar({
   isOpen,
   onSelectPage,
 }: PdfThumbnailsSidebarProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
-
-  // Keep active thumbnail visible as user scrolls the main PDF
-  useEffect(() => {
-    if (!isOpen) return;
-    const activeBtn = itemRefs.current.get(currentPage);
-    activeBtn?.scrollIntoView({ block: "nearest" });
-  }, [currentPage, isOpen]);
-
   return (
-    <div
-      aria-hidden={!isOpen}
-      className={cn(
-        "h-full bg-[var(--panel)]/85 border-r border-[var(--border)] select-none shrink-0 overflow-hidden transition-[width] duration-250 ease-[var(--ease-out)] motion-reduce:transition-none",
-        isOpen ? "w-[124px]" : "w-0 border-r-0 pointer-events-none"
-      )}
-    >
-      <div
-        ref={scrollRef}
-        className="w-[124px] h-full overflow-y-auto px-2.5 py-3 space-y-2.5"
-      >
-        {pages.map((p) => (
-          <PdfThumbnailButton
-            key={p.pageNumber}
-            doc={doc}
-            pageNumber={p.pageNumber}
-            baseWidth={p.baseWidth}
-            baseHeight={p.baseHeight}
-            isActive={p.pageNumber === currentPage}
-            scrollRootRef={scrollRef}
-            onSelect={() => onSelectPage(p.pageNumber)}
-            registerRef={(el) => {
-              if (el) {
-                itemRefs.current.set(p.pageNumber, el);
-              } else {
-                itemRefs.current.delete(p.pageNumber);
-              }
-            }}
-          />
-        ))}
-      </div>
-    </div>
+    <DocumentThumbnailsSidebar
+      count={pages.length}
+      currentPage={currentPage}
+      isOpen={isOpen}
+      onSelectPage={onSelectPage}
+      aspectRatio={(n) => {
+        const p = pages[n - 1];
+        return p ? p.baseHeight / Math.max(1, p.baseWidth) : 1.414;
+      }}
+      renderThumbnail={(n) => <PdfThumbnailCanvas doc={doc} pageNumber={n} />}
+    />
   );
 }
 
-function PdfThumbnailButton({
-  doc,
-  pageNumber,
-  baseWidth,
-  baseHeight,
-  isActive,
-  scrollRootRef,
-  onSelect,
-  registerRef,
-}: {
-  doc: PDFDocumentProxy;
-  pageNumber: number;
-  baseWidth: number;
-  baseHeight: number;
-  isActive: boolean;
-  scrollRootRef: React.RefObject<HTMLDivElement | null>;
-  onSelect: () => void;
-  registerRef: (el: HTMLButtonElement | null) => void;
-}) {
-  const btnRef = useRef<HTMLButtonElement | null>(null);
+function PdfThumbnailCanvas({ doc, pageNumber }: { doc: PDFDocumentProxy; pageNumber: number }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [shouldRender, setShouldRender] = useState(pageNumber <= 6);
-
-  const ratio = baseHeight / Math.max(1, baseWidth);
-  const thumbH = Math.max(40, Math.round(THUMB_WIDTH * ratio));
 
   useEffect(() => {
-    if (shouldRender) return;
-    const el = btnRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setShouldRender(true);
-        }
-      },
-      { root: scrollRootRef.current, rootMargin: "320px 0px" }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [scrollRootRef, shouldRender]);
-
-  useEffect(() => {
-    if (!shouldRender) return;
     let cancelled = false;
     let renderTask: ReturnType<PDFPageProxy["render"]> | null = null;
 
@@ -124,8 +51,7 @@ function PdfThumbnailButton({
         if (cancelled) return;
 
         const unscaled = page.getViewport({ scale: 1 });
-        const scale = THUMB_WIDTH / Math.max(1, unscaled.width);
-        const viewport = page.getViewport({ scale });
+        const viewport = page.getViewport({ scale: THUMB_WIDTH / Math.max(1, unscaled.width) });
 
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -155,43 +81,7 @@ function PdfThumbnailButton({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [doc, pageNumber, shouldRender]);
+  }, [doc, pageNumber]);
 
-  return (
-    <button
-      ref={(el) => {
-        btnRef.current = el;
-        registerRef(el);
-      }}
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        "group w-full flex flex-col items-center gap-1.5 py-1.5 px-1 rounded-[8px] transition-colors cursor-pointer",
-        isActive ? "bg-[var(--hover)]" : "hover:bg-[var(--hover)]/60"
-      )}
-    >
-      <span
-        style={{ width: `${THUMB_WIDTH}px`, minHeight: `${thumbH}px` }}
-        className={cn(
-          "block rounded-[4px] bg-white overflow-hidden transition-all",
-          isActive
-            ? "ring-2 ring-[var(--ink)] shadow-xs"
-            : "border border-[var(--border)] opacity-85 group-hover:opacity-100"
-        )}
-      >
-        <canvas ref={canvasRef} className="block pointer-events-none" />
-      </span>
-
-      <span
-        className={cn(
-          "font-mono text-[10.5px] tabular-nums",
-          isActive
-            ? "font-semibold text-[var(--ink)]"
-            : "text-[var(--muted)] group-hover:text-[var(--ink)]"
-        )}
-      >
-        {pageNumber}
-      </span>
-    </button>
-  );
+  return <canvas ref={canvasRef} className="block pointer-events-none" />;
 }

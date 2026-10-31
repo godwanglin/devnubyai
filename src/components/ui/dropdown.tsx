@@ -7,6 +7,8 @@ export interface DropdownItemProps extends React.ButtonHTMLAttributes<HTMLButton
   active?: boolean;
   danger?: boolean;
   icon?: React.ReactNode;
+  /** Keyboard hint shown on the right, e.g. "Ctrl+Shift+B" */
+  shortcut?: string;
 }
 
 export function DropdownItem({
@@ -14,6 +16,7 @@ export function DropdownItem({
   active,
   danger,
   icon,
+  shortcut,
   children,
   ...props
 }: DropdownItemProps) {
@@ -30,6 +33,11 @@ export function DropdownItem({
     >
       {icon && <span className="shrink-0">{icon}</span>}
       <span className="flex-1 min-w-0">{children}</span>
+      {shortcut && (
+        <kbd className="shrink-0 font-sans text-[11px] font-normal text-[var(--placeholder)] tracking-wide">
+          {shortcut}
+        </kbd>
+      )}
     </button>
   );
 }

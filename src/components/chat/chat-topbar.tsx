@@ -179,6 +179,7 @@ export function ChatTopbar({
             <DropdownItem
               disabled={!hasActiveChat}
               icon={<FolderOpen className="w-3.5 h-3.5" />}
+              shortcut="Ctrl+Shift+B"
               className={isFilesOpen ? "text-[var(--ink)] font-medium" : undefined}
               onClick={() => {
                 setMoreOpen(false);

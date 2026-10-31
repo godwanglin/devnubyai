@@ -1,0 +1,34 @@
+/* docx-preview renders pages inside .docx-wrapper; restyle its chrome to fit the side panel. */
+.devnuby-docx-pages .docx-wrapper {
+  background: transparent;
+  padding: 0;
+  display: flex;
+  flex-flow: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.devnuby-docx-pages .docx-wrapper > section.docx {
+  /* the app's body line-height (1.55) must not leak in: Word's "single" spacing is the
+     font's own line gap, which is what `normal` gives. Paragraphs with explicit spacing
+     still get their own line-height from docx-preview. */
+  line-height: normal;
+  /* text without its own font (e.g. empty paragraphs) must not inherit the app's UI font,
+     whose taller line box adds height; Times New Roman is Word's built-in fallback */
+  font-family: "Times New Roman", Times, serif;
+  /* own stacking context, so behind-text drawings (z-index -1) stay above the white page */
+  isolation: isolate;
+  margin: 0;
+  background: #ffffff;
+  color: #000000;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 6px 24px rgba(0, 0, 0, 0.22);
+}
+
+/* undo Tailwind preflight: Word images sit inline in the text line and keep their own size */
+.devnuby-docx-pages section.docx img,
+.devnuby-docx-pages section.docx svg {
+  display: inline;
+  max-width: none;
+}

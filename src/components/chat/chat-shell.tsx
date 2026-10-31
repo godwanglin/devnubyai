@@ -42,6 +42,7 @@ import {
   dispatchClearEditChips,
   dispatchRemoveEditChip,
   dispatchAIFileUpdated,
+  withCacheBuster,
   type AIEditRequestPayload,
   type AIFileUpdatedPayload,
   type EditRequestChip,
@@ -61,10 +62,16 @@ export function ChatShell() {
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isFilesPanelOpen, setIsFilesPanelOpen] = useState(false);
   const [isFilesFullscreen, setIsFilesFullscreen] = useState(false);
   const [activePreviewFile, setActivePreviewFile] = useState<SessionFileItem | null>(null);
-  const { storedModelId, reasoningLevel, setModelId, setReasoningLevel } = useChatPrefs();
+  const {
+    storedModelId,
+    reasoningLevel,
+    isFilesPanelOpen,
+    setModelId,
+    setReasoningLevel,
+    setFilesPanelOpen: setIsFilesPanelOpen,
+  } = useChatPrefs();
 
   // AI live edit: track file being edited for undo
   const [editTargetFileId, setEditTargetFileId] = useState<string | null>(null);
@@ -75,12 +82,13 @@ export function ChatShell() {
     const onOpenPreview = (e: Event) => {
       const detail = (e as CustomEvent<SessionFileItem>).detail;
       if (!detail) return;
-      setActivePreviewFile(detail);
+      const freshUrl = detail.url ? withCacheBuster(detail.url) : detail.url;
+      setActivePreviewFile({ ...detail, url: freshUrl });
       setIsFilesPanelOpen(true);
     };
     window.addEventListener(OPEN_FILE_PREVIEW_EVENT, onOpenPreview);
     return () => window.removeEventListener(OPEN_FILE_PREVIEW_EVENT, onOpenPreview);
-  }, []);
+  }, [setIsFilesPanelOpen]);
 
   // AI live edit: listen for edit requests from the inline toolbar in the panel
   useEffect(() => {
@@ -130,19 +138,35 @@ export function ChatShell() {
     return () => window.removeEventListener(AI_EDIT_REQUEST_EVENT, onEditRequest);
   }, [activePreviewFile, handleSend]);
 
-  // AI live edit: listen for file-updated events (after AI writes the file)
+  // AI live edit: listen for file-updated events (after AI writes or edits a file)
   useEffect(() => {
     function onFileUpdated(e: Event) {
       const detail = (e as CustomEvent<AIFileUpdatedPayload>).detail;
-      if (!detail || !detail.fileId) return;
-      // Refresh the files panel to pick up the new file version
-      if (activePreviewFile && activePreviewFile.id === detail.fileId) {
-        // Force re-fetch by bumping a counter (handled by refreshKey on ChatFilesPanel)
-        setActivePreviewFile((prev) => (prev ? { ...prev, url: `${prev.url}?t=${Date.now()}` } : prev));
+      if (!detail) return;
+      if (
+        activePreviewFile &&
+        ((detail.fileId && activePreviewFile.id === detail.fileId) ||
+          (detail.filename && activePreviewFile.filename === detail.filename))
+      ) {
+        setActivePreviewFile((prev) =>
+          prev ? { ...prev, url: withCacheBuster(prev.url) } : prev
+        );
       }
     }
+
+    function onGeneralFilesUpdated() {
+      // If a preview file is currently open and tools updated files in the background, refresh it with cache-buster
+      setActivePreviewFile((prev) =>
+        prev ? { ...prev, url: withCacheBuster(prev.url) } : prev
+      );
+    }
+
     window.addEventListener(AI_FILE_UPDATED_EVENT, onFileUpdated);
-    return () => window.removeEventListener(AI_FILE_UPDATED_EVENT, onFileUpdated);
+    window.addEventListener("devnuby:files-updated", onGeneralFilesUpdated);
+    return () => {
+      window.removeEventListener(AI_FILE_UPDATED_EVENT, onFileUpdated);
+      window.removeEventListener("devnuby:files-updated", onGeneralFilesUpdated);
+    };
   }, [activePreviewFile]);
 
   // AI live edit: listen for undo requests from the inline toolbar
@@ -332,9 +356,8 @@ export function ChatShell() {
     dispatchClearEditChips();
     setActivePreviewFile(null);
     setIsFilesFullscreen(false);
-    if (!currentChatId) {
-      setIsFilesPanelOpen(false);
-    }
+    // The open/closed pref is left alone: without an active chat the panel is
+    // hidden anyway (showFilesPanel), and it comes back on the next chat.
   }
 
   const isStreamingOrSubmitted = status === "submitted" || status === "streaming";
@@ -378,7 +401,6 @@ export function ChatShell() {
     isStreamingOrSubmitted,
     stopStream: stop,
     onResetActiveChat: () => {
-      setIsFilesPanelOpen(false);
       setIsFilesFullscreen(false);
       lastTargetChatIdRef.current = null;
       setOwnedChatId(null);
@@ -602,7 +624,7 @@ export function ChatShell() {
       }
       // Refresh panel + clear undo state
       if (activePreviewFile && activePreviewFile.id === fileId) {
-        setActivePreviewFile((prev) => (prev ? { ...prev, url: `${prev.url}?t=${Date.now()}` } : prev));
+        setActivePreviewFile((prev) => (prev ? { ...prev, url: withCacheBuster(prev.url) } : prev));
       }
       setPendingUndo(null);
       toast(t("chatFiles.undoDone"));
@@ -614,6 +636,31 @@ export function ChatShell() {
   const domainMessages = useMemo(() => mapUIMessagesToDomain(uiMessages), [uiMessages]);
   const showFilesPanel = isFilesPanelOpen && Boolean(activeChatId);
   const hideChatForFullscreenFiles = showFilesPanel && isFilesFullscreen;
+
+  const closeFilesPanel = useCallback(() => {
+    setIsFilesPanelOpen(false);
+    setIsFilesFullscreen(false);
+    setActivePreviewFile(null);
+  }, [setIsFilesPanelOpen]);
+
+  const toggleFilesPanel = useCallback(() => {
+    if (isFilesPanelOpen) closeFilesPanel();
+    else setIsFilesPanelOpen(true);
+  }, [isFilesPanelOpen, closeFilesPanel, setIsFilesPanelOpen]);
+
+  // Ctrl+Shift+B (Cmd+Shift+B on macOS) toggles the right files panel.
+  // preventDefault stops the browser's own bookmarks-bar toggle.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey) return;
+      if (e.code !== "KeyB" || e.repeat) return;
+      if (!activeChatId) return;
+      e.preventDefault();
+      toggleFilesPanel();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeChatId, toggleFilesPanel]);
 
   function handleToggleSidebar() {
     if (typeof window !== "undefined" && window.innerWidth <= 768) {
@@ -676,15 +723,7 @@ export function ChatShell() {
             }
           }}
           onDuplicate={handleDuplicateActiveChat}
-          onViewFiles={() => {
-            setIsFilesPanelOpen((v) => {
-              if (v) {
-                setIsFilesFullscreen(false);
-                setActivePreviewFile(null);
-              }
-              return !v;
-            });
-          }}
+          onViewFiles={toggleFilesPanel}
           onArchive={() => {
             if (activeChatId) {
               handleArchive(activeChatId, Boolean(activeSession?.isArchived));
@@ -775,11 +814,7 @@ export function ChatShell() {
         showSidebarToggle={isCollapsed}
         onToggleFullscreen={() => setIsFilesFullscreen((v) => !v)}
         onToggleSidebar={handleToggleSidebar}
-        onClose={() => {
-          setIsFilesPanelOpen(false);
-          setIsFilesFullscreen(false);
-          setActivePreviewFile(null);
-        }}
+        onClose={closeFilesPanel}
       />
 
       <RenameModal

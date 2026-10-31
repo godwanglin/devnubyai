@@ -11,7 +11,7 @@ import {
   type ApiMessageItem,
 } from "@/lib/chat/client-mappers";
 import type { SharedChatDto } from "@/lib/chat/share";
-import { OPEN_FILE_PREVIEW_EVENT } from "@/lib/files/preview-events";
+import { OPEN_FILE_PREVIEW_EVENT, withCacheBuster } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import { useTheme } from "@/providers/theme-provider";
 import type { SessionFileItem } from "@/types";
@@ -31,7 +31,10 @@ export function SharedChatView({ sharedChat }: SharedChatViewProps) {
   useEffect(() => {
     const onOpenPreview = (e: Event) => {
       const detail = (e as CustomEvent<SessionFileItem>).detail;
-      if (detail) setPreviewFile(detail);
+      if (detail) {
+        const freshUrl = detail.url ? withCacheBuster(detail.url) : detail.url;
+        setPreviewFile({ ...detail, url: freshUrl });
+      }
     };
     window.addEventListener(OPEN_FILE_PREVIEW_EVENT, onOpenPreview);
     return () => window.removeEventListener(OPEN_FILE_PREVIEW_EVENT, onOpenPreview);

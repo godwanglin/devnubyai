@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Find-in-document (CSS Custom Highlight API) — used by the shared document previews. */
+::highlight(devnuby-doc-search) {
+  background-color: rgba(250, 204, 21, 0.45);
+  color: inherit;
+}
+::highlight(devnuby-doc-search-active) {
+  background-color: rgb(251, 146, 60);
+  color: #ffffff;
+}
+
 /* ── Design tokens ─────────────────────────────────────────────── */
 :root {
   /* Soft, warm-neutral foundation (Notion/Linear/Craft inspired) */
@@ -182,6 +192,113 @@
 
   .typewriter-fade-in {
     animation: typewriter-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Particles streaming toward the thumb on max reasoning. The lane spans the
+     fill's full width, so translateX(100%) lands exactly at the thumb. */
+  @keyframes reasoning-flow {
+    0% {
+      transform: translateX(0);
+      opacity: 0;
+    }
+    15% {
+      opacity: var(--p-opacity, 0.6);
+    }
+    80% {
+      opacity: var(--p-opacity, 0.6);
+    }
+    100% {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+
+  .reasoning-particle-lane {
+    position: absolute;
+    inset: 0;
+    animation: reasoning-flow var(--p-duration, 1.6s) linear var(--p-delay, 0s) infinite both;
+    will-change: transform, opacity;
+  }
+
+  /* Nebula fill for max reasoning — layered radial clouds over a deep-space
+     base, drifting slowly so the colors swirl without ever snapping. */
+  @keyframes reasoning-galaxy-drift {
+    0% {
+      background-position: 0% 50%, 100% 50%, 50% 0%, 0% 50%;
+    }
+    50% {
+      background-position: 60% 30%, 40% 70%, 20% 100%, 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%, 100% 50%, 50% 0%, 0% 50%;
+    }
+  }
+
+  .reasoning-galaxy {
+    background:
+      radial-gradient(ellipse 40% 120% at 30% 50%, rgba(168, 85, 247, 0.55), transparent 70%),
+      radial-gradient(ellipse 35% 120% at 70% 50%, rgba(236, 72, 153, 0.45), transparent 70%),
+      radial-gradient(ellipse 30% 140% at 50% 50%, rgba(56, 189, 248, 0.35), transparent 70%),
+      linear-gradient(90deg, #0b0a1f 0%, #1e1b4b 35%, #4c1d95 70%, #6d28d9 100%);
+    background-size: 200% 100%, 200% 100%, 180% 100%, 200% 100%;
+    animation: reasoning-galaxy-drift 9s ease-in-out infinite;
+  }
+
+  @keyframes reasoning-glow-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.35), 0 0 0 1px rgba(167, 139, 250, 0.25);
+    }
+    50% {
+      box-shadow: 0 0 18px rgba(236, 72, 153, 0.35), 0 0 0 1px rgba(244, 114, 182, 0.3);
+    }
+  }
+
+  .reasoning-glow {
+    animation: reasoning-glow-pulse 4s ease-in-out infinite;
+  }
+
+  /* Flowing gradient text for the "Maks" label. The gradient repeats its first
+     color at the end so the 200% loop is seamless. */
+  @keyframes reasoning-text-flow {
+    from {
+      background-position: 0% 50%;
+    }
+    to {
+      background-position: -200% 50%;
+    }
+  }
+
+  .reasoning-text-galaxy {
+    background-image: linear-gradient(
+      90deg,
+      #c4b5fd,
+      #f0abfc,
+      #7dd3fc,
+      #c4b5fd
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    /* Keeps the label's typewriter fade-in, which this would otherwise override */
+    animation:
+      typewriter-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) both,
+      reasoning-text-flow 3s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reasoning-text-galaxy {
+      animation: none;
+    }
+    .reasoning-particle-lane {
+      animation: none;
+      opacity: 0;
+    }
+    .reasoning-galaxy,
+    .reasoning-glow {
+      animation: none;
+    }
   }
 
   /* Soft text shimmer for live "thinking" labels */

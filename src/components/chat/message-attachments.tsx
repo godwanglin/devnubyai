@@ -9,7 +9,7 @@ import {
 import { Tooltip } from "@/components/ui/tooltip";
 import { SmartImage } from "@/components/ui/smart-image";
 import { formatFileSize, getExtensionLabel } from "@/lib/files/policy";
-import { openFileInRightPanel } from "@/lib/files/preview-events";
+import { openFileInRightPanel, withCacheBuster } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { MessageAttachment } from "@/types";
 import { renderSessionFileIcon } from "./chat-files-panel";
@@ -59,7 +59,7 @@ export function MessageAttachments({ attachments, chatId }: MessageAttachmentsPr
               mimeType: att.mimeType,
               sizeBytes: att.sizeBytes,
               isImage: false,
-              url: fileUrl,
+              url: withCacheBuster(fileUrl),
             });
           }
 

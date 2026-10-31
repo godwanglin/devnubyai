@@ -73,6 +73,12 @@ export interface ModelOption {
   category: "Powerful" | "Fast" | "Balanced" | "Flagship" | string;
   badge?: string | null;
   isLocked?: boolean;
+  provider?: {
+    slug: string;
+    name: string;
+    logoKey?: string | null;
+    logoUrl?: string | null;
+  } | null;
 }
 
 export interface QuickPrompt {

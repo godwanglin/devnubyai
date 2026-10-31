@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Loader2, Search, X } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/providers/i18n-provider";
 
-export interface PdfSearchBarProps {
+export interface DocumentSearchBarProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   query: string;
   onQueryChange: (q: string) => void;
@@ -17,7 +17,8 @@ export interface PdfSearchBarProps {
   onClose: () => void;
 }
 
-export function PdfSearchBar({
+/** Find-in-document strip shared by every paged preview (PDF, DOCX, PPTX, EPUB, ...). */
+export function DocumentSearchBar({
   inputRef,
   query,
   onQueryChange,
@@ -27,7 +28,7 @@ export function PdfSearchBar({
   onNext,
   onPrev,
   onClose,
-}: PdfSearchBarProps) {
+}: DocumentSearchBarProps) {
   const { t } = useI18n();
   const hasQuery = query.trim().length > 0;
 

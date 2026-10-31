@@ -120,6 +120,22 @@ export function toSessionFileItem(target: PreviewableFileTarget): SessionFileIte
 }
 
 /**
+ * Appends or updates a cache-busting timestamp `?t=...` on a file URL.
+ */
+export function withCacheBuster(rawUrl: string, timestamp = Date.now()): string {
+  if (!rawUrl) return rawUrl;
+  try {
+    const isRelative = rawUrl.startsWith("/");
+    const url = new URL(rawUrl, "http://localhost");
+    url.searchParams.set("t", String(timestamp));
+    return isRelative ? `${url.pathname}${url.search}` : url.toString();
+  } catch {
+    const [base] = rawUrl.split("?");
+    return `${base}?t=${timestamp}`;
+  }
+}
+
+/**
  * Dispatches a request to open a non-image file inside the right-hand `ChatFilesPanel`.
  */
 export function openFileInRightPanel(target: PreviewableFileTarget): void {

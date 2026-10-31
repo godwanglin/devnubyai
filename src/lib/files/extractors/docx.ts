@@ -1,24 +1,22 @@
+import { parseDocxText } from "../parsers/docx";
 import type { ExtractorResult } from "./types";
 
 /**
- * Extracts structured text and Markdown from Word documents (.docx) using mammoth.
- * Retains headings, bullet points, and tables.
+ * Extracts structured text from Word documents (.docx).
+ * Headings, lists, tables, hyperlinks, headers/footers and footnotes are kept.
+ * Page markers `=== [PAGE X] ===` come from Word's rendered page breaks; without them
+ * no page numbers are claimed.
  */
 export async function extractDocxText(buffer: Buffer): Promise<ExtractorResult> {
   try {
-    const mammoth = (await import("mammoth")) as unknown as {
-      convertToMarkdown: (options: { buffer: Buffer }) => Promise<{ value: string; messages: unknown[] }>;
-    };
-    const result = await mammoth.convertToMarkdown({ buffer });
-
-    const trimmed = (result.value || "").trim();
+    const { text, pageCount } = await parseDocxText(new Uint8Array(buffer.slice(0)));
 
     return {
       success: true,
-      text: trimmed,
+      text,
       metadata: {
-        charCount: trimmed.length,
-        warnings: result.messages,
+        charCount: text.length,
+        pageCount,
       },
     };
   } catch (err) {

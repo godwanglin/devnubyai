@@ -8,6 +8,7 @@ const DEFAULT_MODEL_ID = "";
 const DEFAULT_REASONING: ReasoningLevel = "2";
 const MODEL_KEY = "devnuby-model";
 const REASONING_KEY = "devnuby-reasoning";
+const FILES_PANEL_KEY = "devnuby-files-panel-open";
 
 const prefListeners = new Set<() => void>();
 
@@ -27,6 +28,7 @@ function writePref<T>(key: string, value: T) {
 
 const readModelPref = () => getLocalStorage(MODEL_KEY, DEFAULT_MODEL_ID);
 const readReasoningPref = () => getLocalStorage<ReasoningLevel>(REASONING_KEY, DEFAULT_REASONING);
+const readFilesPanelPref = () => getLocalStorage<boolean>(FILES_PANEL_KEY, false) === true;
 
 export function useChatPrefs() {
   const storedModelId = useSyncExternalStore(
@@ -40,16 +42,29 @@ export function useChatPrefs() {
     () => DEFAULT_REASONING
   );
 
+  // Right files panel stays open across reloads if the user left it open
+  const isFilesPanelOpen = useSyncExternalStore(
+    subscribePrefs,
+    readFilesPanelPref,
+    () => false
+  );
+
   const setModelId = useCallback((id: string) => writePref(MODEL_KEY, id), []);
   const setReasoningLevel = useCallback(
     (level: ReasoningLevel) => writePref(REASONING_KEY, level),
+    []
+  );
+  const setFilesPanelOpen = useCallback(
+    (open: boolean) => writePref(FILES_PANEL_KEY, open),
     []
   );
 
   return {
     storedModelId,
     reasoningLevel,
+    isFilesPanelOpen,
     setModelId,
     setReasoningLevel,
+    setFilesPanelOpen,
   };
 }

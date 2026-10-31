@@ -50,7 +50,7 @@ export async function extractPlainText(
     return {
       success: false,
       text: "",
-      error: `Gagal membaca file text: ${message}`,
+      error: `Failed to read text file: ${message}`,
     };
   }
 }

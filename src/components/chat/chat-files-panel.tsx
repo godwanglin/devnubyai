@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  ArrowLeft, Download, FileCode, Files, FileSpreadsheet, FileText,
-  Folder, Globe, Image as ImageIcon, Maximize2, Minimize2, PanelLeft, Paperclip, X,
+  ArrowLeft, BookOpen, Download, FileCode, Files, FileSpreadsheet, FileText,
+  Folder, Globe, Image as ImageIcon, Maximize2, Minimize2, PanelLeft, Paperclip,
+  Presentation, X,
 } from "lucide-react";
 import {
   ImagePreviewModal,
@@ -16,9 +17,7 @@ import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { cn } from "@/lib/cn";
 import { classifyPreviewKind, formatFileSize } from "@/lib/files/policy";
 import {
-  AI_FILE_UPDATED_EVENT,
-  AI_HIGHLIGHT_EVENT,
-  type AIHighlightPayload,
+  AI_FILE_UPDATED_EVENT, AI_HIGHLIGHT_EVENT, type AIHighlightPayload, withCacheBuster,
 } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { SessionFileItem } from "@/types";
@@ -54,6 +53,12 @@ export function renderSessionFileIcon(
   }
   if (kind === "spreadsheet") {
     return <FileSpreadsheet className="w-4 h-4 text-[var(--muted)] shrink-0" />;
+  }
+  if (kind === "pptx") {
+    return <Presentation className="w-4 h-4 text-[var(--muted)] shrink-0" />;
+  }
+  if (kind === "epub") {
+    return <BookOpen className="w-4 h-4 text-[var(--muted)] shrink-0" />;
   }
   if (kind === "code" || kind === "json" || kind === "mermaid") {
     return <FileCode className="w-4 h-4 text-[var(--muted)] shrink-0" />;
@@ -230,12 +235,13 @@ export function ChatFilesPanel({
   }, [effectiveOpen, chatId, refreshKey, eventRefreshTick, readOnly]);
 
   function handleFileRowClick(file: SessionFileItem) {
-    const kind = classifyPreviewKind(file.displayName || file.extension, file.mimeType);
-    if (file.isImage || kind === "image") {
-      setPreviewImage({ url: file.url, title: file.displayName });
+    const item = { ...file, url: withCacheBuster(file.url) };
+    const kind = classifyPreviewKind(item.displayName || item.extension, item.mimeType);
+    if (item.isImage || kind === "image") {
+      setPreviewImage({ url: item.url, title: item.displayName });
       return;
     }
-    setSelectedFile(file);
+    setSelectedFile(item);
   }
 
   const artifactFiles = files.filter(isAiArtifact);

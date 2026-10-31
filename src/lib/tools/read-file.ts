@@ -31,7 +31,7 @@ export interface ReadFileData {
 export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
   name: "read_file",
   description:
-    "Reads and extracts clean, human-readable text from files in session storage in line-delimited chunks (up to 100 lines per call). Automatically parses PDF documents (with page markers === [PAGE X] ===), Word DOCX, Excel spreadsheets (with sheet markers === [SHEET: X] ===), PowerPoint PPTX (with slide markers === [SLIDE X] ===), Markdown, CSV, and code files. ALWAYS use this tool to inspect uploaded documents.",
+    "Reads and extracts clean, human-readable text from files in session storage in line-delimited chunks (up to 100 lines per call). Automatically parses PDF documents (with page markers === [PAGE X] ===), Word DOCX (with page markers === [PAGE X] === when the file records page breaks), DOC, RTF, OpenDocument ODT, Excel/ODS spreadsheets (with sheet markers === [SHEET: X] ===), PowerPoint PPTX (with slide markers === [SLIDE X] ===), EPUB eBooks (with chapter markers === [CHAPTER X] ===), Markdown, CSV, and code files. ALWAYS use this tool to inspect uploaded documents.",
   parameters: {
     type: "object",
     properties: {
@@ -129,7 +129,7 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
         filename: targetStorageFilename,
       });
 
-      // Extract clean text from the document (PDF, Excel, Word, PPTX, or Plain text)
+      // Extract clean text from the document (PDF, spreadsheets, Word, RTF, ODT, PPTX, EPUB, or plain text)
       const extraction = await extractDocumentText(
         downloaded.content,
         targetStorageFilename,
@@ -141,7 +141,7 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
           success: false,
           error: {
             code: "EXECUTION_ERROR",
-            message: `Gagal membaca isi berkas '${rawFilename}': ${extraction.error || "Format tidak didukung"}`,
+            message: `Failed to read contents of '${rawFilename}': ${extraction.error || "Unsupported format"}`,
           },
           metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
         };
@@ -161,7 +161,7 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
             totalLines: 0,
             hasMore: false,
             nextStartLine: null,
-            content: `[Berkas '${safeFilename}' kosong atau tidak memiliki teks yang dapat diekstrak]`,
+            content: `[File '${safeFilename}' is empty or has no extractable text]`,
             mimeType: downloaded.contentType,
           },
           metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
@@ -216,16 +216,17 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
         },
         metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
       };
-    } catch (err: any) {
+    } catch (err) {
       console.error("[READ_FILE_ERROR]", err);
-      const isNotFound = err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404;
+      const typed = err as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
+      const isNotFound = typed.name === "NoSuchKey" || typed.$metadata?.httpStatusCode === 404;
       return {
         success: false,
         error: {
           code: isNotFound ? "NOT_FOUND" : "STORAGE_ERROR",
           message: isNotFound
             ? `File '${safeFilename}' was not found in session storage.`
-            : `Failed to read file from storage: ${err?.message || err}`,
+            : `Failed to read file from storage: ${err instanceof Error ? err.message : String(err)}`,
         },
         metadata: { durationMs: Date.now() - startTime },
       };

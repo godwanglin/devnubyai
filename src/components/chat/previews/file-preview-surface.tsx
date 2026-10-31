@@ -6,8 +6,11 @@ import { classifyPreviewKind, formatFileSize } from "@/lib/files/policy";
 import { useI18n } from "@/providers/i18n-provider";
 import type { SessionFileItem } from "@/types";
 import { CodeAndTextPreview } from "./code-and-text-preview";
+import { ConvertedDocumentPreview } from "./converted-document-preview";
 import { DocumentPreview } from "./document-preview";
+import { EpubPreview } from "./epub-preview";
 import { HtmlFilePreview } from "./html-file-preview";
+import { PptxPreview } from "./pptx-preview";
 import { SpreadsheetPreview } from "./spreadsheet-preview";
 import { SmartImage } from "@/components/ui/smart-image";
 
@@ -36,7 +39,12 @@ export function FilePreviewSurface({
   const needsBinary =
     kind === "pdf" ||
     kind === "docx" ||
-    (kind === "spreadsheet" && (ext === "xlsx" || ext === "xls"));
+    kind === "doc" ||
+    kind === "rtf" ||
+    kind === "odt" ||
+    kind === "pptx" ||
+    kind === "epub" ||
+    (kind === "spreadsheet" && (ext === "xlsx" || ext === "xls" || ext === "ods"));
 
   const [payload, setPayload] = useState<LoadedPayload>({ status: "loading" });
 
@@ -54,6 +62,11 @@ export function FilePreviewSurface({
       try {
         const res = await fetch(file.url, {
           credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -177,6 +190,20 @@ export function FilePreviewSurface({
         initialSearchQuery={highlightTarget?.text}
       />
     );
+  }
+
+  if ((kind === "doc" || kind === "rtf" || kind === "odt") && payload.status === "binary") {
+    return <ConvertedDocumentPreview kind={kind} bytes={payload.bytes} title={file.displayName} />;
+  }
+
+  if (kind === "pptx" && payload.status === "binary") {
+    return (
+      <PptxPreview bytes={payload.bytes} title={file.displayName} initialSearchQuery={highlightTarget?.text} />
+    );
+  }
+
+  if (kind === "epub" && payload.status === "binary") {
+    return <EpubPreview bytes={payload.bytes} title={file.displayName} />;
   }
 
   if (

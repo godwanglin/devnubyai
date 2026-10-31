@@ -45,7 +45,8 @@ export async function GET(_request: Request, context: RouteContext) {
         "Content-Length": String(downloaded.sizeBytes),
         "Cache-Control": isImage
           ? "private, max-age=300, stale-while-revalidate=60"
-          : "private, max-age=86400, immutable",
+          : "no-cache, no-store, must-revalidate, max-age=0",
+        ...(isImage ? {} : { Pragma: "no-cache", Expires: "0" }),
         "Content-Disposition": isImage
           ? `inline; filename="${safeFilename}"`
           : `attachment; filename="${safeFilename}"`,

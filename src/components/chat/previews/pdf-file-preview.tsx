@@ -7,10 +7,10 @@ import { dispatchAIEditRequest } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { PdfLiveEdit, PdfSelectedArea } from "./pdf-edit-types";
 import { PdfPageSurface } from "./pdf-page-surface";
-import { PdfSearchBar } from "./pdf-search-bar";
+import { DocumentSearchBar } from "./document-search-bar";
+import { DocumentToolbar } from "./document-toolbar";
 import { searchAllPages, type PdfSearchMatch } from "./pdf-search-utils";
 import { PdfThumbnailsSidebar } from "./pdf-thumbnails-sidebar";
-import { PdfToolbar } from "./pdf-toolbar";
 import "./pdf-viewer.css";
 
 export interface PdfFilePreviewProps {
@@ -29,6 +29,9 @@ interface PageMetric {
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 2.8;
 const ZOOM_STEP = 0.2;
+// "Request edits" is hidden for PDFs: in-place PDF text editing is unreliable
+// (fixed glyph layout, subsetted fonts). Flip to true to bring the button back.
+const PDF_REQUEST_EDITS_ENABLED = false;
 
 export function PdfFilePreview({
   bytes,
@@ -367,11 +370,14 @@ export function PdfFilePreview({
   return (
     <div className="flex flex-col h-full min-h-0 bg-[var(--surface)]" aria-label={title}>
       {/* PDF Toolbar */}
-      <PdfToolbar
-        numPages={pdfDoc.numPages}
-        currentPage={currentPage}
-        onPrevPage={() => jumpToPage(currentPage - 1)}
-        onNextPage={() => jumpToPage(currentPage + 1)}
+      <DocumentToolbar
+        kindLabel="PDF"
+        paging={{
+          numPages: pdfDoc.numPages,
+          currentPage,
+          onPrevPage: () => jumpToPage(currentPage - 1),
+          onNextPage: () => jumpToPage(currentPage + 1),
+        }}
         showThumbnails={showThumbnails}
         onToggleThumbnails={() => setShowThumbnails((v) => !v)}
         canZoomIn={effectiveScale < MAX_SCALE - 0.01}
@@ -391,12 +397,12 @@ export function PdfFilePreview({
         searchOpen={searchOpen}
         onToggleSearch={toggleSearch}
         requestEditsActive={requestEditsActive}
-        onToggleRequestEdits={toggleRequestEdits}
+        onToggleRequestEdits={PDF_REQUEST_EDITS_ENABLED ? toggleRequestEdits : undefined}
       />
 
       {/* Search Bar strip */}
       {searchOpen && (
-        <PdfSearchBar
+        <DocumentSearchBar
           inputRef={searchInputRef}
           query={searchQuery}
           onQueryChange={handleQueryChange}

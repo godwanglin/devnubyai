@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Scan } from "lucide-react";
+import { MousePointerClick } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 
@@ -11,6 +11,7 @@ export interface RequestEditsButtonProps {
   className?: string;
 }
 
+/** "Request edits" button with pointer icon (Cursor-style) and text label. */
 export function RequestEditsButton({
   active,
   onClick,
@@ -31,7 +32,7 @@ export function RequestEditsButton({
         className
       )}
     >
-      <Scan className="w-3.5 h-3.5 shrink-0" />
+      <MousePointerClick className="w-3.5 h-3.5 shrink-0" />
       <span className="text-[11.5px]">{t("chatFiles.requestEdits")}</span>
     </button>
   );

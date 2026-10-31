@@ -16,6 +16,11 @@ export type FilePreviewKind =
   | "spreadsheet"
   | "pdf"
   | "docx"
+  | "doc"
+  | "rtf"
+  | "odt"
+  | "pptx"
+  | "epub"
   | "svg"
   | "mermaid"
   | "json"
@@ -118,10 +123,16 @@ export const MIME_BY_EXTENSION: Record<string, string> = {
   ".tsv": "text/tab-separated-values",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ".xls": "application/vnd.ms-excel",
+  ".ods": "application/vnd.oasis.opendocument.spreadsheet",
 
-  // Documents
+  // Documents, Presentations & eBooks
   ".pdf": "application/pdf",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".doc": "application/msword",
+  ".rtf": "application/rtf",
+  ".odt": "application/vnd.oasis.opendocument.text",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".epub": "application/epub+zip",
 
   // Web & Stylesheets
   ".html": "text/html",
@@ -231,16 +242,23 @@ export function classifyPreviewKind(
   if (ext === "html" || ext === "htm" || mime === "text/html") return "html";
   if (ext === "md" || ext === "markdown" || mime === "text/markdown") return "markdown";
   if (
-    ["csv", "tsv", "xlsx", "xls"].includes(ext) ||
+    ["csv", "tsv", "xlsx", "xls", "ods"].includes(ext) ||
     mime === "text/csv" ||
     mime === "text/tab-separated-values" ||
     mime.includes("spreadsheetml") ||
-    mime === "application/vnd.ms-excel"
+    mime === "application/vnd.ms-excel" ||
+    mime === "application/vnd.oasis.opendocument.spreadsheet"
   ) {
     return "spreadsheet";
   }
   if (ext === "pdf" || mime === "application/pdf") return "pdf";
   if (ext === "docx" || mime.includes("wordprocessingml.document")) return "docx";
+  // RTF before DOC: Windows browsers often report .rtf as application/msword
+  if (ext === "rtf" || mime === "application/rtf" || mime === "text/rtf") return "rtf";
+  if (ext === "doc" || mime === "application/msword") return "doc";
+  if (ext === "odt" || mime === "application/vnd.oasis.opendocument.text") return "odt";
+  if (ext === "pptx" || mime.includes("presentationml.presentation")) return "pptx";
+  if (ext === "epub" || mime === "application/epub+zip") return "epub";
   if (ext === "json" || mime === "application/json") return "json";
   if (ext in CODE_HIGHLIGHT_MAP) return "code";
   if (ext === "txt" || ext === "log" || mime.startsWith("text/")) return "text";
@@ -322,7 +340,9 @@ export function validateUploadCandidate(file: {
     };
   }
 
-  let mime = file.type?.toLowerCase().trim() || getMimeTypeForFilename(filename);
+  // Prefer our canonical MIME for known extensions: browser-reported types vary by OS
+  // (e.g. .rtf as application/msword on Windows, .ts as video/mp2t).
+  let mime = MIME_BY_EXTENSION[ext] || file.type?.toLowerCase().trim() || "application/octet-stream";
   if (ext === ".svg" || mime.includes("svg")) {
     mime = "text/plain";
   }

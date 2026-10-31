@@ -16,7 +16,12 @@ import {
   getMimeTypeForFilename,
   isImageMimeType,
 } from "@/lib/files/policy";
-import { openFileInRightPanel } from "@/lib/files/preview-events";
+import {
+  AI_FILE_UPDATED_EVENT,
+  type AIFileUpdatedPayload,
+  openFileInRightPanel,
+  withCacheBuster,
+} from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { ToolActivity } from "@/types";
 import { renderSessionFileIcon } from "./chat-files-panel";
@@ -63,8 +68,33 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
   useEffect(() => {
     if (completedCount > 0 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
+      for (const tool of fileTools) {
+        if (tool.state === "completed") {
+          const outObj =
+            tool.output && typeof tool.output === "object"
+              ? (tool.output as Record<string, unknown>)
+              : {};
+          const inObj =
+            tool.input && typeof tool.input === "object"
+              ? (tool.input as Record<string, unknown>)
+              : {};
+          const fileId = String(outObj.id || tool.id || "");
+          const filename = String(outObj.filename || inObj.filename || "");
+          if (fileId || filename) {
+            window.dispatchEvent(
+              new CustomEvent<AIFileUpdatedPayload>(AI_FILE_UPDATED_EVENT, {
+                detail: {
+                  fileId,
+                  filename,
+                  reason: "ai-edit",
+                },
+              })
+            );
+          }
+        }
+      }
     }
-  }, [completedCount]);
+  }, [completedCount, fileTools]);
 
   if (fileTools.length === 0) return null;
 
@@ -143,8 +173,9 @@ function GeneratedFileArtifactCard({
 
   function handleOpen() {
     if (!canOpen) return;
+    const freshUrl = withCacheBuster(resolvedUrl);
     if (isImg || kind === "image") {
-      onPreviewImage({ url: resolvedUrl, title: displayName });
+      onPreviewImage({ url: freshUrl, title: displayName });
       return;
     }
     openFileInRightPanel({
@@ -156,7 +187,7 @@ function GeneratedFileArtifactCard({
       sizeBytes,
       source: "tool",
       isImage: false,
-      url: resolvedUrl,
+      url: freshUrl,
     });
   }
 

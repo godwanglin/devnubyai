@@ -101,6 +101,33 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
+  // Opening a chat (new or existing) puts the cursor in the input right away.
+  // Skipped on touch devices, where focusing would pop the on-screen keyboard
+  // over the conversation.
+  useEffect(() => {
+    if (window.matchMedia("(pointer: coarse)").matches) return;
+    const frame = requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      // Don't steal focus from another field the user is already typing in
+      const active = document.activeElement;
+      if (
+        active &&
+        active !== document.body &&
+        active !== el &&
+        (active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement ||
+          (active as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      el.focus({ preventScroll: true });
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [chatId]);
+
   // Picking a new excerpt moves focus to the input so the user can type the question
   const quoteCount = quotes.length;
   const prevQuoteCountRef = useRef(quoteCount);
