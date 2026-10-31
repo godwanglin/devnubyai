@@ -91,6 +91,12 @@ export function ChatTimeline({
   }, []);
 
   // Detect collision width & generous left-edge hover proximity (96px zone)
+  // Use refs to avoid state updates on every mousemove event
+  const isAreaHoveredRef = useRef(isAreaHovered);
+  useEffect(() => {
+    isAreaHoveredRef.current = isAreaHovered;
+  }, [isAreaHovered]);
+
   useEffect(() => {
     const scroller = scrollContainerRef.current;
     if (!scroller || typeof ResizeObserver === "undefined") return;
@@ -107,9 +113,9 @@ export function ChatTimeline({
       const offsetX = e.clientX - rect.left;
       const offsetY = e.clientY - rect.top;
       if (offsetX >= 0 && offsetX <= 96 && offsetY >= 48 && offsetY <= rect.height - 48) {
-        setIsAreaHovered(true);
+        if (!isAreaHoveredRef.current) setIsAreaHovered(true);
       } else if (offsetX > 120 && !containerRef.current?.matches(":hover")) {
-        setIsAreaHovered(false);
+        if (isAreaHoveredRef.current) setIsAreaHovered(false);
       }
     };
     host.addEventListener("mousemove", handleMouseMove, { passive: true });
@@ -118,7 +124,7 @@ export function ChatTimeline({
       observer.disconnect();
       host.removeEventListener("mousemove", handleMouseMove);
     };
-  }, [scrollContainerRef]);
+  }, [scrollContainerRef, containerRef]);
 
   // 1. Fetch lightweight timeline metadata (all turns without rendering HTML)
   useEffect(() => {
