@@ -275,11 +275,12 @@ export function ChatShell() {
   } = useChat({
     // id: activeChatId ?? undefined, // Removed! Our transport handles chatId via body.
     // Stable id prevents useChat from resetting messages when we navigate from home to /c/[id].
-    id: "devnuby-chat",
+    id: "no-stream",
     transport: chatTransport,
     resume: Boolean(activeChatId),
     throttle: 30,
     onError: (err) => {
+      // console.error("ChatShell useChat error:", err);
       const quota = parseQuotaError(err);
       if (quota) {
         setRejectedQuota(quota);

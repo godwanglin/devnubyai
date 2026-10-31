@@ -45,3 +45,6 @@ next-env.d.ts
 
 # local plan
 /.plans/
+
+# telemetry & runtime logs
+/.logs/

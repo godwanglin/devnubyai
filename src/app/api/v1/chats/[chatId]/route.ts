@@ -18,10 +18,10 @@ type RouteContext = { params: Promise<{ chatId: string }> };
 
 export async function GET(request: Request, context: RouteContext) {
   const requestId = getRequestId(request);
-
   try {
     const user = await requireUser();
     const { chatId } = await context.params;
+   
     const session = await getChatSession(user.id, chatId);
 
     return jsonSuccess(

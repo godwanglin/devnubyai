@@ -48,6 +48,8 @@ export function LogsTab() {
   const [telemetryTotalPages, setTelemetryTotalPages] = useState(1);
   const [telemetrySearch, setTelemetrySearch] = useState("");
   const [telemetryOutcome, setTelemetryOutcome] = useState("all");
+  const [telemetryDate, setTelemetryDate] = useState("");
+  const [availableLogDates, setAvailableLogDates] = useState<string[]>([]);
 
   const fetchAuditLogs = useCallback(async () => {
     await Promise.resolve();
@@ -82,10 +84,11 @@ export function LogsTab() {
     try {
       const params = new URLSearchParams({
         page: telemetryPage.toString(),
-        pageSize: "30",
+        pageSize: "15",
       });
       if (telemetrySearch.trim()) params.set("search", telemetrySearch.trim());
       if (telemetryOutcome !== "all") params.set("outcome", telemetryOutcome);
+      if (telemetryDate) params.set("date", telemetryDate);
 
       const res = await fetch(`/api/v1/admin/logs/routing-attempts?${params.toString()}`, {
         credentials: "same-origin",
@@ -96,12 +99,15 @@ export function LogsTab() {
       setTelemetry(json.data.items ?? []);
       setTelemetryTotal(json.data.total ?? 0);
       setTelemetryTotalPages(json.data.totalPages ?? 1);
+      if (Array.isArray(json.data.availableDates)) {
+        setAvailableLogDates(json.data.availableDates);
+      }
     } catch (err) {
       toast(err instanceof Error ? err.message : "Failed to load telemetry");
     } finally {
       setLoading(false);
     }
-  }, [telemetryPage, telemetrySearch, telemetryOutcome, toast]);
+  }, [telemetryPage, telemetrySearch, telemetryOutcome, telemetryDate, toast]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -352,6 +358,21 @@ export function LogsTab() {
                 }}
               />
             </div>
+            {availableLogDates.length > 0 && (
+              <div className="w-full sm:w-44">
+                <CustomSelect
+                  options={availableLogDates.map((d) => ({
+                    value: d,
+                    label: d,
+                  }))}
+                  value={telemetryDate || availableLogDates[0]}
+                  onChange={(val) => {
+                    setTelemetryPage(1);
+                    setTelemetryDate(val);
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Table */}

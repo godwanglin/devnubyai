@@ -358,58 +358,6 @@ model SessionFile {
 
 // ───────────── Observability & quota ─────────────
 
-/// Append-only. Deliberately has no foreign keys so logs survive deletes and inserts stay cheap.
-model RoutingAttempt {
-  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  requestId        String   @map("request_id") @db.Char(36)
-  userId           BigInt?  @map("user_id") @db.UnsignedBigInt
-  messageId        BigInt?  @map("message_id") @db.UnsignedBigInt
-  catalogModelId   BigInt   @map("catalog_model_id") @db.UnsignedBigInt
-  gatewayId        BigInt   @map("gateway_id") @db.UnsignedBigInt
-  upstreamModelId  BigInt   @map("upstream_model_id") @db.UnsignedBigInt
-  attemptNo        Int      @map("attempt_no") @db.UnsignedTinyInt
-  outcome          String   @db.VarChar(16)
-  errorClass       String?  @map("error_class") @db.VarChar(32)
-  httpStatus       Int?     @map("http_status") @db.UnsignedSmallInt
-  latencyMs        Int      @map("latency_ms") @db.UnsignedInt
-  ttftMs           Int?     @map("ttft_ms") @db.UnsignedInt
-  promptTokens     Int?     @map("prompt_tokens") @db.UnsignedInt
-  completionTokens Int?     @map("completion_tokens") @db.UnsignedInt
-  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
-
-  @@index([createdAt], map: "idx_attempts_created")
-  @@index([gatewayId, createdAt], map: "idx_attempts_gateway")
-  @@index([catalogModelId, createdAt], map: "idx_attempts_model")
-  @@index([userId, createdAt], map: "idx_attempts_user")
-  @@index([requestId], map: "idx_attempts_request")
-  @@map("routing_attempts")
-}
-
-/// Append-only debug trace of every tool call, written only while the admin
-/// setting `chat.tool_debug` is on. No foreign keys, like routing_attempts.
-model ToolExecutionLog {
-  id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  requestId   String?  @map("request_id") @db.Char(36)
-  userId      BigInt?  @map("user_id") @db.UnsignedBigInt
-  sessionId   BigInt?  @map("session_id") @db.UnsignedBigInt
-  messageId   BigInt?  @map("message_id") @db.UnsignedBigInt
-  toolCallId  String   @map("tool_call_id") @db.VarChar(128)
-  toolName    String   @map("tool_name") @db.VarChar(64)
-  success     Boolean
-  errorCode   String?  @map("error_code") @db.VarChar(32)
-  errorText   String?  @map("error_text") @db.Text
-  rawArgs     String?  @map("raw_args") @db.MediumText
-  input       Json?
-  output      Json?
-  durationMs  Int      @map("duration_ms") @db.UnsignedInt
-  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
-
-  @@index([createdAt], map: "idx_tool_logs_created")
-  @@index([toolName, success, createdAt], map: "idx_tool_logs_tool")
-  @@index([sessionId, createdAt], map: "idx_tool_logs_session")
-  @@map("tool_execution_logs")
-}
-
 model UserUsagePeriod {
   userId           BigInt   @map("user_id") @db.UnsignedBigInt
   periodStart      DateTime @map("period_start") @db.Date

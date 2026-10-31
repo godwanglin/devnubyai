@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/client";
+import { readLogs } from "@/lib/logger/file-logger";
 
 export interface SanitizedAuditLogDto {
   id: string;
@@ -43,7 +44,7 @@ export const auditLogsQuerySchema = z.object({
   action: z.string().optional(),
   search: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(30),
+  pageSize: z.coerce.number().int().min(1).max(100).default(15),
 });
 
 export type AuditLogsQuery = z.infer<typeof auditLogsQuerySchema>;
@@ -113,50 +114,68 @@ export async function listAdminAuditLogs(query: AuditLogsQuery) {
 export const routingAttemptsQuerySchema = z.object({
   outcome: z.string().optional(),
   gatewayId: z.string().optional(),
+  date: z.string().optional(),
   search: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(30),
+  pageSize: z.coerce.number().int().min(1).max(100).default(15),
 });
 
 export type RoutingAttemptsQuery = z.infer<typeof routingAttemptsQuerySchema>;
 
+/**
+ * Reads telemetry routing attempts directly from daily file logs (.logs/YYYY-MM-DD.log)
+ * without hitting the database.
+ */
 export async function listRoutingAttempts(query: RoutingAttemptsQuery) {
-  const where: Prisma.RoutingAttemptWhereInput = {};
+  const result = await readLogs({
+    date: query.date,
+    type: "routing",
+    search: query.search,
+    page: query.page,
+    pageSize: query.pageSize,
+  });
 
+  // Filter in memory if outcome or gatewayId is provided
+  let filteredItems = result.items;
   if (query.outcome && query.outcome !== "all") {
-    where.outcome = query.outcome;
+    filteredItems = filteredItems.filter(
+      (item) => String(item.data.outcome).toLowerCase() === query.outcome?.toLowerCase()
+    );
   }
   if (query.gatewayId && query.gatewayId !== "all") {
+    filteredItems = filteredItems.filter(
+      (item) => String(item.data.gatewayId) === query.gatewayId
+    );
+  }
+
+  // Bulk load gateway & model metadata in memory to enrich display labels
+  const gatewayIds = Array.from(
+    new Set(
+      filteredItems
+        .map((a) => a.data.gatewayId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    )
+  ).map((id) => {
     try {
-      where.gatewayId = BigInt(query.gatewayId);
+      return BigInt(id);
     } catch {
-      // Ignore invalid gateway ID
+      return null;
     }
-  }
-  if (query.search && query.search.trim().length > 0) {
-    const q = query.search.trim();
-    where.OR = [
-      { requestId: { contains: q } },
-      { errorClass: { contains: q } },
-    ];
-  }
+  }).filter((id): id is bigint => id !== null);
 
-  const skip = (query.page - 1) * query.pageSize;
-  const take = query.pageSize;
-
-  const [total, attempts] = await Promise.all([
-    db.routingAttempt.count({ where }),
-    db.routingAttempt.findMany({
-      where,
-      skip,
-      take,
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
-
-  // Bulk load gateway & model metadata in memory to avoid full table scans/joins on unconstrained tables
-  const gatewayIds = Array.from(new Set(attempts.map((a) => a.gatewayId)));
-  const modelIds = Array.from(new Set(attempts.map((a) => a.catalogModelId)));
+  const modelIds = Array.from(
+    new Set(
+      filteredItems
+        .map((a) => a.data.catalogModelId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    )
+  ).map((id) => {
+    try {
+      return BigInt(id);
+    } catch {
+      return null;
+    }
+  }).filter((id): id is bigint => id !== null);
 
   const [gateways, catalogModels] = await Promise.all([
     gatewayIds.length > 0
@@ -176,39 +195,43 @@ export async function listRoutingAttempts(query: RoutingAttemptsQuery) {
   const gatewayMap = new Map(gateways.map((g) => [g.id.toString(), g]));
   const modelMap = new Map(catalogModels.map((m) => [m.id.toString(), m]));
 
-  const items: SanitizedRoutingAttemptDto[] = attempts.map((a) => {
-    const gw = gatewayMap.get(a.gatewayId.toString());
-    const m = modelMap.get(a.catalogModelId.toString());
+  const items: SanitizedRoutingAttemptDto[] = filteredItems.map((entry) => {
+    const a = entry.data;
+    const gwId = String(a.gatewayId ?? "");
+    const mId = String(a.catalogModelId ?? "");
+    const gw = gatewayMap.get(gwId);
+    const m = modelMap.get(mId);
 
     return {
-      id: a.id.toString(),
-      requestId: a.requestId,
-      userId: a.userId ? a.userId.toString() : null,
-      messageId: a.messageId ? a.messageId.toString() : null,
-      catalogModelId: a.catalogModelId.toString(),
+      id: entry.id,
+      requestId: String(a.requestId ?? ""),
+      userId: a.userId ? String(a.userId) : null,
+      messageId: a.messageId ? String(a.messageId) : null,
+      catalogModelId: mId,
       catalogModelName: m?.displayName,
       catalogModelPublicId: m?.publicId,
-      gatewayId: a.gatewayId.toString(),
+      gatewayId: gwId,
       gatewayName: gw?.name,
       gatewaySlug: gw?.slug,
-      upstreamModelId: a.upstreamModelId.toString(),
-      attemptNo: a.attemptNo,
-      outcome: a.outcome,
-      errorClass: a.errorClass,
-      httpStatus: a.httpStatus,
-      latencyMs: a.latencyMs,
-      ttftMs: a.ttftMs,
-      promptTokens: a.promptTokens,
-      completionTokens: a.completionTokens,
-      createdAt: a.createdAt.toISOString(),
+      upstreamModelId: String(a.upstreamModelId ?? ""),
+      attemptNo: typeof a.attemptNo === "number" ? a.attemptNo : 1,
+      outcome: String(a.outcome ?? "unknown"),
+      errorClass: a.errorClass ? String(a.errorClass) : null,
+      httpStatus: typeof a.httpStatus === "number" ? a.httpStatus : null,
+      latencyMs: typeof a.latencyMs === "number" ? a.latencyMs : 0,
+      ttftMs: typeof a.ttftMs === "number" ? a.ttftMs : null,
+      promptTokens: typeof a.promptTokens === "number" ? a.promptTokens : null,
+      completionTokens: typeof a.completionTokens === "number" ? a.completionTokens : null,
+      createdAt: entry.timestamp || new Date().toISOString(),
     };
   });
 
   return {
     items,
-    total,
-    page: query.page,
-    pageSize: query.pageSize,
-    totalPages: Math.ceil(total / query.pageSize) || 1,
+    total: result.total,
+    page: result.page,
+    pageSize: result.pageSize,
+    totalPages: result.totalPages,
+    availableDates: result.availableDates,
   };
 }

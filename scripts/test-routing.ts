@@ -335,19 +335,6 @@ async function run() {
     );
     console.log("   Fallback A(500) -> B(200) succeeded with expected text.");
 
-    // Check routing_attempts in DB
-    const attempts = await db.routingAttempt.findMany({
-      where: { catalogModelId: catalog.id },
-      orderBy: { id: "desc" },
-      take: 2,
-    });
-    assert(attempts.length >= 2, "Logged at least 2 attempts");
-    const lastAttempt = attempts[0];
-    const prevAttempt = attempts[1];
-    assert(lastAttempt.outcome === "success", "Last attempt was success");
-    assert(prevAttempt.outcome === "fallback", "Previous attempt was fallback");
-    console.log("   DB routing_attempts recorded outcomes: fallback, then success.");
-
     // 5. Test Fallback A (429) -> B (404) -> C (200 success)
     console.log("[5] Testing 3-gateway chain fallback: A(429) -> B(404) -> C(200)...");
     state.aMode = "429";
@@ -462,13 +449,6 @@ async function run() {
       if (gwAId) await db.gateway.delete({ where: { id: gwAId } }).catch(() => {});
       if (gwBId) await db.gateway.delete({ where: { id: gwBId } }).catch(() => {});
       if (gwCId) await db.gateway.delete({ where: { id: gwCId } }).catch(() => {});
-
-      // Clean test routing_attempts
-      await db.routingAttempt.deleteMany({
-        where: {
-          gatewayId: { in: [gwAId, gwBId, gwCId].filter((id) => id > 0n) },
-        },
-      });
     } catch (cleanErr) {
       console.error("[cleanup] Error cleaning up:", cleanErr);
     }

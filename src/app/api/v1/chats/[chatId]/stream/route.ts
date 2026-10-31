@@ -14,8 +14,11 @@ export async function GET(request: Request, context: RouteContext) {
   const requestId = getRequestId(request);
 
   try {
-    const user = await requireUser();
     const { chatId } = await context.params;
+    if (chatId === "no-stream") {
+      return new Response(null, { status: 204, headers: { "x-request-id": requestId } });
+    }
+    const user = await requireUser();
     const session = await getChatSession(user.id, chatId);
 
     const stream = resumeStreamHub(session.publicId);

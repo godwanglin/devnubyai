@@ -1,5 +1,4 @@
-import { db } from "@/lib/db";
-import type { Prisma } from "@/generated/client";
+import { writeLogEntry } from "@/lib/logger/file-logger";
 
 export interface RecordToolLogInput {
   requestId?: string;
@@ -18,25 +17,28 @@ export interface RecordToolLogInput {
 }
 
 /**
- * Persists a tool execution record into `tool_execution_logs`.
+ * Persists a tool execution record into .logs/YYYY-MM-DD.log.
  * Best-effort / fire-and-forget: never throws or blocks the chat response.
+ * Only writes when admin setting `chat.tool_debug` is enabled (checked by caller).
  */
 export async function recordToolExecutionLog(data: RecordToolLogInput): Promise<void> {
   try {
-    await db.toolExecutionLog.create({
+    await writeLogEntry({
+      type: "tool",
+      level: data.success ? "info" : "error",
       data: {
         requestId: data.requestId ?? null,
-        userId: data.userId ?? null,
-        sessionId: data.sessionId ?? null,
-        messageId: data.messageId ?? null,
+        userId: data.userId ? data.userId.toString() : null,
+        sessionId: data.sessionId ? data.sessionId.toString() : null,
+        messageId: data.messageId ? data.messageId.toString() : null,
         toolCallId: data.toolCallId,
         toolName: data.toolName,
         success: data.success,
         errorCode: data.errorCode ?? null,
         errorText: data.errorText ?? null,
         rawArgs: data.rawArgs ?? null,
-        input: data.input !== undefined ? (data.input as Prisma.InputJsonValue) : undefined,
-        output: data.output !== undefined ? (data.output as Prisma.InputJsonValue) : undefined,
+        input: data.input !== undefined ? data.input : null,
+        output: data.output !== undefined ? data.output : null,
         durationMs: Math.max(0, Math.round(data.durationMs)),
       },
     });

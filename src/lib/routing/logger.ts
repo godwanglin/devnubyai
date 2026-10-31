@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { writeLogEntry } from "@/lib/logger/file-logger";
 import type { GatewayError } from "./errors";
 
 export interface AttemptLogParams {
@@ -18,19 +18,23 @@ export interface AttemptLogParams {
 }
 
 /**
- * Append-only routing log. No raw upstream message or secrets are persisted.
+ * Append-only routing log written to daily file in .logs/YYYY-MM-DD.log.
+ * No database write needed, saving database connection pool & WAL disk I/O.
  * Failures to log are not allowed to break user requests.
  */
 export async function logAttempt(params: AttemptLogParams): Promise<void> {
   try {
-    await db.routingAttempt.create({
+    const isError = params.outcome === "failed" || params.outcome === "aborted";
+    await writeLogEntry({
+      type: "routing",
+      level: isError ? "error" : params.outcome === "fallback" ? "warn" : "info",
       data: {
         requestId: params.requestId,
-        userId: params.userId ?? null,
-        messageId: params.messageId ?? null,
-        catalogModelId: params.catalogModelId,
-        gatewayId: params.gatewayId,
-        upstreamModelId: params.upstreamModelId,
+        userId: params.userId ? params.userId.toString() : null,
+        messageId: params.messageId ? params.messageId.toString() : null,
+        catalogModelId: params.catalogModelId.toString(),
+        gatewayId: params.gatewayId.toString(),
+        upstreamModelId: params.upstreamModelId.toString(),
         attemptNo: params.attemptNo,
         outcome: params.outcome,
         errorClass: params.error?.errorClass ?? null,
