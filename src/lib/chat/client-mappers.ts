@@ -1,5 +1,11 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
-import type { Message, MessageAttachment, Session, ToolActivity } from "@/types";
+import type {
+  Message,
+  MessageAttachment,
+  MessageSegment,
+  Session,
+  ToolActivity,
+} from "@/types";
 import { isQuotePart } from "./quotes";
 import { isFeedbackPart, type FeedbackRating } from "./feedback";
 
@@ -72,16 +78,15 @@ export async function loadSessions(): Promise<Session[] | null> {
 }
 
 /**
- * Extracts concatenated text content from an AI SDK UIMessage.
+ * Extracts text content from an AI SDK UIMessage. Separate text parts (one per
+ * tool step) become separate paragraphs instead of running into each other.
  */
 export function extractUIMessageText(msg: UIMessage): string {
-  let text = "";
-  for (const part of msg.parts) {
-    if (part.type === "text") {
-      text += part.text;
-    }
-  }
-  return text;
+  return msg.parts
+    .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
+    .map((part) => part.text)
+    .filter((text) => text.trim().length > 0)
+    .join("\n\n");
 }
 
 // Map message creation timestamps and attachments by message ID to preserve state across streaming
@@ -116,9 +121,18 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
       let isReasoningStreaming = false;
       let reasoningDurationSec: number | undefined = undefined;
       const toolCalls: ToolActivity[] = [];
+      const segments: MessageSegment[] = [];
 
       for (const part of m.parts) {
-        if (part.type === "reasoning") {
+        if (part.type === "text") {
+          if (!part.text.trim()) continue;
+          const last = segments[segments.length - 1];
+          if (last?.type === "text") {
+            last.text += `\n\n${part.text}`;
+          } else {
+            segments.push({ type: "text", text: part.text });
+          }
+        } else if (part.type === "reasoning") {
           reasoning += (reasoning && part.text ? "\n\n" : "") + part.text;
           if (part.state === "streaming") isReasoningStreaming = true;
         } else if ((part as { type?: string }).type === "reasoning-meta") {
@@ -137,7 +151,7 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
           const rawStartedAt = typeof tool.startedAt === "number" ? tool.startedAt : meta.startedAt;
           const rawEndedAt = typeof tool.endedAt === "number" ? tool.endedAt : meta.endedAt;
 
-          toolCalls.push({
+          const activity: ToolActivity = {
             id: tool.toolCallId,
             name: tool.toolName ?? part.type.slice("tool-".length),
             state:
@@ -154,7 +168,14 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
             input: tool.input,
             output: tool.state === "output-available" ? tool.output : undefined,
             error: tool.state === "output-error" ? tool.errorText : undefined,
-          });
+          };
+          toolCalls.push(activity);
+          const last = segments[segments.length - 1];
+          if (last?.type === "tools") {
+            last.tools.push(activity);
+          } else {
+            segments.push({ type: "tools", tools: [activity] });
+          }
         }
       }
 
@@ -167,6 +188,7 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         reasoningDurationSec,
         isReasoningStreaming,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        segments: toolCalls.length > 0 ? segments : undefined,
         attachments: attachments && attachments.length > 0 ? attachments : undefined,
         quotes: quotes && quotes.length > 0 ? quotes : undefined,
         feedback,
@@ -214,6 +236,10 @@ export function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[]
         (p) => !isQuotePart(p) && !isFeedbackPart(p)
       );
 
+      // Newer replies store each step's text in order among the tool parts; older
+      // ones (and failed/aborted replies) only have `content`, appended at the end.
+      const hasOrderedText = parsedSavedParts.some((p) => p.type === "text");
+
       return {
         id: m.id,
         role: m.role as "user" | "assistant",
@@ -222,11 +248,9 @@ export function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[]
             ? [{ type: "reasoning" as const, text: m.reasoning, state: "done" as const }]
             : []),
           ...parsedSavedParts,
-          {
-            type: "text" as const,
-            text: m.content,
-            state: "done" as const,
-          },
+          ...(hasOrderedText
+            ? []
+            : [{ type: "text" as const, text: m.content, state: "done" as const }]),
         ],
       };
     });

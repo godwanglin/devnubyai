@@ -14,6 +14,11 @@ export interface ToolActivity {
   error?: string;
 }
 
+/** One block of an assistant reply in chronological order: prose, or a run of tool calls. */
+export type MessageSegment =
+  | { type: "text"; text: string }
+  | { type: "tools"; tools: ToolActivity[] };
+
 export interface MessageAttachment {
   id: string; // SessionFile publicId
   filename: string;
@@ -33,6 +38,8 @@ export interface Message {
   reasoningDurationSec?: number;
   isReasoningStreaming?: boolean;
   toolCalls?: ToolActivity[];
+  /** Text and tool calls interleaved in the order they happened (set when tools were used) */
+  segments?: MessageSegment[];
   attachments?: MessageAttachment[];
   /** Excerpts the user selected from the chat and asked about ("Tanya Devnuby") */
   quotes?: string[];

@@ -352,20 +352,45 @@ export const MessageBubble = memo(function MessageBubble({
         />
       ) : null}
 
-      {message.toolCalls?.length ? (
-        <ToolActivityList
-          tools={message.toolCalls}
-          messageId={message.id}
-          chatId={chatId}
-          isMessageStreaming={isStreaming}
-        />
-      ) : null}
+      {message.segments?.length ? (
+        // Agent timeline: each step's prose followed by the tools it ran, in order
+        message.segments.map((segment, idx) => {
+          const isLast = idx === message.segments!.length - 1;
+          return segment.type === "tools" ? (
+            <ToolActivityList
+              key={`tools-${segment.tools[0]?.id ?? idx}`}
+              tools={segment.tools}
+              messageId={message.id}
+              chatId={chatId}
+              isMessageStreaming={isStreaming}
+            />
+          ) : (
+            <div
+              key={`text-${idx}`}
+              className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}
+            >
+              <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
+            </div>
+          );
+        })
+      ) : (
+        <>
+          {message.toolCalls?.length ? (
+            <ToolActivityList
+              tools={message.toolCalls}
+              messageId={message.id}
+              chatId={chatId}
+              isMessageStreaming={isStreaming}
+            />
+          ) : null}
 
-      {hasContent ? (
-        <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
-          <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
-        </div>
-      ) : null}
+          {hasContent ? (
+            <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
+              <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
+            </div>
+          ) : null}
+        </>
+      )}
 
       <TurnGeneratedFiles tools={message.toolCalls} chatId={chatId} />
 

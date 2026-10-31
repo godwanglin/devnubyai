@@ -431,6 +431,10 @@ export function createChatGenerationStream(
               }
 
               if (event.type === "delta") {
+                // Each tool step's prose is its own paragraph in the stored content
+                if (!turnContent && fullContent.trim()) {
+                  fullContent += "\n\n";
+                }
                 turnContent += event.text;
                 fullContent += event.text;
 
@@ -508,6 +512,12 @@ export function createChatGenerationStream(
             if (chunk) {
               writer.write(chunk);
             }
+          }
+
+          // Persist each step's prose in order with its tool parts so a reload
+          // shows text and tool activity interleaved, as during streaming.
+          if (turnContent.trim()) {
+            executedToolParts.push({ type: "text", text: turnContent, state: "done" });
           }
 
           const assembledCalls = Array.from(toolCallsByIndex.values()).filter(
