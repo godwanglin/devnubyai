@@ -8,8 +8,8 @@ export interface TextEditPopoverProps {
   top: number;
   left: number;
   badgeLabel?: string;
-  debugMode: boolean;
-  onToggleDebugMode: () => void;
+  debugMode?: boolean;
+  onToggleDebugMode?: () => void;
   onSubmit: (prompt: string) => void;
   onCancel: () => void;
   positionMode?: "absolute" | "fixed";
@@ -19,8 +19,6 @@ export function TextEditPopover({
   top,
   left,
   badgeLabel,
-  debugMode,
-  onToggleDebugMode,
   onSubmit,
   onCancel,
   positionMode = "absolute",
@@ -36,9 +34,7 @@ export function TextEditPopover({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      if (!debugMode || prompt.trim()) {
-        onSubmit(prompt.trim());
-      }
+      onSubmit(prompt.trim());
     } else if (e.key === "Escape") {
       e.preventDefault();
       onCancel();
@@ -75,32 +71,11 @@ export function TextEditPopover({
           spellCheck={false}
         />
 
-        {/* DebugMode / AI Mode Toggle Pill */}
-        <button
-          type="button"
-          onClick={onToggleDebugMode}
-          title={
-            debugMode
-              ? "debugMode: true (Instant live edit). Click to switch to AI prompt mode."
-              : "debugMode: false (Send request to AI). Click to switch to instant edit."
-          }
-          className={`px-2 py-0.5 rounded-full text-[10px] font-mono tracking-tight border transition-colors cursor-pointer shrink-0 ${
-            debugMode
-              ? "border-[var(--border)] bg-[var(--hover)] text-[var(--ink)] font-semibold"
-              : "border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--ink)]"
-          }`}
-        >
-          {debugMode ? t("chatFiles.requestEditsInstant") : t("chatFiles.requestEditsAi")}
-        </button>
-
         {/* Submit Checkmark Button */}
         <button
           type="button"
-          disabled={debugMode && !prompt.trim()}
-          onClick={() => {
-            if (!debugMode || prompt.trim()) onSubmit(prompt.trim());
-          }}
-          className="grid place-items-center w-6 h-6 rounded-full bg-[var(--ink)] text-[var(--surface)] hover:opacity-90 disabled:opacity-30 disabled:pointer-events-none transition-opacity cursor-pointer shrink-0 shadow-xs"
+          onClick={() => onSubmit(prompt.trim())}
+          className="grid place-items-center w-6 h-6 rounded-full bg-[var(--ink)] text-[var(--surface)] hover:opacity-90 transition-opacity cursor-pointer shrink-0 shadow-xs"
           aria-label={t("chatFiles.requestEditsConfirm") || t("chatFiles.requestEditsSubmit")}
           title={t("chatFiles.requestEditsConfirm") || t("chatFiles.requestEditsSubmit")}
         >

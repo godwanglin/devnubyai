@@ -8,8 +8,8 @@ import type { PdfRect } from "./pdf-edit-types";
 export interface PdfEditPopoverProps {
   rect: PdfRect;
   pageWidth: number;
-  debugMode: boolean;
-  onToggleDebugMode: () => void;
+  debugMode?: boolean;
+  onToggleDebugMode?: () => void;
   onSubmit: (text: string) => void;
   onCancel: () => void;
 }
@@ -17,8 +17,6 @@ export interface PdfEditPopoverProps {
 export function PdfEditPopover({
   rect,
   pageWidth,
-  debugMode,
-  onToggleDebugMode,
   onSubmit,
   onCancel,
 }: PdfEditPopoverProps) {
@@ -71,24 +69,6 @@ export function PdfEditPopover({
           autoFocus
           spellCheck={false}
         />
-
-        {/* DebugMode / AI Mode Toggle Pill */}
-        <button
-          type="button"
-          onClick={onToggleDebugMode}
-          title={
-            debugMode
-              ? "debugMode: true (Instant edit on PDF). Click to switch to AI prompt mode."
-              : "debugMode: false (Send request to AI). Click to switch to instant edit."
-          }
-          className="px-2 py-0.5 rounded-full text-[10px] font-mono tracking-tight transition-colors cursor-pointer shrink-0"
-          style={{
-            backgroundColor: debugMode ? "rgba(16, 185, 129, 0.2)" : "rgba(59, 130, 246, 0.2)",
-            color: debugMode ? "#34d399" : "#60a5fa",
-          }}
-        >
-          {debugMode ? t("chatFiles.requestEditsInstant") : t("chatFiles.requestEditsAi")}
-        </button>
 
         {/* Submit Checkmark Button */}
         <button
