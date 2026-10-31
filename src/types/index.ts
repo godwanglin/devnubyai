@@ -27,6 +27,8 @@ export interface MessageAttachment {
   sizeBytes: number;
   isImage: boolean;
   url: string;
+  /** Temporary client blob URL for instant zero-latency preview before reload */
+  localPreviewUrl?: string;
 }
 
 export interface Message {

@@ -20,10 +20,14 @@ export interface MessageAttachmentsProps {
 }
 
 function resolveAttachmentUrl(
-  url: string | undefined,
-  chatId: string | undefined,
-  fileId: string
+  att: MessageAttachment,
+  chatId: string | undefined
 ): string {
+  // Use local client blob URL first for instant zero-latency preview
+  if (att.localPreviewUrl && att.localPreviewUrl.startsWith("blob:")) {
+    return att.localPreviewUrl;
+  }
+  const url = att.url;
   if (
     url &&
     (url.startsWith("/api/") || url.startsWith("blob:") || url.startsWith("data:"))
@@ -31,7 +35,7 @@ function resolveAttachmentUrl(
     return url;
   }
   if (chatId) {
-    return `/api/v1/chats/${chatId}/files/${fileId}`;
+    return `/api/v1/chats/${chatId}/files/${att.id}`;
   }
   return url || "";
 }
@@ -46,7 +50,7 @@ export function MessageAttachments({ attachments, chatId }: MessageAttachmentsPr
     <>
       <div className="flex flex-wrap justify-end gap-2 mb-2 max-w-[80%]">
         {attachments.map((att) => {
-          const fileUrl = resolveAttachmentUrl(att.url, chatId, att.id);
+          const fileUrl = resolveAttachmentUrl(att, chatId);
           const title = att.displayName || att.filename;
           const extension = getExtensionLabel(title);
 

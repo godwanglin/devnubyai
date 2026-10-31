@@ -50,6 +50,7 @@ interface ComposerProps {
       extendedThinking?: boolean;
       fileIds?: string[];
       attachments?: MessageAttachment[];
+      filesToUpload?: { file: File; name: string; localPreviewUrl?: string }[];
       quotes?: string[];
       editChips?: EditRequestChip[];
     }
@@ -358,74 +359,25 @@ export function Composer({
       return;
     }
 
-    // If on initial page without a chatId, create session first to upload pending files
-    let effectiveChatId = chatId;
-    if (!effectiveChatId && hasAttachments) {
-      try {
-        const createRes = await fetch("/api/v1/chats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: trimmed.slice(0, 40).trim() || attachments[0]?.name || "New chat",
-            model: currentModelId || undefined,
-          }),
-          credentials: "same-origin",
-        });
-
-        if (!createRes.ok) {
-          throw new Error("Failed to create chat session for attachments");
-        }
-
-        const createData = await createRes.json();
-        effectiveChatId = createData.data.id;
-        window.history.pushState(null, "", `/c/${effectiveChatId}`);
-      } catch (err: unknown) {
-        toast(err instanceof Error ? err.message : "Failed to initialize chat");
-        return;
-      }
-    }
-
-    // Upload any un-uploaded attachments sequentially now that effectiveChatId exists
+    // If on initial page without a chatId, pass pending files to onSend;
+    // chat-shell will create the session and upload files before sending.
     const uploadedResults: MessageAttachment[] = [];
     const fileIds: string[] = [];
+    const filesToUpload: { file: File; name: string; localPreviewUrl?: string }[] = [];
 
     for (const pending of attachments) {
       if (pending.uploadedAttachment) {
-        uploadedResults.push(pending.uploadedAttachment);
+        uploadedResults.push({
+          ...pending.uploadedAttachment,
+          localPreviewUrl: pending.previewUrl,
+        });
         fileIds.push(pending.uploadedAttachment.id);
-      } else if (effectiveChatId) {
-        try {
-          const formData = new FormData();
-          formData.append("file", pending.file, pending.name);
-
-          const res = await fetch(`/api/v1/chats/${effectiveChatId}/files`, {
-            method: "POST",
-            body: formData,
-            credentials: "same-origin",
-          });
-
-          if (!res.ok) {
-            const errJson = await res.json().catch(() => ({}));
-            throw new Error(errJson?.error?.message || "Upload failed");
-          }
-
-          const json = await res.json();
-          const uploaded: MessageAttachment = {
-            id: json.data.id,
-            filename: json.data.filename,
-            displayName: json.data.displayName || pending.name,
-            mimeType: json.data.mimeType,
-            sizeBytes: json.data.sizeBytes,
-            isImage: json.data.isImage,
-            url: json.data.url,
-          };
-          uploadedResults.push(uploaded);
-          fileIds.push(uploaded.id);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Upload error";
-          toast(`Failed to upload ${pending.name}: ${msg}`);
-          return;
-        }
+      } else {
+        filesToUpload.push({
+          file: pending.file,
+          name: pending.name,
+          localPreviewUrl: pending.previewUrl,
+        });
       }
     }
 
@@ -434,6 +386,7 @@ export function Composer({
       extendedThinking: thinkingActive,
       fileIds: fileIds.length > 0 ? fileIds : undefined,
       attachments: uploadedResults.length > 0 ? uploadedResults : undefined,
+      filesToUpload: filesToUpload.length > 0 ? filesToUpload : undefined,
       quotes: quotes.length > 0 ? quotes : undefined,
       editChips: editChips.length > 0 ? editChips : undefined,
     });

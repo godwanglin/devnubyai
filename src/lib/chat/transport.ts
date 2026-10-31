@@ -19,10 +19,13 @@ export function errorMessage(err: unknown, fallback: string) {
 export const chatTransport = new DefaultChatTransport({
   api: "/api/v1/chats",
   credentials: "same-origin",
-  // Resumes a generation still running on the server (after a reload); replays from the start
-  prepareReconnectToStreamRequest: ({ id, body }) => ({
-    api: `/api/v1/chats/${(body as { chatId?: string } | undefined)?.chatId || id}/stream`,
-  }),
+  // Resumes a generation still running on the server (after a reload); replays from the start.
+  // Only called when there's an active chatId; on home page (no chat) this is not invoked.
+  prepareReconnectToStreamRequest: ({ id, body }) => {
+    const chatId = (body as { chatId?: string } | undefined)?.chatId || id;
+    if (!chatId) throw new Error("No chatId to resume stream");
+    return { api: `/api/v1/chats/${chatId}/stream` };
+  },
   prepareSendMessagesRequest: ({ id, messages: reqMessages, trigger, messageId, body }) => {
     const reqBody = (body ?? {}) as {
       chatId?: string;

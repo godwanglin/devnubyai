@@ -274,7 +274,7 @@ export function ChatShell() {
   } = useChat({
     id: activeChatId ?? undefined,
     transport: chatTransport,
-    resume: true,
+    resume: Boolean(activeChatId),
     throttle: 30,
     onError: (err) => {
       const quota = parseQuotaError(err);
@@ -427,6 +427,7 @@ export function ChatShell() {
       extendedThinking?: boolean;
       fileIds?: string[];
       attachments?: MessageAttachment[];
+      filesToUpload?: { file: File; name: string; localPreviewUrl?: string }[];
       quotes?: string[];
       editChips?: EditRequestChip[];
     }
@@ -484,7 +485,7 @@ export function ChatShell() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            title: "New chat",
+            title: text.slice(0, 40).trim() || options?.filesToUpload?.[0]?.name || "New chat",
             model: currentModelId || undefined,
           }),
           credentials: "same-origin",
@@ -507,13 +508,54 @@ export function ChatShell() {
         fetchSessions();
       }
 
+      // If there are files pending upload (e.g. from home page), upload them now
+      const finalAttachments: MessageAttachment[] = [...(options?.attachments || [])];
+      const finalFileIds: string[] = [...(options?.fileIds || [])];
+
+      if (options?.filesToUpload && options.filesToUpload.length > 0) {
+        for (const item of options.filesToUpload) {
+          try {
+            const formData = new FormData();
+            formData.append("file", item.file, item.name);
+
+            const uploadRes = await fetch(`/api/v1/chats/${targetChatId}/files`, {
+              method: "POST",
+              body: formData,
+              credentials: "same-origin",
+            });
+
+            if (!uploadRes.ok) {
+              const errJson = await uploadRes.json().catch(() => ({}));
+              throw new Error(errJson?.error?.message || "Upload failed");
+            }
+
+            const json = await uploadRes.json();
+            const uploaded: MessageAttachment = {
+              id: json.data.id,
+              filename: json.data.filename,
+              displayName: json.data.displayName || item.name,
+              mimeType: json.data.mimeType,
+              sizeBytes: json.data.sizeBytes,
+              isImage: json.data.isImage,
+              url: json.data.url,
+              localPreviewUrl: item.localPreviewUrl,
+            };
+            finalAttachments.push(uploaded);
+            finalFileIds.push(uploaded.id);
+          } catch (uploadErr) {
+            toast(errorMessage(uploadErr, `Failed to upload ${item.name}`));
+            return;
+          }
+        }
+      }
+
       lastTargetChatIdRef.current = targetChatId;
       setPendingQuotes([]);
 
       const optimisticMessageId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-      if (options?.attachments?.length) {
-        messageAttachmentsMap.set(optimisticMessageId, options.attachments);
+      if (finalAttachments.length) {
+        messageAttachmentsMap.set(optimisticMessageId, finalAttachments);
       }
       if (options?.quotes?.length) {
         messageQuotesMap.set(optimisticMessageId, options.quotes);
@@ -525,7 +567,7 @@ export function ChatShell() {
           role: "user",
           parts: [{ type: "text", text: textToSend }],
           metadata: {
-            attachments: options?.attachments,
+            attachments: finalAttachments.length ? finalAttachments : undefined,
             quotes: options?.quotes,
           },
         } as never,
@@ -536,9 +578,9 @@ export function ChatShell() {
             reasoningLevel: options?.extendedThinking ? "4" : reasoningLevel || undefined,
             webSearch: options?.webSearch || undefined,
             extendedThinking: options?.extendedThinking || undefined,
-            fileIds: options?.fileIds?.length ? options.fileIds : undefined,
+            fileIds: finalFileIds.length ? finalFileIds : undefined,
             quotes: options?.quotes?.length ? options.quotes : undefined,
-            _attachments: options?.attachments,
+            _attachments: finalAttachments.length ? finalAttachments : undefined,
           },
         }
       );
