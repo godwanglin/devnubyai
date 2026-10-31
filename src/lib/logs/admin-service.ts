@@ -131,22 +131,13 @@ export async function listRoutingAttempts(query: RoutingAttemptsQuery) {
     date: query.date,
     type: "routing",
     search: query.search,
+    outcome: query.outcome,
+    gatewayId: query.gatewayId,
     page: query.page,
     pageSize: query.pageSize,
   });
 
-  // Filter in memory if outcome or gatewayId is provided
-  let filteredItems = result.items;
-  if (query.outcome && query.outcome !== "all") {
-    filteredItems = filteredItems.filter(
-      (item) => String(item.data.outcome).toLowerCase() === query.outcome?.toLowerCase()
-    );
-  }
-  if (query.gatewayId && query.gatewayId !== "all") {
-    filteredItems = filteredItems.filter(
-      (item) => String(item.data.gatewayId) === query.gatewayId
-    );
-  }
+  const filteredItems = result.items;
 
   // Bulk load gateway & model metadata in memory to enrich display labels
   const gatewayIds = Array.from(

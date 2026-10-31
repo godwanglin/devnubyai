@@ -93,6 +93,8 @@ export interface ReadLogsFilter {
   type?: string; // "routing" | "tool" | etc.
   level?: string;
   search?: string;
+  outcome?: string; // routing-specific filter
+  gatewayId?: string; // routing-specific filter
   page?: number;
   pageSize?: number;
 }
@@ -169,6 +171,8 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
   const filterType = filter.type && filter.type !== "all" ? filter.type.toLowerCase() : null;
   const filterLevel = filter.level && filter.level !== "all" ? filter.level.toLowerCase() : null;
   const filterSearch = filter.search ? filter.search.trim().toLowerCase() : null;
+  const filterOutcome = filter.outcome && filter.outcome !== "all" ? filter.outcome.toLowerCase() : null;
+  const filterGatewayId = filter.gatewayId && filter.gatewayId !== "all" ? String(filter.gatewayId) : null;
 
   for await (const line of rl) {
     if (!currentTag) {
@@ -207,6 +211,26 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
               parsedData = JSON.parse(rawBody);
             } catch {
               parsedData = { raw: rawBody };
+            }
+
+            // Outcome filter (e.g. "failed", "success", "fallback")
+            if (filterOutcome) {
+              const itemOutcome = String(parsedData.outcome ?? "").toLowerCase();
+              if (itemOutcome !== filterOutcome) {
+                currentTag = null;
+                bufferLines = [];
+                continue;
+              }
+            }
+
+            // Gateway filter
+            if (filterGatewayId) {
+              const itemGw = String(parsedData.gatewayId ?? "");
+              if (itemGw !== filterGatewayId) {
+                currentTag = null;
+                bufferLines = [];
+                continue;
+              }
             }
 
             entries.push({
