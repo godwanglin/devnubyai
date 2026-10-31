@@ -273,7 +273,9 @@ export function ChatShell() {
     stop,
     status,
   } = useChat({
-    id: activeChatId ?? undefined,
+    // id: activeChatId ?? undefined, // Removed! Our transport handles chatId via body.
+    // Stable id prevents useChat from resetting messages when we navigate from home to /c/[id].
+    id: "devnuby-chat",
     transport: chatTransport,
     resume: Boolean(activeChatId),
     throttle: 30,
