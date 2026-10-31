@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   ArrowUp,
   Mic,
+  MicOff,
   Plus,
   Paperclip,
   Globe,
@@ -20,6 +21,7 @@ import { Popover } from "@/components/ui/popover";
 import { ModelSelector } from "./model-selector";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { cn } from "@/lib/cn";
 import {
   validateUploadCandidate,
@@ -89,13 +91,24 @@ export function Composer({
   notice,
   sendBlocked,
 }: ComposerProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { toast } = useToast();
   const [value, setValue] = useState("");
   const [webActive, setWebActive] = useState(false);
   const [thinkingActive, setThinkingActive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+
+  const speechLang = locale === "id" ? "id-ID" : "en-US";
+  const { isListening, isSupported, toggle } = useSpeechRecognition({
+    lang: speechLang,
+    onResult: (text) => {
+      if (text) setValue(text);
+    },
+    onError: (err) => {
+      if (err !== "no-speech") toast(err);
+    },
+  });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -719,14 +732,22 @@ export function Composer({
               }}
             />
 
-            <button
-              type="button"
-              onClick={() => toast(t("toast.featureUnavailable"))}
-              className="grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-              aria-label={t("composer.voice")}
-            >
-              <Mic className="w-4 h-4" />
-            </button>
+            {isSupported ? (
+              <button
+                type="button"
+                onClick={toggle}
+                className={cn(
+                  "grid place-items-center w-7 h-7 rounded-[6px] transition-colors cursor-pointer",
+                  isListening
+                    ? "bg-red-500/10 text-red-500 hover:bg-red-500/20 animate-pulse"
+                    : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                )}
+                aria-label={t(isListening ? "composer.voiceListening" : "composer.voice")}
+                title={t(isListening ? "composer.voiceListening" : "composer.voice")}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            ) : null}
 
             {disabled && onStop ? (
               <Tooltip content="Stop generation" side="top" align="end">

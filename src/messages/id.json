@@ -209,6 +209,8 @@
     "webSearch": "Pencarian web",
     "extendedThinking": "Pemikiran diperluas",
     "voice": "Input suara",
+    "voiceListening": "Mendengarkan...",
+    "voiceNotSupported": "Browser tidak mendukung input suara",
     "send": "Kirim pesan",
     "enterToSend": "Enter untuk kirim",
     "disclaimer": "Devnuby bisa membuat kesalahan. Periksa kembali informasi yang penting.",

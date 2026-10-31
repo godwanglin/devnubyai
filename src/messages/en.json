@@ -209,6 +209,8 @@
     "webSearch": "Web search",
     "extendedThinking": "Extended thinking",
     "voice": "Voice input",
+    "voiceListening": "Listening...",
+    "voiceNotSupported": "Browser does not support voice input",
     "send": "Send message",
     "enterToSend": "Enter to send",
     "disclaimer": "Devnuby may make mistakes. Verify important information.",
