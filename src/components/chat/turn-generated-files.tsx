@@ -26,6 +26,23 @@ import { useI18n } from "@/providers/i18n-provider";
 import type { ToolActivity } from "@/types";
 import { renderSessionFileIcon } from "./chat-files-panel";
 
+/** Tools whose output is a session file, rendered as a card under the reply. */
+const FILE_TOOLS = new Set([
+  "write_file",
+  "edit_file",
+  "create_document",
+  "create_spreadsheet",
+  "create_presentation",
+]);
+
+/** Running-state label per tool; keys match the ones in tool-activity.tsx. */
+const RUNNING_LABEL_KEY: Record<string, string> = {
+  edit_file: "message.toolEditFile",
+  create_document: "message.toolCreateDocument",
+  create_spreadsheet: "message.toolCreateSpreadsheet",
+  create_presentation: "message.toolCreatePresentation",
+};
+
 export interface TurnGeneratedFilesProps {
   tools?: ToolActivity[];
   chatId?: string;
@@ -37,9 +54,7 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
 
   const fileTools = React.useMemo(() => {
     const list = (tools ?? []).filter(
-      (tool) =>
-        (tool.name === "write_file" || tool.name === "edit_file") &&
-        tool.state !== "error"
+      (tool) => FILE_TOOLS.has(tool.name) && tool.state !== "error"
     );
     // Deduplicate by target filename or file id (keep the latest state)
     const seen = new Set<string>();
@@ -165,7 +180,9 @@ function GeneratedFileArtifactCard({
       ? t("chatFiles.kindWeb")
       : kind === "spreadsheet"
         ? t("chatFiles.kindSpreadsheet")
-        : kind === "code" || kind === "json" || kind === "mermaid" || kind === "svg"
+        : kind === "pptx"
+          ? t("chatFiles.kindPresentation")
+          : kind === "code" || kind === "json" || kind === "mermaid" || kind === "svg"
           ? t("chatFiles.kindCode")
           : t("chatFiles.kindDocument");
 
@@ -228,9 +245,7 @@ function GeneratedFileArtifactCard({
           </p>
           <p className="text-[12px] text-[var(--muted)] truncate">
             {isRunning
-              ? tool.name === "edit_file"
-                ? t("chat.toolEditFile", { target: displayName }) || t("message.toolWriteFile", { target: displayName })
-                : t("message.toolWriteFile", { target: displayName })
+              ? t(RUNNING_LABEL_KEY[tool.name] ?? "message.toolWriteFile", { target: displayName })
               : isError
                 ? tool.error || t("message.toolFailed", { tool: tool.name })
                 : `${categoryLabel} · ${extension.toUpperCase()}${sizeBytes ? ` · ${formatFileSize(sizeBytes)}` : ""}`}
