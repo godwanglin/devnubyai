@@ -161,8 +161,8 @@ CREATE TABLE `catalog_models` (
     UNIQUE INDEX `uq_catalog_models_public_id`(`public_id`),
     INDEX `idx_catalog_models_listing`(`status`, `sort_order`),
     INDEX `idx_catalog_models_provider`(`provider_id`),
-    CONSTRAINT `chk_catalog_models_category` CHECK (`category` IN ('powerful', 'fast')),
-    CONSTRAINT `chk_catalog_models_status` CHECK (`status` IN ('draft', 'active', 'hidden', 'disabled')),
+    CONSTRAINT `chk_catalog_models_category` CHECK (`category` IN ('powerful', 'fast', 'balanced', 'flagship')),
+    CONSTRAINT `chk_catalog_models_status` CHECK (`status` IN ('draft', 'active', 'hidden', 'disabled', 'deprecated')),
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

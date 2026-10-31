@@ -5,22 +5,51 @@ import type {
 } from "../types";
 import type { SseRecord } from "../sse";
 import { streamFromGateway } from "./http";
+import { sanitizeParametersSchema } from "./schema";
+
+function formatResponseContent(
+  content: string | import("../types").MultimodalContentPart[]
+): Array<Record<string, unknown>> {
+  if (typeof content === "string") {
+    return content ? [{ type: "input_text", text: content }] : [];
+  }
+  return content.map((part) => {
+    if (part.type === "text") {
+      return { type: "input_text", text: part.text };
+    }
+    return { type: "input_image", image_url: part.image_url.url };
+  });
+}
 
 /** OpenAI Responses API `POST {base_url}/responses`. */
 function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
-  const system = request.messages.filter((m) => m.role === "system").map((m) => m.content);
+  const system = request.messages
+    .filter((m) => m.role === "system")
+    .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)));
+
   const body: Record<string, unknown> = {
     model: request.model,
     input: request.messages
       .filter((m) => m.role !== "system")
       .flatMap((m) => {
         if (m.role === "tool") {
-          return [{ type: "function_call_output", call_id: m.toolCallId ?? "", output: m.content }];
+          return [
+            {
+              type: "function_call_output",
+              call_id: m.toolCallId ?? "",
+              output: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+            },
+          ];
         }
         const items: Array<Record<string, unknown>> = [];
-        if (m.content) {
-          items.push({ role: m.role, content: m.content });
+        if (typeof m.content === "string") {
+          if (m.content) {
+            items.push({ role: m.role, content: m.content });
+          }
+        } else if (Array.isArray(m.content) && m.content.length > 0) {
+          items.push({ role: m.role, content: formatResponseContent(m.content) });
         }
+
         if (m.toolCalls?.length) {
           for (const call of m.toolCalls) {
             items.push({
@@ -47,8 +76,11 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
       type: "function",
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
+      parameters: sanitizeParametersSchema(tool.parameters as unknown as Record<string, unknown>),
     }));
+    if (request.toolChoice !== undefined) {
+      body.tool_choice = request.toolChoice;
+    }
   }
   return { ...body, ...(request.paramOverrides ?? {}), model: request.model };
 }

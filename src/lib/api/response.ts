@@ -66,8 +66,8 @@ export class ApiError extends Error {
     return new ApiError(409, "CONFLICT", message, details);
   }
 
-  static rateLimited(message = "Too many requests"): ApiError {
-    return new ApiError(429, "RATE_LIMITED", message);
+  static rateLimited(message = "Too many requests", details?: unknown): ApiError {
+    return new ApiError(429, "RATE_LIMITED", message, details);
   }
 
   static modelUnavailable(message = "The model is temporarily unavailable."): ApiError {

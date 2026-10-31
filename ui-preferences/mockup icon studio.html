@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DevNuby Brand &amp; Mockup Studio — Icon, Wordmark, Favicon &amp; Interactive Loader</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #070B16;
+      color: #F0F7FF;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .brand-font {
+      font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    }
+    .checkerboard {
+      background-image: 
+        linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%), 
+        linear-gradient(-45deg, rgba(255,255,255,0.04) 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.04) 75%), 
+        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.04) 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+    .checkerboard-light {
+      background-color: #F8FAFC;
+      background-image: 
+        linear-gradient(45deg, rgba(15,23,42,0.04) 25%, transparent 25%), 
+        linear-gradient(-45deg, rgba(15,23,42,0.04) 25%, transparent 25%), 
+        linear-gradient(45deg, transparent 75%, rgba(15,23,42,0.04) 75%), 
+        linear-gradient(-45deg, transparent 75%, rgba(15,23,42,0.04) 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    }
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+    }
+    .animate-float {
+      animation: floatSlow 3.2s ease-in-out infinite;
+    }
+    @keyframes loaderSquish {
+      0%, 100% { transform: translateY(0) scale(1.06, 0.94); }
+      50% { transform: translateY(-12px) scale(0.95, 1.06); }
+    }
+    .animate-loader-bounce {
+      animation: loaderSquish 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+    }
+    @keyframes progressSlide {
+      0% { transform: translateX(-100%); }
+      50% { transform: translateX(0%); }
+      100% { transform: translateX(100%); }
+    }
+    .animate-progress-bar {
+      animation: progressSlide 1.6s ease-in-out infinite;
+    }
+    @keyframes shadowPulse {
+      0%, 100% { transform: scaleX(1); opacity: 0.45; }
+      50% { transform: scaleX(0.65); opacity: 0.2; }
+    }
+    .animate-shadow-pulse {
+      animation: shadowPulse 0.75s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4 sm:p-6 md:p-8 selection:bg-cyan-500 selection:text-slate-950">
+  <div class="max-w-6xl mx-auto space-y-6">
+    
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#0E1528]/90 border border-cyan-500/25 rounded-2xl p-5 backdrop-blur-md">
+      <div class="flex items-center gap-3.5">
+        <div id="header-mini-icon" class="w-11 h-11 rounded-xl overflow-hidden shadow-lg shadow-cyan-500/25 shrink-0"></div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">DevNuby Brand &amp; Mockup Studio</h1>
+            <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">Interactive Wordmark • Favicon • Loader</span>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-300/80">Logo + Teks <strong class="text-white">DevNuby</strong> interaktif (Hover = Kedip &amp; Glow, Klik = Ketawa + Blush) beserta 4 live mockup</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btn-copy-svg" class="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 active:scale-95 transition font-semibold text-xs sm:text-sm text-white shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          <span id="copy-label">Copy SVG Code</span>
+        </button>
+        <button id="btn-copy-brand-svg" class="px-3.5 py-2.5 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 active:scale-95 transition font-semibold text-xs sm:text-sm text-pink-200 border border-pink-400/30 flex items-center gap-2 cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+          <span id="copy-brand-label">Copy Logo + Text SVG</span>
+        </button>
+        <button id="btn-download-svg" class="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 transition font-semibold text-xs sm:text-sm text-cyan-100 border border-white/15 flex items-center gap-2 cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          <span>Download .SVG</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 1: INTERACTIVE BRANDING LOGO + WORDMARK ("DevNuby") & LIVE MOCKUPS -->
+    <!-- ========================================================================= -->
+    <section class="rounded-3xl border border-cyan-500/30 bg-[#0B1122] p-5 sm:p-6 space-y-6 shadow-2xl shadow-cyan-950/30">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-md bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400/30 text-xs font-bold text-cyan-300 uppercase tracking-wider">Baru</span>
+            <h2 class="text-base sm:text-lg font-extrabold text-white">1. Interactive Branding Logo &amp; Wordmark ("DevNuby")</h2>
+          </div>
+          <p class="text-xs text-slate-300/80 mt-0.5">Arahkan kursor (<strong>Hover</strong>) pada logo <strong>DevNuby</strong> di bawah untuk melihat animasi kedip + efek teks menyala, atau <strong>Klik</strong> untuk melihat maskot ketawa (`&gt; ᴗ &lt;`) + pipi merona!</p>
+        </div>
+        <div class="flex items-center gap-2 self-start sm:self-auto">
+          <button id="btn-brand-bg-toggle" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold text-cyan-200 transition cursor-pointer">
+            Background: Dark Mode
+          </button>
+          <button id="btn-download-brand-svg" class="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-xs font-semibold text-cyan-200 transition cursor-pointer">
+            Unduh Logo+Teks .SVG
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Brand Wordmark Showcase Stage -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        
+        <!-- Horizontal Lockup Stage (7 cols) -->
+        <div id="brand-lockup-card" class="lg:col-span-7 rounded-2xl border border-white/10 checkerboard p-6 sm:p-8 flex flex-col items-center justify-center relative min-h-[210px] transition-colors duration-300">
+          <span class="absolute top-3 left-3.5 text-[11px] mono text-cyan-300/80 bg-black/50 px-2.5 py-0.5 rounded-md border border-white/10">Horizontal Brand Lockup SVG (Hover &amp; Klik Aktif!)</span>
+          
+          <!-- Interactive SVG Wordmark Rendered Here -->
+          <div id="brand-wordmark-stage" class="w-full max-w-[380px] my-3 select-none"></div>
+
+          <div class="mt-2 flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-300/80">
+            <span class="px-2.5 py-1 rounded-full bg-black/40 border border-white/10">✨ <strong>Hover Logo:</strong> Mata berkedip + Teks <em>Nuby</em> bergeser &amp; menyala</span>
+            <span class="px-2.5 py-1 rounded-full bg-black/40 border border-white/10">😆 <strong>Klik Logo:</strong> Ketawa (`&gt; ᴗ &lt;`) + Blush Pipi `//`</span>
+          </div>
+        </div>
+
+        <!-- Stacked Badge & Pill Lockup (5 cols) -->
+        <div class="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+          
+          <!-- Live Website Navbar Mockup -->
+          <div class="rounded-2xl border border-white/10 bg-[#070B14] p-4 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] mono text-slate-400">Mockup: Website Navbar Header</span>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">Hover-Ready</span>
+            </div>
+            <div class="rounded-xl bg-[#0F172A]/95 border border-white/10 px-3.5 py-2.5 flex items-center justify-between shadow-inner">
+              <div id="navbar-brand-stage" class="w-36 cursor-pointer select-none" title="Hover & Klik Logo Navbar!"></div>
+              <div class="hidden sm:flex items-center gap-3 text-[11px] font-medium text-slate-300">
+                <span class="text-cyan-300">Docs</span>
+                <span class="hover:text-white">Git CLI</span>
+                <span class="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-200 border border-cyan-400/30 mono text-[10px]">v2.4</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Compact Sticker / Badge Lockup -->
+          <div class="rounded-2xl border border-white/10 bg-[#070B14] p-4 flex items-center justify-between gap-4">
+            <div class="space-y-1">
+              <span class="text-[11px] mono text-slate-400 block">Mockup: GitHub / README Pill Badge</span>
+              <p class="text-xs text-slate-300/80">Versi kapsul untuk *badge* dokumentasi, *watermark* IDE, atau *splash* CLI.</p>
+            </div>
+            <div id="pill-badge-stage" class="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/90 to-slate-900 border border-cyan-400/30 shadow-lg cursor-pointer group hover:border-cyan-400 transition shrink-0">
+              <div id="pill-mini-icon" class="w-8 h-8 rounded-lg overflow-hidden shrink-0"></div>
+              <div class="pr-1">
+                <div class="brand-font text-sm font-extrabold tracking-tight leading-none">
+                  <span class="text-white">Dev</span><span class="bg-gradient-to-r from-cyan-300 via-sky-400 to-purple-400 bg-clip-text text-transparent group-hover:from-pink-300 group-hover:to-cyan-300 transition-all">Nuby</span>
+                </div>
+                <div class="text-[9px] mono text-cyan-300/75 leading-tight mt-0.5">&gt;_ git agent</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ========================================================================= -->
+      <!-- 3 LIVE MOCKUPS: LOADING INTERACTIVE, FAVICON + DOCK, CLI TERMINAL         -->
+      <!-- ========================================================================= -->
+      <div class="pt-3 border-t border-white/10">
+        <h3 class="text-sm font-extrabold uppercase tracking-wider text-cyan-300 mb-4">2. Live Interactive Mockups (Loading State, Favicon Tab, App Dock &amp; CLI)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          
+          <!-- MOCKUP A: LOADING INTERACTIVE -->
+          <div class="rounded-2xl border border-cyan-500/25 bg-[#080D1A] p-4 flex flex-col justify-between space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs font-bold text-white block">A. Loading Interactive</span>
+                <span class="text-[11px] text-slate-400">Klik mode untuk tes status loader</span>
+              </div>
+              <div class="flex items-center gap-1 bg-black/50 p-1 rounded-lg border border-white/10">
+                <button data-loader="coding" class="loader-mode-btn px-2 py-1 rounded text-[10px] font-semibold bg-cyan-500/30 text-cyan-200 cursor-pointer transition">Coding</button>
+                <button data-loader="git" class="loader-mode-btn px-2 py-1 rounded text-[10px] font-semibold text-slate-300 hover:text-white cursor-pointer transition">Git Push</button>
+                <button data-loader="done" class="loader-mode-btn px-2 py-1 rounded text-[10px] font-semibold text-slate-300 hover:text-white cursor-pointer transition">Done!</button>
+              </div>
+            </div>
+
+            <!-- Interactive Loader Stage -->
+            <div id="loader-stage-box" class="rounded-xl bg-[#0B1325] border border-white/10 p-5 flex flex-col items-center justify-center min-h-[175px] relative overflow-hidden cursor-pointer" title="Klik untuk ganti status loading!">
+              <div id="loader-icon-wrap" class="w-16 h-16 animate-loader-bounce"></div>
+              <div class="w-10 h-2 rounded-full bg-cyan-400/25 blur-[2px] mt-1 animate-shadow-pulse"></div>
+              
+              <!-- Brand + Status Text -->
+              <div class="mt-3 text-center">
+                <div class="flex items-center justify-center gap-1.5">
+                  <span class="brand-font text-xs font-extrabold text-white">Dev<span class="text-cyan-300">Nuby</span></span>
+                  <span id="loader-status-badge" class="text-[10px] mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">&gt;_ compiling...</span>
+                </div>
+                <p id="loader-subtext" class="text-[11px] text-slate-400 mt-1">Merapikan branch &amp; mengecek spec...</p>
+              </div>
+
+              <!-- Animated Progress Bar -->
+              <div class="w-44 h-1.5 rounded-full bg-white/10 overflow-hidden mt-3">
+                <div id="loader-bar-fill" class="w-full h-full bg-gradient-to-r from-cyan-400 via-indigo-400 to-pink-400 animate-progress-bar"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MOCKUP B: BROWSER TAB FAVICON (16px/32px) & MACOS DOCK -->
+          <div class="rounded-2xl border border-cyan-500/25 bg-[#080D1A] p-4 flex flex-col justify-between space-y-4">
+            <div>
+              <span class="text-xs font-bold text-white block">B. Browser Favicon &amp; OS App Dock</span>
+              <span class="text-[11px] text-slate-400">Keterbacaan tajam di ukuran 16×16px &amp; 48×48px</span>
+            </div>
+
+            <div class="space-y-3.5 my-auto">
+              <!-- Browser Tab Mockup -->
+              <div class="rounded-xl bg-[#111827] border border-white/10 p-2.5 space-y-2">
+                <div class="flex items-center gap-2">
+                  <div class="flex gap-1.5 pl-1">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400/80"></span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
+                  </div>
+                  <!-- Active Tab with 16x16 Favicon -->
+                  <div class="flex items-center gap-2 bg-[#1E293B] border border-white/10 px-3 py-1.5 rounded-lg flex-1 min-w-0">
+                    <div id="favicon-16-stage" class="w-4 h-4 rounded-[4px] overflow-hidden shrink-0"></div>
+                    <span class="text-[11px] font-medium text-white truncate">DevNuby — Cute Git &amp; AI Companion</span>
+                    <span class="text-[10px] text-slate-400 ml-auto">×</span>
+                  </div>
+                </div>
+                <!-- URL Bar -->
+                <div class="flex items-center gap-2 bg-[#0B1020] px-3 py-1 rounded-md border border-white/5 text-[11px] mono text-slate-400">
+                  <span class="text-emerald-400">🔒</span>
+                  <span class="text-slate-300">https://</span><span class="text-cyan-300 font-semibold">devnuby.dev</span><span>/studio</span>
+                </div>
+              </div>
+
+              <!-- macOS / Desktop App Dock Mockup -->
+              <div class="rounded-xl bg-gradient-to-b from-slate-900/90 to-black/90 border border-white/10 p-3 flex flex-col items-center">
+                <span class="text-[10px] mono text-slate-400 mb-2">Hover App Icon di Dock:</span>
+                <div class="px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 flex items-center gap-3.5">
+                  <!-- VS Code dummy icon -->
+                  <div class="w-10 h-10 rounded-xl bg-sky-600/30 border border-sky-400/30 flex items-center justify-center text-xs mono font-bold text-sky-300 opacity-70">{ }</div>
+                  <!-- DevNuby Interactive App Icon in Dock -->
+                  <div class="relative group flex flex-col items-center">
+                    <div class=" -top-7 px-2 py-0.5 rounded bg-black/90 border border-white/15 text-[10px] font-semibold text-white opacity-0 group-hover:opacity-100 transition pointer-events-none whitespace-nowrap">DevNuby</div>
+                    <div id="dock-icon-stage" class="w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-cyan-500/30 hover:scale-110 transition-transform duration-200 cursor-pointer"></div>
+                    <span class="w-1 h-1 rounded-full bg-cyan-400 mt-1"></span>
+                  </div>
+                  <!-- Terminal dummy icon -->
+                  <div class="w-10 h-10 rounded-xl bg-slate-800 border border-white/15 flex items-center justify-center text-xs mono font-bold text-emerald-400 opacity-70">&gt;_</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MOCKUP C: CLI / IDE TERMINAL SPLASH CARD -->
+          <div class="rounded-2xl border border-cyan-500/25 bg-[#080D1A] p-4 flex flex-col justify-between space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs font-bold text-white block">C. Terminal CLI &amp; Splash Card</span>
+                <span class="text-[11px] text-slate-400">Tampilan pada kartu produk &amp; CLI</span>
+              </div>
+              <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] mono">npx devnuby</span>
+            </div>
+
+            <div class="rounded-xl bg-[#060913] border border-white/10 p-3.5 font-mono text-xs space-y-3 my-auto">
+              <div class="flex items-center justify-between border-b border-white/10 pb-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2.5 h-2.5 rounded-full bg-rose-500/75"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-amber-400/75"></span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400/75"></span>
+                  <span class="text-[10px] text-slate-400 ml-1">zsh — devnuby-cli</span>
+                </div>
+                <span class="text-[10px] text-cyan-400">main*</span>
+              </div>
+
+              <!-- Terminal Splash Box -->
+              <div class="p-2.5 rounded-lg bg-cyan-950/25 border border-cyan-500/20 flex items-center gap-3">
+                <div id="cli-icon-stage" class="w-11 h-11 rounded-xl overflow-hidden shrink-0"></div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="brand-font font-extrabold text-sm text-white">Dev<span class="text-cyan-300">Nuby</span></span>
+                    <span class="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300">v2.4.0</span>
+                  </div>
+                  <p class="text-[10px] text-slate-300/80 truncate">Cute Anime Git &amp; Prompt Assistant</p>
+                </div>
+              </div>
+
+              <div class="space-y-1 text-[11px] leading-relaxed">
+                <div><span class="text-emerald-400">➜</span> <span class="text-cyan-300">~</span> <span class="text-white">devnuby commit --smart</span></div>
+                <div class="text-slate-400">✨ Analyzing staged files...</div>
+                <div class="text-pink-300">✔ Commit ready: "feat: cute anime icon"</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 2: ICON CUSTOMIZER & SVG CODE EXPORTER                            -->
+    <!-- ========================================================================= -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Left Column: Interactive Hero Preview Stage -->
+      <div class="lg:col-span-7 space-y-6">
+        
+        <!-- Big Hero Stage -->
+        <div class="relative rounded-3xl border border-cyan-500/25 bg-[#0B1020] p-6 sm:p-8 flex flex-col items-center justify-center min-h-[380px] checkerboard overflow-hidden">
+          <div class="absolute top-4 left-4 flex items-center gap-2 flex-wrap">
+            <span class="px-2.5 py-1 rounded-lg bg-black/50 border border-white/10 text-xs mono text-cyan-200/90" id="active-preset-badge">Preset: Cyber Mochi (DevNuby DNA)</span>
+            <span id="interaction-status-pill" class="px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-400/30 text-xs font-semibold text-pink-200 transition-all">Coba Hover &amp; Klik Ikon!</span>
+          </div>
+          <div class="absolute top-4 right-4 flex items-center gap-1.5 bg-black/50 border border-white/10 rounded-lg p-1">
+            <button id="btn-test-laugh" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-pink-500/30 hover:bg-pink-500/45 text-pink-200 transition cursor-pointer">Demo Ketawa</button>
+            <button id="btn-toggle-float" class="px-2.5 py-1 rounded-md text-xs font-medium bg-cyan-500/30 text-cyan-200 transition cursor-pointer">Float: ON</button>
+          </div>
+
+          <!-- Rendered Main SVG (Hover to Blink, Click to Laugh + Blush!) -->
+          <div id="main-svg-stage" title="Hover untuk kedip-kedip, Klik untuk ketawa!" class="mt-6 w-48 h-48 sm:w-56 sm:h-56 animate-float transition-transform duration-300 drop-shadow-[0_20px_35px_rgba(56,189,248,0.28)] select-none"></div>
+
+          <p class="mt-3 text-xs text-cyan-200/75 font-medium text-center">
+            ✨ <strong>Hover</strong> di atas karakter untuk kedip-kedip • <strong>Klik / Tap</strong> untuk ekspresi ketawa (`&gt; ᴗ &lt;`) + pipi merona!
+          </p>
+
+          <!-- Multi-Size Comparison Strip -->
+          <div class="mt-5 w-full pt-5 border-t border-white/10 flex flex-wrap items-center justify-center gap-6 sm:gap-8">
+            <div class="flex flex-col items-center gap-1.5">
+              <div id="preview-64" class="w-16 h-16 rounded-2xl overflow-hidden shadow-md"></div>
+              <span class="text-[11px] mono text-slate-300/75">64×64px</span>
+            </div>
+            <div class="flex flex-col items-center gap-1.5">
+              <div id="preview-40" class="w-10 h-10 rounded-xl overflow-hidden shadow-md"></div>
+              <span class="text-[11px] mono text-slate-300/75">40×40px</span>
+            </div>
+            <div class="flex flex-col items-center gap-1.5">
+              <div id="preview-24" class="w-6 h-6 rounded-md overflow-hidden shadow-sm"></div>
+              <span class="text-[11px] mono text-slate-300/75">24×24px</span>
+            </div>
+            <!-- Original Comparison -->
+            <div class="flex flex-col items-center gap-1.5 pl-4 border-l border-white/10 opacity-75 hover:opacity-100 transition">
+              <div class="w-12 h-12 rounded-xl overflow-hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+                  <defs>
+                    <radialGradient id="old-blob" gradientUnits="userSpaceOnUse" cx="24" cy="22" r="40">
+                      <stop offset="0" stop-color="#a5f3fc"/>
+                      <stop offset=".42" stop-color="#3b82f6"/>
+                      <stop offset="1" stop-color="#6d28d9"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="64" height="64" rx="18" fill="#0b1020"/>
+                  <g transform="rotate(-6 32 33)">
+                    <circle cx="40" cy="14" r="4.6" fill="url(#old-blob)"/>
+                    <path fill="url(#old-blob)" d="M32 14C40 14 45 17 48.5 22C52.5 28 52 38 48 44C44 50 37 52 31 52C24 52 17 50 14 43C11 36 12 27 17 21C20.5 16.5 26 14 32 14Z"/>
+                    <ellipse cx="24" cy="21.5" rx="7" ry="3.4" transform="rotate(-35 24 21.5)" fill="#fff" opacity=".35"/>
+                    <path d="M23 29L30 34.5L23 40" stroke="#0b1020" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M35 41H43" stroke="#0b1020" stroke-width="4.2" stroke-linecap="round"/>
+                  </g>
+                </svg>
+              </div>
+              <span class="text-[11px] mono text-slate-400">Before</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Theme Customizer & Live SVG Code -->
+      <div class="lg:col-span-5 space-y-5">
+        
+        <!-- Customizer Panel -->
+        <div class="rounded-3xl border border-cyan-500/20 bg-[#0E1528] p-5 space-y-4">
+          
+          <!-- Face Expression Picker -->
+          <div>
+            <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-300 mb-2.5">Pilih Wajah Default (Semua Mockup Ikut Berubah!)</h2>
+            <div class="grid grid-cols-2 gap-2" id="face-buttons">
+              <button data-face="wink-omega" class="face-btn px-3 py-2 rounded-xl border border-cyan-400 bg-cyan-500/20 text-left transition cursor-pointer">
+                <div class="text-xs font-bold text-white mono">&gt; ω ●_</div>
+                <div class="text-[11px] text-cyan-100/75">Anime Wink + Mochi Cat</div>
+              </button>
+              <button data-face="starry-kawaii" class="face-btn px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer">
+                <div class="text-xs font-bold text-white mono">● ◡ ●_</div>
+                <div class="text-[11px] text-slate-300/75">Big Glossy Anime Eyes</div>
+              </button>
+              <button data-face="happy-chevrons" class="face-btn px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer">
+                <div class="text-xs font-bold text-white mono">&gt; ᴗ &lt;_</div>
+                <div class="text-[11px] text-slate-300/75">Excited Chibi Laugh</div>
+              </button>
+              <button data-face="smug-dev" class="face-btn px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer">
+                <div class="text-xs font-bold text-white mono">● ‿ &lt;_</div>
+                <div class="text-[11px] text-slate-300/75">Playful Dev Smirk</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Silhouette Picker -->
+          <div class="pt-2 border-t border-white/10">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-300 mb-2.5">Pilih Bentuk Tubuh (Siluet Orisinal)</h2>
+            <div class="grid grid-cols-3 gap-2" id="shape-buttons">
+              <button data-shape="mochi-git" class="shape-btn px-2.5 py-2 rounded-xl border border-cyan-400 bg-cyan-500/20 text-center transition cursor-pointer">
+                <div class="text-xs font-bold text-white">Mochi Git</div>
+                <div class="text-[10px] text-cyan-100/70">Squishy + Branch</div>
+              </button>
+              <button data-shape="neko-byte" class="shape-btn px-2.5 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-center transition cursor-pointer">
+                <div class="text-xs font-bold text-white">Neko-Nub</div>
+                <div class="text-[10px] text-slate-300/70">Telinga Chibi</div>
+              </button>
+              <button data-shape="sprout-slime" class="shape-btn px-2.5 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-center transition cursor-pointer">
+                <div class="text-xs font-bold text-white">Droplet Blob</div>
+                <div class="text-[10px] text-slate-300/70">Klasik Bulat</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Color Palette Picker -->
+          <div class="pt-2 border-t border-white/10">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-cyan-300 mb-2.5">Pilih Palet Warna Brand</h2>
+            <div class="grid grid-cols-2 gap-2" id="preset-buttons">
+              <button data-preset="kiro-violet" class="preset-btn p-2.5 rounded-xl border border-cyan-400 bg-cyan-500/20 text-left transition cursor-pointer">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-cyan-300 via-blue-400 to-purple-500 inline-block"></span>
+                  <span class="text-xs font-bold text-white">Kiro Classic</span>
+                </div>
+                <p class="text-[10px] text-slate-300/75">Electric Violet + Creamy White</p>
+              </button>
+
+              <button data-preset="obsidian-neon" class="preset-btn p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-pink-300 via-fuchsia-400 to-indigo-500 inline-block"></span>
+                  <span class="text-xs font-bold text-white">Dark Kiro Neon</span>
+                </div>
+                <p class="text-[10px] text-slate-300/75">Obsidian Bg + Lilac Ghost</p>
+              </button>
+
+              <button data-preset="acid-cyber" class="preset-btn p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-emerald-200 via-teal-300 to-cyan-500 inline-block"></span>
+                  <span class="text-xs font-bold text-white">Gen-Z Acid Pop</span>
+                </div>
+                <p class="text-[10px] text-slate-300/75">Deep Indigo + Cyber Lime</p>
+              </button>
+
+              <button data-preset="sunset-chill" class="preset-btn p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer">
+                <div class="flex items-center gap-2 mb-0.5">
+                  <span class="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-amber-200 via-orange-300 to-rose-500 inline-block"></span>
+                  <span class="text-xs font-bold text-white">Hyper Peach</span>
+                </div>
+                <p class="text-[10px] text-slate-300/75">Vibrant Berry + Warm Glow</p>
+              </button>
+            </div>
+          </div>
+
+          <!-- Toggles -->
+          <div class="pt-2 border-t border-white/10 space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-300">Detail Tambahan</h3>
+            <div class="flex flex-wrap gap-2">
+              <button id="toggle-blush" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/25 border border-cyan-400/40 text-cyan-100 cursor-pointer transition">Blush Pipi: ON</button>
+              <button id="toggle-nub" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/25 border border-cyan-400/40 text-cyan-100 cursor-pointer transition">Floating Nub: ON</button>
+              <button id="toggle-blink" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/15 text-slate-200 cursor-pointer transition">Animasi Kursor `_`: OFF</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SVG Code Output Box with Mode Switcher -->
+        <div class="rounded-3xl border border-cyan-500/20 bg-[#080C18] p-4 flex flex-col">
+          <div class="flex items-center justify-between gap-2 mb-2.5 flex-wrap">
+            <div class="flex items-center gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10">
+              <button id="tab-code-icon" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/25 text-cyan-200 cursor-pointer transition">Icon SVG (64×64)</button>
+              <button id="tab-code-brand" class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-300 hover:text-white cursor-pointer transition">Logo + Text DevNuby SVG</button>
+            </div>
+            <span id="copy-toast" class="text-xs font-semibold text-emerald-400 opacity-0 transition-opacity">Tersalin ke Clipboard!</span>
+          </div>
+          <pre class="w-full h-44 overflow-auto rounded-xl bg-black/60 border border-white/10 p-3 text-[11px] leading-relaxed mono text-cyan-100 select-all"><code id="svg-code-display"></code></pre>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const presets = {
+      'kiro-violet': {
+        name: 'Cyber Mochi (DevNuby DNA)',
+        bgStops: ['#131B36', '#0B1022', '#181030'],
+        borderStroke: '#38BDF8',
+        auraColor: '#38BDF8',
+        bodyStops: ['#ECFEFF', '#A5F3FC', '#818CF8', '#A855F7'],
+        shadeStop: '#4338CA',
+        shadowColor: '#050814',
+        promptStroke: '#0F172A',
+        eyeSparkle: '#A5F3FC',
+        cursorStops: ['#F472B6', '#FB7185'],
+        blushColor: '#F43F5E',
+        branchColor: '#A5F3FC',
+        wordmarkGrad: ['#38BDF8', '#818CF8', '#E879F9']
+      },
+      'obsidian-neon': {
+        name: 'Sakura Berry Chibi',
+        bgStops: ['#261029', '#14091D', '#0D0714'],
+        borderStroke: '#F472B6',
+        auraColor: '#F472B6',
+        bodyStops: ['#FFF1F2', '#FBCFE8', '#E879F9', '#9333EA'],
+        shadeStop: '#701A75',
+        shadowColor: '#09030E',
+        promptStroke: '#1E0924',
+        eyeSparkle: '#FBCFE8',
+        cursorStops: ['#38BDF8', '#818CF8'],
+        blushColor: '#E11D48',
+        branchColor: '#FBCFE8',
+        wordmarkGrad: ['#F472B6', '#E879F9', '#818CF8']
+      },
+      'acid-cyber': {
+        name: 'Matcha Mint Sprite',
+        bgStops: ['#0D2422', '#081518', '#0A1120'],
+        borderStroke: '#34D399',
+        auraColor: '#34D399',
+        bodyStops: ['#F0FDF4', '#A7F3D0', '#38BDF8', '#6366F1'],
+        shadeStop: '#0F766E',
+        shadowColor: '#02080A',
+        promptStroke: '#06201E',
+        eyeSparkle: '#A7F3D0',
+        cursorStops: ['#FBBF24', '#F97316'],
+        blushColor: '#FB7185',
+        branchColor: '#A7F3D0',
+        wordmarkGrad: ['#34D399', '#38BDF8', '#818CF8']
+      },
+      'sunset-chill': {
+        name: 'Yuzu Peach Mochi',
+        bgStops: ['#2B1222', '#170B18', '#1F102B'],
+        borderStroke: '#FB923C',
+        auraColor: '#FB7185',
+        bodyStops: ['#FFFBEB', '#FDE68A', '#FDA4AF', '#EC4899'],
+        shadeStop: '#9D174D',
+        shadowColor: '#12040B',
+        promptStroke: '#27091C',
+        eyeSparkle: '#FDE68A',
+        cursorStops: ['#38BDF8', '#A855F7'],
+        blushColor: '#E11D48',
+        branchColor: '#FDE68A',
+        wordmarkGrad: ['#FBBF24', '#FB7185', '#EC4899']
+      }
+    };
+
+    let state = {
+      preset: 'kiro-violet',
+      face: 'wink-omega',
+      shape: 'mochi-git',
+      showBlush: true,
+      showNub: true,
+      blinkCursor: false,
+      floatStage: true,
+      isLaughingDemo: false,
+      brandLightBg: false,
+      loaderMode: 'coding',
+      codeTab: 'icon'
+    };
+
+    let laughTimeout = null;
+
+    function getShapePaths(shapeType, cfg, showNub, idPrefix) {
+      let bodyPath = '';
+      let nubMarkup = '';
+
+      if (shapeType === 'mochi-git') {
+        bodyPath = 'M31.5 15.5C41.5 15.5 47.8 21.2 50.2 30.2C52.4 38.4 49.8 46.8 42.5 49.8C38.5 51.4 35 51.8 31.5 51.8C28 51.8 24.5 51.4 20.5 49.8C13.2 46.8 10.6 38.4 12.8 30.2C15.2 21.2 21.5 15.5 31.5 15.5Z';
+        if (showNub) {
+          nubMarkup = `
+      <g class="dn-antenna">
+        <path d="M37 18C39 14.5 41.5 13 44 12.5" stroke="${cfg.branchColor}" stroke-width="2.6" stroke-linecap="round"/>
+        <circle cx="44.5" cy="12" r="4.2" fill="url(#dn-body)"/>
+        <circle cx="43.3" cy="10.8" r="1.4" fill="#FFFFFF" opacity="0.95"/>
+        <circle cx="35.5" cy="10.5" r="2.3" fill="${cfg.branchColor}"/>
+      </g>`;
+        }
+      } else if (shapeType === 'neko-byte') {
+        bodyPath = 'M31.5 17C35.2 17 37.8 14.2 40.8 12.8C43.2 11.7 45.5 13.2 45.8 16C46.2 19.5 48.5 24.2 50 30.5C51.8 38.2 49.5 46.8 42.2 49.8C38.4 51.3 35 51.8 31.5 51.8C28 51.8 24.6 51.3 20.8 49.8C13.5 46.8 11.2 38.2 13 30.5C14.5 24.2 16.8 19.5 17.2 16C17.5 13.2 19.8 11.7 22.2 12.8C25.2 14.2 27.8 17 31.5 17Z';
+        if (showNub) {
+          nubMarkup = `
+      <g class="dn-antenna">
+        <circle cx="48.5" cy="12.5" r="3.4" fill="url(#dn-body)"/>
+        <circle cx="47.6" cy="11.6" r="1.1" fill="#FFFFFF" opacity="0.95"/>
+      </g>`;
+        }
+      } else {
+        bodyPath = 'M32 14.5C40.5 14.5 46.2 18.8 49.2 26.5C52.2 34.2 51.2 43.8 45.5 48.5C41.5 51.8 36.5 52.2 31.5 52.2C25.2 52.2 18.8 50.8 15.2 45.5C11.5 40.2 11.8 30.5 16.2 23.2C19.8 17.2 25.2 14.5 32 14.5Z';
+        if (showNub) {
+          nubMarkup = `
+      <g class="dn-antenna">
+        <circle cx="42.5" cy="12.5" r="4.4" fill="url(#dn-body)"/>
+        <circle cx="41.2" cy="11.2" r="1.4" fill="#FFFFFF" opacity="0.95"/>
+      </g>`;
+        }
+      }
+      return { bodyPath, nubMarkup };
+    }
+
+    function getFaceMarkup(faceType, cfg) {
+      if (faceType === 'wink-omega') {
+        return `
+        <g class="dn-eyes-normal">
+          <path d="M20.5 29.5L26.8 33.8L20.5 38.1" stroke="${cfg.promptStroke}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <ellipse cx="40.5" cy="33.8" rx="3.8" ry="4.4" fill="${cfg.promptStroke}"/>
+          <circle cx="39.1" cy="32.1" r="1.5" fill="#FFFFFF"/>
+          <circle cx="41.8" cy="35.3" r="0.8" fill="${cfg.eyeSparkle}"/>
+        </g>
+        <path d="M29.2 37.8C29.8 39.6 31.5 39.8 32.3 38.2C33.1 39.8 34.8 39.6 35.4 37.8" stroke="${cfg.promptStroke}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+      } else if (faceType === 'starry-kawaii') {
+        return `
+        <g class="dn-eyes-normal">
+          <ellipse cx="23.2" cy="33.8" rx="3.8" ry="4.5" fill="${cfg.promptStroke}"/>
+          <circle cx="21.8" cy="32.0" r="1.5" fill="#FFFFFF"/>
+          <circle cx="24.5" cy="35.3" r="0.8" fill="${cfg.eyeSparkle}"/>
+          <ellipse cx="40.2" cy="33.8" rx="3.8" ry="4.5" fill="${cfg.promptStroke}"/>
+          <circle cx="38.8" cy="32.0" r="1.5" fill="#FFFFFF"/>
+          <circle cx="41.5" cy="35.3" r="0.8" fill="${cfg.eyeSparkle}"/>
+        </g>
+        <path d="M29.5 37.8C30.6 39.8 32.8 39.8 33.9 37.8" stroke="${cfg.promptStroke}" stroke-width="2.5" stroke-linecap="round"/>`;
+      } else if (faceType === 'happy-chevrons') {
+        return `
+        <g class="dn-eyes-normal">
+          <path d="M20.2 30.2L26.2 34.0L20.2 37.8" stroke="${cfg.promptStroke}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M43.2 30.2L37.2 34.0L43.2 37.8" stroke="${cfg.promptStroke}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <path d="M29.2 37.5H34.2C34.2 40.5 29.2 40.5 29.2 37.5Z" fill="#F43F5E" stroke="${cfg.promptStroke}" stroke-width="2" stroke-linejoin="round"/>`;
+      } else {
+        return `
+        <g class="dn-eyes-normal">
+          <ellipse cx="23.2" cy="33.8" rx="3.8" ry="4.4" fill="${cfg.promptStroke}"/>
+          <circle cx="21.8" cy="32.1" r="1.5" fill="#FFFFFF"/>
+          <circle cx="24.5" cy="35.3" r="0.8" fill="${cfg.eyeSparkle}"/>
+          <path d="M43.0 29.8L37.0 33.8L43.0 37.8" stroke="${cfg.promptStroke}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <path d="M29.2 38.2C31.2 39.6 33.5 38.8 34.6 37.2" stroke="${cfg.promptStroke}" stroke-width="2.5" stroke-linecap="round"/>`;
+      }
+    }
+
+    function buildSVG(cfg, stateObj, idPrefix = 'dn') {
+      const { bodyPath, nubMarkup } = getShapePaths(stateObj.shape, cfg, stateObj.showNub, idPrefix);
+      const blinkAnim = stateObj.blinkCursor ? `<animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite"/>` : '';
+      const faceNormalMarkup = getFaceMarkup(stateObj.face, cfg);
+      const baseBlushOpacity = stateObj.showBlush ? '0.42' : '0';
+      const svgClass = stateObj.isLaughingDemo ? 'devnuby-svg is-laughing' : 'devnuby-svg';
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="DevNuby" class="${svgClass}">
+  <style>
+    .devnuby-svg { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+    .dn-mascot { transform-origin: 32px 36px; transform: rotate(-4deg); transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .devnuby-svg:hover .dn-mascot { transform: rotate(-2deg) translateY(-1.5px) scale(1.03); }
+    .devnuby-svg:hover .dn-eyes-normal { transform-origin: 32px 33.8px; animation: dnBlink 1.3s ease-in-out infinite; }
+    .devnuby-svg:hover .dn-antenna { transform-origin: 37px 18px; animation: dnWiggle 0.9s ease-in-out infinite alternate; }
+    .dn-face-laugh { opacity: 0; transition: opacity 0.15s ease; pointer-events: none; }
+    .dn-blush { opacity: ${baseBlushOpacity}; transform-origin: 32px 37.8px; transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .devnuby-svg:active .dn-mascot, .devnuby-svg.is-laughing .dn-mascot { animation: dnLaughBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate; }
+    .devnuby-svg:active .dn-face-normal, .devnuby-svg.is-laughing .dn-face-normal { opacity: 0; }
+    .devnuby-svg:active .dn-face-laugh, .devnuby-svg.is-laughing .dn-face-laugh { opacity: 1; }
+    .devnuby-svg:active .dn-blush, .devnuby-svg.is-laughing .dn-blush { opacity: 0.95; transform: scale(1.18); }
+    @keyframes dnBlink { 0%, 18%, 36%, 100% { transform: scaleY(1); } 9%, 27% { transform: scaleY(0.08); } }
+    @keyframes dnWiggle { 0% { transform: rotate(0deg); } 100% { transform: rotate(8deg) translateY(-1px); } }
+    @keyframes dnLaughBounce { 0% { transform: rotate(-4deg) translateY(0px) scale(1.04, 0.96); } 100% { transform: rotate(3deg) translateY(-3.5px) scale(0.97, 1.05); } }
+  </style>
+  <defs>
+    <linearGradient id="dn-bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.bgStops[0]}"/>
+      <stop offset="0.55" stop-color="${cfg.bgStops[1]}"/>
+      <stop offset="1" stop-color="${cfg.bgStops[2]}"/>
+    </linearGradient>
+    <radialGradient id="dn-aura" cx="32" cy="34" r="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.auraColor}" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="${cfg.auraColor}" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="${cfg.bgStops[1]}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="dn-body" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.bodyStops[0]}"/>
+      <stop offset="0.48" stop-color="${cfg.bodyStops[1]}"/>
+      <stop offset="0.82" stop-color="${cfg.bodyStops[2]}"/>
+      <stop offset="1" stop-color="${cfg.bodyStops[3]}"/>
+    </linearGradient>
+    <linearGradient id="dn-shade" x1="32" y1="34" x2="32" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.shadeStop}" stop-opacity="0"/>
+      <stop offset="1" stop-color="${cfg.shadeStop}" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="dn-prompt-accent" x1="34" y1="38" x2="46" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.cursorStops[0]}"/>
+      <stop offset="1" stop-color="${cfg.cursorStops[1]}"/>
+    </linearGradient>
+    <filter id="dn-shadow" x="6" y="6" width="52" height="52" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="3.5" flood-color="${cfg.shadowColor}" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#dn-bg)"/>
+  <rect x="1" y="1" width="62" height="62" rx="17" stroke="${cfg.borderStroke}" stroke-opacity="0.22" stroke-width="1.5"/>
+  <circle cx="32" cy="34" r="27" fill="url(#dn-aura)"/>
+  <g filter="url(#dn-shadow)">
+    <g class="dn-mascot">${nubMarkup}
+      <path fill="url(#dn-body)" d="${bodyPath}"/>
+      <path fill="url(#dn-shade)" d="${bodyPath}"/>
+      <ellipse cx="23.5" cy="21.5" rx="6.5" ry="3" transform="rotate(-25 23.5 21.5)" fill="#FFFFFF" opacity="0.88"/>
+      <circle cx="17.5" cy="25.5" r="1.4" fill="#FFFFFF" opacity="0.75"/>
+      <g class="dn-blush">
+        <ellipse cx="18.2" cy="37.8" rx="3.8" ry="2.2" fill="${cfg.blushColor}"/>
+        <ellipse cx="44.8" cy="37.8" rx="3.8" ry="2.2" fill="${cfg.blushColor}"/>
+        <path d="M17.0 38.5L18.1 37.0M18.9 38.6L20.0 37.1" stroke="#FFE4E6" stroke-width="1" stroke-linecap="round"/>
+        <path d="M43.6 38.5L44.7 37.0M45.5 38.6L46.6 37.1" stroke="#FFE4E6" stroke-width="1" stroke-linecap="round"/>
+      </g>
+      <g class="dn-face-normal">${faceNormalMarkup}
+      </g>
+      <g class="dn-face-laugh">
+        <path d="M19.8 30.0L26.2 33.8L19.8 37.6" stroke="${cfg.promptStroke}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M43.6 30.0L37.2 33.8L43.6 37.6" stroke="${cfg.promptStroke}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M28.5 37.2H35.1C35.1 41.8 28.5 41.8 28.5 37.2Z" fill="#F43F5E" stroke="${cfg.promptStroke}" stroke-width="2.2" stroke-linejoin="round"/>
+        <path d="M30.0 39.2C31.0 38.3 32.6 38.3 33.6 39.2" stroke="#FDA4AF" stroke-width="1.6" stroke-linecap="round"/>
+      </g>
+      <path d="M38.2 43.2H44.2" stroke="url(#dn-prompt-accent)" stroke-width="3.2" stroke-linecap="round">${blinkAnim}</path>
+    </g>
+  </g>
+</svg>`;
+    }
+
+    // Build Interactive Branding Logo + "DevNuby" Wordmark SVG (268x64)
+    function buildBrandWordmarkSVG(cfg, stateObj, idPrefix = 'dn-brand') {
+      const { bodyPath, nubMarkup } = getShapePaths(stateObj.shape, cfg, stateObj.showNub, idPrefix);
+      const faceNormalMarkup = getFaceMarkup(stateObj.face, cfg);
+      const baseBlushOpacity = stateObj.showBlush ? '0.42' : '0';
+      const devTextColor = stateObj.brandLightBg ? '#0F172A' : '#FFFFFF';
+      const subTextColor = stateObj.brandLightBg ? '#475569' : '#94A3B8';
+      const badgeBg = stateObj.brandLightBg ? '#F1F5F9' : '#131C33';
+      const svgClass = stateObj.isLaughingDemo ? 'devnuby-brand-svg is-laughing' : 'devnuby-brand-svg';
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 268 64" fill="none" role="img" aria-label="DevNuby Brand Logo" class="${svgClass}">
+  <style>
+    .devnuby-brand-svg { cursor: pointer; user-select: none; overflow: visible; }
+    .dn-mascot { transform-origin: 32px 36px; transform: rotate(-4deg); transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .dn-wordmark-group { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .dn-nuby-dot { transform-origin: 205px 13px; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .devnuby-brand-svg:hover .dn-mascot { transform: rotate(0deg) translateY(-2px) scale(1.05); }
+    .devnuby-brand-svg:hover .dn-eyes-normal { transform-origin: 32px 33.8px; animation: dnBlink 1.2s ease-in-out infinite; }
+    .devnuby-brand-svg:hover .dn-antenna { transform-origin: 37px 18px; animation: dnWiggle 0.8s ease-in-out infinite alternate; }
+    .devnuby-brand-svg:hover .dn-wordmark-group { transform: translateX(3px); }
+    .devnuby-brand-svg:hover .dn-nuby-dot { transform: translateY(-3px) scale(1.25); }
+    .dn-face-laugh { opacity: 0; transition: opacity 0.15s ease; pointer-events: none; }
+    .dn-blush { opacity: ${baseBlushOpacity}; transform-origin: 32px 37.8px; transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .devnuby-brand-svg:active .dn-mascot, .devnuby-brand-svg.is-laughing .dn-mascot { animation: dnLaughBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate; }
+    .devnuby-brand-svg:active .dn-wordmark-group, .devnuby-brand-svg.is-laughing .dn-wordmark-group { animation: dnTextBounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate; }
+    .devnuby-brand-svg:active .dn-face-normal, .devnuby-brand-svg.is-laughing .dn-face-normal { opacity: 0; }
+    .devnuby-brand-svg:active .dn-face-laugh, .devnuby-brand-svg.is-laughing .dn-face-laugh { opacity: 1; }
+    .devnuby-brand-svg:active .dn-blush, .devnuby-brand-svg.is-laughing .dn-blush { opacity: 0.95; transform: scale(1.18); }
+    @keyframes dnBlink { 0%, 18%, 36%, 100% { transform: scaleY(1); } 9%, 27% { transform: scaleY(0.08); } }
+    @keyframes dnWiggle { 0% { transform: rotate(0deg); } 100% { transform: rotate(8deg) translateY(-1px); } }
+    @keyframes dnLaughBounce { 0% { transform: rotate(-4deg) translateY(0px) scale(1.04, 0.96); } 100% { transform: rotate(3deg) translateY(-3.5px) scale(0.97, 1.05); } }
+    @keyframes dnTextBounce { 0% { transform: translateY(0px); } 100% { transform: translateY(-2.5px); } }
+  </style>
+  <defs>
+    <linearGradient id="dn-bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.bgStops[0]}"/>
+      <stop offset="0.55" stop-color="${cfg.bgStops[1]}"/>
+      <stop offset="1" stop-color="${cfg.bgStops[2]}"/>
+    </linearGradient>
+    <radialGradient id="dn-aura" cx="32" cy="34" r="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.auraColor}" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="${cfg.auraColor}" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="${cfg.bgStops[1]}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="dn-body" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.bodyStops[0]}"/>
+      <stop offset="0.48" stop-color="${cfg.bodyStops[1]}"/>
+      <stop offset="0.82" stop-color="${cfg.bodyStops[2]}"/>
+      <stop offset="1" stop-color="${cfg.bodyStops[3]}"/>
+    </linearGradient>
+    <linearGradient id="dn-shade" x1="32" y1="34" x2="32" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.shadeStop}" stop-opacity="0"/>
+      <stop offset="1" stop-color="${cfg.shadeStop}" stop-opacity="0.45"/>
+    </linearGradient>
+    <linearGradient id="dn-prompt-accent" x1="34" y1="38" x2="46" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.cursorStops[0]}"/>
+      <stop offset="1" stop-color="${cfg.cursorStops[1]}"/>
+    </linearGradient>
+    <linearGradient id="${idPrefix}-wordmark" x1="142" y1="16" x2="256" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${cfg.wordmarkGrad[0]}"/>
+      <stop offset="0.5" stop-color="${cfg.wordmarkGrad[1]}"/>
+      <stop offset="1" stop-color="${cfg.wordmarkGrad[2]}"/>
+    </linearGradient>
+    <filter id="dn-shadow" x="4" y="4" width="56" height="56" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="3.5" flood-color="${cfg.shadowColor}" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Left Icon Squircle (64x64) -->
+  <rect width="64" height="64" rx="18" fill="url(#dn-bg)"/>
+  <rect x="1" y="1" width="62" height="62" rx="17" stroke="${cfg.borderStroke}" stroke-opacity="0.25" stroke-width="1.5"/>
+  <circle cx="32" cy="34" r="27" fill="url(#dn-aura)"/>
+  <g filter="url(#dn-shadow)">
+    <g class="dn-mascot">${nubMarkup}
+      <path fill="url(#dn-body)" d="${bodyPath}"/>
+      <path fill="url(#dn-shade)" d="${bodyPath}"/>
+      <ellipse cx="23.5" cy="21.5" rx="6.5" ry="3" transform="rotate(-25 23.5 21.5)" fill="#FFFFFF" opacity="0.88"/>
+      <circle cx="17.5" cy="25.5" r="1.4" fill="#FFFFFF" opacity="0.75"/>
+      <g class="dn-blush">
+        <ellipse cx="18.2" cy="37.8" rx="3.8" ry="2.2" fill="${cfg.blushColor}"/>
+        <ellipse cx="44.8" cy="37.8" rx="3.8" ry="2.2" fill="${cfg.blushColor}"/>
+        <path d="M17.0 38.5L18.1 37.0M18.9 38.6L20.0 37.1" stroke="#FFE4E6" stroke-width="1" stroke-linecap="round"/>
+        <path d="M43.6 38.5L44.7 37.0M45.5 38.6L46.6 37.1" stroke="#FFE4E6" stroke-width="1" stroke-linecap="round"/>
+      </g>
+      <g class="dn-face-normal">${faceNormalMarkup}
+      </g>
+      <g class="dn-face-laugh">
+        <path d="M19.8 30.0L26.2 33.8L19.8 37.6" stroke="${cfg.promptStroke}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M43.6 30.0L37.2 33.8L43.6 37.6" stroke="${cfg.promptStroke}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M28.5 37.2H35.1C35.1 41.8 28.5 41.8 28.5 37.2Z" fill="#F43F5E" stroke="${cfg.promptStroke}" stroke-width="2.2" stroke-linejoin="round"/>
+        <path d="M30.0 39.2C31.0 38.3 32.6 38.3 33.6 39.2" stroke="#FDA4AF" stroke-width="1.6" stroke-linecap="round"/>
+      </g>
+      <path d="M38.2 43.2H44.2" stroke="url(#dn-prompt-accent)" stroke-width="3.2" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- Right Wordmark Lockup: "DevNuby" + Git Node + Terminal Tag -->
+  <g class="dn-wordmark-group">
+    <!-- "Dev" in Bold Geometric Rounded Sans -->
+    <text x="78" y="41" fill="${devTextColor}" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-weight="800" font-size="33" letter-spacing="-1">Dev</text>
+    <!-- "Nuby" in Gradient Tech Accent -->
+    <text x="141" y="41" fill="url(#${idPrefix}-wordmark)" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-weight="800" font-size="33" letter-spacing="-0.8">Nuby</text>
+    <!-- Cute Floating Git-Branch Accent Dot Above 'u/b' -->
+    <g class="dn-nuby-dot">
+      <circle cx="192" cy="12" r="3.2" fill="${cfg.wordmarkGrad[0]}"/>
+      <circle cx="203" cy="9.5" r="2" fill="${cfg.cursorStops[0]}"/>
+      <path d="M192 12L203 9.5" stroke="${cfg.wordmarkGrad[0]}" stroke-width="1.5" stroke-linecap="round"/>
+    </g>
+    <!-- Mini ">_" Pill Tag Next to Wordmark -->
+    <rect x="230" y="19" width="30" height="19" rx="6" fill="${badgeBg}" stroke="${cfg.borderStroke}" stroke-opacity="0.4" stroke-width="1.2"/>
+    <path d="M237 25.5L241 28.5L237 31.5" stroke="${cfg.wordmarkGrad[0]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M244 31.5H250" stroke="${cfg.cursorStops[0]}" stroke-width="2" stroke-linecap="round"/>
+    <!-- Subtitle Tagline -->
+    <text x="80" y="55" fill="${subTextColor}" font-family="'JetBrains Mono', monospace" font-weight="600" font-size="9.5" letter-spacing="1.4">CHIBI GIT &amp; AI COMPANION</text>
+  </g>
+</svg>`;
+    }
+
+    function render() {
+      const cfg = presets[state.preset];
+      const mainSvg = buildSVG(cfg, state, 'dn');
+      const brandWordmarkSvg = buildBrandWordmarkSVG(cfg, state, 'dn-brand');
+      const navbarWordmarkSvg = buildBrandWordmarkSVG(cfg, { ...state, brandLightBg: false }, 'dn-nav');
+
+      // Update Hero & Multi-size Previews
+      document.getElementById('main-svg-stage').innerHTML = mainSvg;
+      document.getElementById('header-mini-icon').innerHTML = buildSVG(cfg, state, 'dn-hdr');
+      document.getElementById('preview-64').innerHTML = buildSVG(cfg, state, 'dn-p64');
+      document.getElementById('preview-40').innerHTML = buildSVG(cfg, state, 'dn-p40');
+      document.getElementById('preview-24').innerHTML = buildSVG(cfg, state, 'dn-p24');
+
+      // Update Section 1: Brand Wordmark & Mockups
+      document.getElementById('brand-wordmark-stage').innerHTML = brandWordmarkSvg;
+      document.getElementById('navbar-brand-stage').innerHTML = navbarWordmarkSvg;
+      document.getElementById('pill-mini-icon').innerHTML = buildSVG(cfg, state, 'dn-pill');
+      document.getElementById('favicon-16-stage').innerHTML = buildSVG(cfg, state, 'dn-fav');
+      document.getElementById('dock-icon-stage').innerHTML = buildSVG(cfg, state, 'dn-dock');
+      document.getElementById('cli-icon-stage').innerHTML = buildSVG(cfg, state, 'dn-cli');
+
+      // Update Loader Mockup based on state.loaderMode
+      const loaderState = {
+        ...state,
+        isLaughingDemo: state.loaderMode === 'done',
+        blinkCursor: true
+      };
+      document.getElementById('loader-icon-wrap').innerHTML = buildSVG(cfg, loaderState, 'dn-load');
+
+      // Update Brand Lockup Background Card
+      const lockupCard = document.getElementById('brand-lockup-card');
+      const bgToggleBtn = document.getElementById('btn-brand-bg-toggle');
+      if (state.brandLightBg) {
+        lockupCard.className = 'lg:col-span-7 rounded-2xl border border-slate-300 checkerboard-light p-6 sm:p-8 flex flex-col items-center justify-center relative min-h-[210px] transition-colors duration-300';
+        bgToggleBtn.textContent = 'Background: Light Mode';
+      } else {
+        lockupCard.className = 'lg:col-span-7 rounded-2xl border border-white/10 checkerboard p-6 sm:p-8 flex flex-col items-center justify-center relative min-h-[210px] transition-colors duration-300';
+        bgToggleBtn.textContent = 'Background: Dark Mode';
+      }
+
+      // Code Export Display
+      const cleanIconSvg = buildSVG(cfg, { ...state, isLaughingDemo: false }, 'dn');
+      const cleanBrandSvg = buildBrandWordmarkSVG(cfg, { ...state, isLaughingDemo: false }, 'dn-brand');
+      document.getElementById('svg-code-display').textContent = state.codeTab === 'brand' ? cleanBrandSvg : cleanIconSvg;
+      document.getElementById('active-preset-badge').textContent = 'Preset: ' + cfg.name;
+
+      // Update Code Tab Buttons
+      document.getElementById('tab-code-icon').className = state.codeTab === 'icon'
+        ? 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/25 text-cyan-200 cursor-pointer transition'
+        : 'px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-300 hover:text-white cursor-pointer transition';
+      document.getElementById('tab-code-brand').className = state.codeTab === 'brand'
+        ? 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-cyan-500/25 text-cyan-200 cursor-pointer transition'
+        : 'px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-300 hover:text-white cursor-pointer transition';
+
+      // Update Preset Buttons
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        if (btn.dataset.preset === state.preset) {
+          btn.className = 'preset-btn p-2.5 rounded-xl border border-cyan-400 bg-cyan-500/20 text-left transition cursor-pointer';
+        } else {
+          btn.className = 'preset-btn p-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer';
+        }
+      });
+
+      document.querySelectorAll('.face-btn').forEach(btn => {
+        if (btn.dataset.face === state.face) {
+          btn.className = 'face-btn px-3 py-2 rounded-xl border border-cyan-400 bg-cyan-500/20 text-left transition cursor-pointer';
+        } else {
+          btn.className = 'face-btn px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition cursor-pointer';
+        }
+      });
+
+      document.querySelectorAll('.shape-btn').forEach(btn => {
+        if (btn.dataset.shape === state.shape) {
+          btn.className = 'shape-btn px-2.5 py-2 rounded-xl border border-cyan-400 bg-cyan-500/20 text-center transition cursor-pointer';
+        } else {
+          btn.className = 'shape-btn px-2.5 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-center transition cursor-pointer';
+        }
+      });
+
+      const blushBtn = document.getElementById('toggle-blush');
+      blushBtn.textContent = `Blush Pipi: ${state.showBlush ? 'ON' : 'OFF'}`;
+      blushBtn.className = state.showBlush
+        ? 'px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/25 border border-cyan-400/40 text-cyan-100 cursor-pointer transition'
+        : 'px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/15 text-slate-300/70 cursor-pointer transition';
+
+      const nubBtn = document.getElementById('toggle-nub');
+      nubBtn.textContent = `Floating Nub: ${state.showNub ? 'ON' : 'OFF'}`;
+      nubBtn.className = state.showNub
+        ? 'px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/25 border border-cyan-400/40 text-cyan-100 cursor-pointer transition'
+        : 'px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/15 text-slate-300/70 cursor-pointer transition';
+
+      const blinkBtn = document.getElementById('toggle-blink');
+      blinkBtn.textContent = `Animasi Kursor _: ${state.blinkCursor ? 'ON' : 'OFF'}`;
+      blinkBtn.className = state.blinkCursor
+        ? 'px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/25 border border-cyan-400/40 text-cyan-100 cursor-pointer transition'
+        : 'px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/15 text-slate-300/70 cursor-pointer transition';
+
+      const floatBtn = document.getElementById('btn-toggle-float');
+      floatBtn.textContent = `Float: ${state.floatStage ? 'ON' : 'OFF'}`;
+      const mainStage = document.getElementById('main-svg-stage');
+      if (state.floatStage) {
+        mainStage.classList.add('animate-float');
+      } else {
+        mainStage.classList.remove('animate-float');
+      }
+    }
+
+    function updateLoaderUI() {
+      const badge = document.getElementById('loader-status-badge');
+      const sub = document.getElementById('loader-subtext');
+      const bar = document.getElementById('loader-bar-fill');
+
+      document.querySelectorAll('.loader-mode-btn').forEach(btn => {
+        if (btn.dataset.loader === state.loaderMode) {
+          btn.className = 'loader-mode-btn px-2 py-1 rounded text-[10px] font-semibold bg-cyan-500/30 text-cyan-200 cursor-pointer transition';
+        } else {
+          btn.className = 'loader-mode-btn px-2 py-1 rounded text-[10px] font-semibold text-slate-300 hover:text-white cursor-pointer transition';
+        }
+      });
+
+      if (state.loaderMode === 'coding') {
+        badge.textContent = '>_ compiling...';
+        badge.className = 'text-[10px] mono px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/30';
+        sub.textContent = 'Merapikan branch & mengecek spec...';
+        bar.className = 'w-full h-full bg-gradient-to-r from-cyan-400 via-indigo-400 to-pink-400 animate-progress-bar';
+      } else if (state.loaderMode === 'git') {
+        badge.textContent = 'git push origin';
+        badge.className = 'text-[10px] mono px-1.5 py-0.5 rounded bg-purple-500/25 text-purple-200 border border-purple-400/30';
+        sub.textContent = 'Mengirim 3 commit ke repository...';
+        bar.className = 'w-full h-full bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 animate-progress-bar';
+      } else {
+        badge.textContent = '✔ Build Passed!';
+        badge.className = 'text-[10px] mono px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-200 border border-emerald-400/40';
+        sub.textContent = 'Yeay! Semua test lulus tanpa bug (> ᴗ <)';
+        bar.className = 'w-full h-full bg-gradient-to-r from-emerald-400 to-cyan-400';
+      }
+      render();
+    }
+
+    function triggerLaughBurst() {
+      if (laughTimeout) clearTimeout(laughTimeout);
+      state.isLaughingDemo = true;
+      const pill = document.getElementById('interaction-status-pill');
+      pill.textContent = '😆 Hahaha! (> ᴗ <) Blush Pipi Aktif!';
+      pill.className = 'px-2.5 py-1 rounded-lg bg-rose-500/30 border border-rose-400 text-xs font-bold text-rose-100 transition-all';
+      render();
+      laughTimeout = setTimeout(() => {
+        state.isLaughingDemo = false;
+        pill.textContent = 'Coba Hover & Klik Ikon!';
+        pill.className = 'px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-400/30 text-xs font-semibold text-pink-200 transition-all';
+        render();
+      }, 1500);
+    }
+
+    // Event Listeners
+    document.getElementById('main-svg-stage').addEventListener('click', triggerLaughBurst);
+    document.getElementById('brand-wordmark-stage').addEventListener('click', triggerLaughBurst);
+    document.getElementById('navbar-brand-stage').addEventListener('click', triggerLaughBurst);
+    document.getElementById('pill-badge-stage').addEventListener('click', triggerLaughBurst);
+    document.getElementById('dock-icon-stage').addEventListener('click', triggerLaughBurst);
+    document.getElementById('btn-test-laugh').addEventListener('click', triggerLaughBurst);
+
+    document.getElementById('btn-brand-bg-toggle').addEventListener('click', () => {
+      state.brandLightBg = !state.brandLightBg;
+      render();
+    });
+
+    document.querySelectorAll('.loader-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.loaderMode = btn.dataset.loader;
+        updateLoaderUI();
+      });
+    });
+
+    document.getElementById('loader-stage-box').addEventListener('click', () => {
+      const order = ['coding', 'git', 'done'];
+      const nextIdx = (order.indexOf(state.loaderMode) + 1) % order.length;
+      state.loaderMode = order[nextIdx];
+      updateLoaderUI();
+    });
+
+    document.getElementById('tab-code-icon').addEventListener('click', () => {
+      state.codeTab = 'icon';
+      render();
+    });
+
+    document.getElementById('tab-code-brand').addEventListener('click', () => {
+      state.codeTab = 'brand';
+      render();
+    });
+
+    document.getElementById('main-svg-stage').addEventListener('mouseenter', () => {
+      if (!state.isLaughingDemo) {
+        document.getElementById('interaction-status-pill').textContent = '👀 Hover: Mata Berkedip-kedip!';
+      }
+    });
+
+    document.getElementById('main-svg-stage').addEventListener('mouseleave', () => {
+      if (!state.isLaughingDemo) {
+        document.getElementById('interaction-status-pill').textContent = 'Coba Hover & Klik Ikon!';
+      }
+    });
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.preset = btn.dataset.preset;
+        render();
+      });
+    });
+
+    document.querySelectorAll('.face-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.face = btn.dataset.face;
+        render();
+      });
+    });
+
+    document.querySelectorAll('.shape-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.shape = btn.dataset.shape;
+        render();
+      });
+    });
+
+    document.getElementById('toggle-blush').addEventListener('click', () => {
+      state.showBlush = !state.showBlush;
+      render();
+    });
+
+    document.getElementById('toggle-nub').addEventListener('click', () => {
+      state.showNub = !state.showNub;
+      render();
+    });
+
+    document.getElementById('toggle-blink').addEventListener('click', () => {
+      state.blinkCursor = !state.blinkCursor;
+      render();
+    });
+
+    document.getElementById('btn-toggle-float').addEventListener('click', () => {
+      state.floatStage = !state.floatStage;
+      render();
+    });
+
+    function copyTextWithFeedback(text, labelId) {
+      const showFeedback = () => {
+        const toast = document.getElementById('copy-toast');
+        const label = document.getElementById(labelId);
+        const origText = label.textContent;
+        toast.style.opacity = '1';
+        label.textContent = 'Copied!';
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          label.textContent = origText;
+        }, 1800);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showFeedback).catch(() => {
+          fallbackCopy(text);
+          showFeedback();
+        });
+      } else {
+        fallbackCopy(text);
+        showFeedback();
+      }
+    }
+
+    function fallbackCopy(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
+    document.getElementById('btn-copy-svg').addEventListener('click', () => {
+      state.codeTab = 'icon';
+      render();
+      const code = document.getElementById('svg-code-display').textContent;
+      copyTextWithFeedback(code, 'copy-label');
+    });
+
+    document.getElementById('btn-copy-brand-svg').addEventListener('click', () => {
+      state.codeTab = 'brand';
+      render();
+      const code = document.getElementById('svg-code-display').textContent;
+      copyTextWithFeedback(code, 'copy-brand-label');
+    });
+
+    function downloadSvgString(svgString, filename) {
+      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('btn-download-svg').addEventListener('click', () => {
+      const cfg = presets[state.preset];
+      const svgString = state.codeTab === 'brand'
+        ? buildBrandWordmarkSVG(cfg, { ...state, isLaughingDemo: false }, 'dn-brand')
+        : buildSVG(cfg, { ...state, isLaughingDemo: false }, 'dn');
+      const suffix = state.codeTab === 'brand' ? 'brand-wordmark' : `${state.shape}-${state.face}`;
+      downloadSvgString(svgString, `devnuby-${suffix}.svg`);
+    });
+
+    document.getElementById('btn-download-brand-svg').addEventListener('click', () => {
+      const cfg = presets[state.preset];
+      const svgString = buildBrandWordmarkSVG(cfg, { ...state, isLaughingDemo: false }, 'dn-brand');
+      downloadSvgString(svgString, `devnuby-brand-logo-${state.preset}.svg`);
+    });
+
+    window.onload = render;
+  </script>
+</body>
+</html>

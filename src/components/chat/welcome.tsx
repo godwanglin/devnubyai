@@ -14,7 +14,7 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
   const prompts = quickPrompts as QuickPrompt[];
 
   return (
-    <div className="max-w-[768px] mx-auto px-4 sm:px-5 pt-8 sm:pt-14 pb-8">
+    <div className="max-w-[768px] mx-auto px-4 sm:px-5 pt-6 sm:pt-10 pb-8">
       <p className="text-[13px] font-medium text-[var(--muted)] mb-2.5">
         {t("welcome.kicker")}
       </p>
@@ -29,7 +29,7 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
         {t("welcome.hint")}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-7">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-5">
         {prompts.map((item) => (
           <button
             key={item.id}

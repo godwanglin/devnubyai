@@ -2,29 +2,35 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, User, Palette, Globe, Cpu } from "lucide-react";
+import { ArrowLeft, User, Palette, Globe, Cpu, Archive, Gauge } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/providers/i18n-provider";
-import { useTheme } from "@/providers/theme-provider";
-import { useToast } from "@/providers/toast-provider";
 import { cn } from "@/lib/cn";
 import { ProfileTab } from "./tabs/profile-tab";
 import { AppearanceTab } from "./tabs/appearance-tab";
 import { LanguageTab } from "./tabs/language-tab";
 import { ModelsTab } from "./tabs/models-tab";
+import { UsageTab } from "./tabs/usage-tab";
+import { ArchivedChatsTab } from "./tabs/archived-chats-tab";
 
-type TabId = "profile" | "appearance" | "language" | "models";
+type TabId = "profile" | "usage" | "appearance" | "language" | "models" | "archived";
+const TAB_IDS: TabId[] = ["profile", "usage", "appearance", "language", "models", "archived"];
 
 export function SettingsView() {
-  const { t, locale } = useI18n();
-  const { theme } = useTheme();
-  const { toast } = useToast();
-  const [tab, setTab] = useState<TabId>("profile");
+  const { t } = useI18n();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab") as TabId | null;
+  const [tab, setTab] = useState<TabId>(
+    requestedTab && TAB_IDS.includes(requestedTab) ? requestedTab : "profile"
+  );
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: "profile", label: t("settings.profileTab"), icon: <User className="w-4 h-4" /> },
+    { id: "usage", label: t("settings.usageTab"), icon: <Gauge className="w-4 h-4" /> },
     { id: "appearance", label: t("settings.appearanceTab"), icon: <Palette className="w-4 h-4" /> },
     { id: "language", label: t("settings.languageTab"), icon: <Globe className="w-4 h-4" /> },
     { id: "models", label: t("settings.modelsTab"), icon: <Cpu className="w-4 h-4" /> },
+    { id: "archived", label: t("settings.archivedTab"), icon: <Archive className="w-4 h-4" /> },
   ];
 
   return (
@@ -64,7 +70,7 @@ export function SettingsView() {
         </div>
       </div>
 
-      <div className="max-w-[920px] mx-auto px-4 py-5 md:py-8 grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 md:gap-8">
+      <div className="max-w-[920px] mx-auto px-4 py-5 md:py-8 grid grid-cols-1 md:grid-cols-[215px_1fr] gap-6 md:gap-8">
         {/* Desktop Sidebar Navigation */}
         <nav className="hidden md:block space-y-1">
           {tabs.map((tb) => (
@@ -85,11 +91,13 @@ export function SettingsView() {
           ))}
         </nav>
 
-        <main className="glass rounded-[12px] p-5 sm:p-6 bg-[var(--panel)] border border-[var(--glass-border)]">
+        <main className="glass rounded-[12px] p-5 sm:p-6 bg-[var(--panel)] border border-[var(--glass-border)] min-w-0">
           {tab === "profile" && <ProfileTab />}
+          {tab === "usage" && <UsageTab />}
           {tab === "appearance" && <AppearanceTab />}
           {tab === "language" && <LanguageTab />}
           {tab === "models" && <ModelsTab />}
+          {tab === "archived" && <ArchivedChatsTab />}
         </main>
       </div>
     </div>

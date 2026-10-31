@@ -1,0 +1,401 @@
+/* DevNuby brand mascot animations (used by devnuby-logo.tsx) */
+
+/* Base Mascot & Silhouette */
+.dn-logo .dn-mascot {
+  transform-box: view-box;
+  transform-origin: 32px 36px;
+  transform: rotate(-4deg);
+  transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dn-logo .dn-eyes {
+  transform-box: view-box;
+  transform-origin: 32px 33.8px;
+}
+
+.dn-logo .dn-antenna {
+  transform-box: view-box;
+  transform-origin: 37px 18px;
+  transition: transform 0.4s ease;
+}
+
+/* Face Layer Transitions - Buttery Smooth Crossfade & Micro-Scale */
+.dn-logo .dn-face-layer {
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 32px 34px;
+  transform: scale(0.92);
+  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.dn-logo[data-mood="wink-omega"] .dn-face-wink-omega,
+.dn-logo[data-mood="starry-kawaii"] .dn-face-starry-kawaii,
+.dn-logo[data-mood="happy-chevrons"] .dn-face-happy-chevrons,
+.dn-logo[data-mood="smug-dev"] .dn-face-smug-dev {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 1. Anime Wink Mood: Casual tilt & prompt cursor pulse */
+.dn-logo[data-mood="wink-omega"] .dn-mascot {
+  transform: rotate(-4deg);
+}
+
+.dn-logo[data-mood="wink-omega"] .dn-wink-eyes {
+  animation: dn-idle-blink 3.8s ease-in-out infinite;
+}
+
+/* 2. Big Glossy Anime Eyes Mood: Natural organic blinking + gentle kawaii breathing */
+.dn-logo[data-mood="starry-kawaii"] .dn-mascot {
+  animation: dn-kawaii-breathe 2.8s ease-in-out infinite alternate;
+}
+
+.dn-logo[data-mood="starry-kawaii"] .dn-kawaii-eyes {
+  animation: dn-idle-blink 3s ease-in-out infinite;
+}
+
+@keyframes dn-kawaii-breathe {
+  0% {
+    transform: rotate(0deg) translateY(0px) scale(1);
+  }
+  100% {
+    transform: rotate(1deg) translateY(-2px) scale(1.02);
+  }
+}
+
+/* 3. Excited Chibi Laugh Mood: Buttery-smooth springy squish jump (based on mockup loading 'done') */
+.dn-logo[data-mood="happy-chevrons"] .dn-mascot {
+  transform-origin: 32px 50px;
+  animation: dn-joy-squish 0.8s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+}
+
+.dn-logo[data-mood="happy-chevrons"] .dn-antenna {
+  animation: dn-wiggle 0.8s ease-in-out infinite alternate;
+}
+
+.dn-logo[data-mood="happy-chevrons"] .dn-nuby-antenna {
+  animation: dn-antenna-joy 0.8s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+}
+
+@keyframes dn-joy-squish {
+  0% {
+    transform: rotate(-2deg) translateY(0) scale(1.08, 0.92);
+  }
+  20% {
+    transform: rotate(0deg) translateY(-2px) scale(0.96, 1.05);
+  }
+  50% {
+    transform: rotate(2deg) translateY(-7.5px) scale(0.94, 1.07);
+  }
+  80% {
+    transform: rotate(0deg) translateY(-2px) scale(0.97, 1.04);
+  }
+  92% {
+    transform: rotate(-2deg) translateY(0) scale(1.09, 0.91);
+  }
+  100% {
+    transform: rotate(-2deg) translateY(0) scale(1.08, 0.92);
+  }
+}
+
+/* 4. Playful Dev Smirk Mood: Confident tilt & single glossy eye blink */
+.dn-logo[data-mood="smug-dev"] .dn-mascot {
+  transform: rotate(3deg) translateY(-0.5px);
+}
+
+.dn-logo[data-mood="smug-dev"] .dn-smug-eyes {
+  animation: dn-idle-blink 3.4s ease-in-out infinite;
+}
+
+/* Dynamic Cheek Blush per Idle Mood */
+.dn-logo .dn-blush {
+  opacity: 0.42;
+  transform-box: view-box;
+  transform-origin: 32px 37.8px;
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dn-logo[data-mood="wink-omega"] .dn-blush {
+  opacity: 0.45;
+  transform: scale(1);
+}
+
+.dn-logo[data-mood="starry-kawaii"] .dn-blush {
+  opacity: 0.72;
+  transform: scale(1.08);
+}
+
+.dn-logo[data-mood="happy-chevrons"] .dn-blush {
+  opacity: 0.92;
+  transform: scale(1.16);
+}
+
+.dn-logo[data-mood="smug-dev"] .dn-blush {
+  opacity: 0.35;
+  transform: scale(0.95);
+}
+
+/* Laugh Face (Manual Click State) */
+.dn-logo .dn-face-laugh {
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 32px 34px;
+  transform: scale(0.9);
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.dn-logo.is-laughing .dn-face-layer {
+  opacity: 0 !important;
+  transform: scale(0.9);
+}
+
+.dn-logo.is-laughing .dn-face-laugh {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dn-logo.is-laughing .dn-blush {
+  opacity: 0.98 !important;
+  transform: scale(1.22) !important;
+}
+
+/* Wordmark Animations */
+.dn-logo .dn-wordmark-group {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Layer 1: Horizontal & Baseline Translation across letters */
+.dn-logo .dn-nuby-dot {
+  transform-box: view-box;
+  transform-origin: 192px 12px;
+  transition: transform 0.72s cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+/* Layer 2: Vertical Parabolic Hop Arc + Elastic Landing Bounce */
+.dn-logo .dn-nuby-jump {
+  transform-box: view-box;
+  transform-origin: 192px 12px;
+  transition: transform 0.35s ease;
+}
+
+.dn-logo .dn-nuby-jump.is-jumping {
+  animation: dn-jump-arc 0.72s cubic-bezier(0.25, 0.1, 0.25, 1) forwards !important;
+}
+
+/* Layer 3: Squash & Stretch Physics (Elongation in flight, compression on launch/landing) */
+.dn-logo .dn-nuby-body {
+  transform-box: view-box;
+  transform-origin: 195px 12px;
+  animation: dn-body-idle 3s ease-in-out infinite alternate;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dn-logo .dn-nuby-body.is-jumping-right {
+  animation: dn-jump-stretch-right 0.72s cubic-bezier(0.25, 0.1, 0.25, 1) forwards !important;
+}
+
+.dn-logo .dn-nuby-body.is-jumping-left {
+  animation: dn-jump-stretch-left 0.72s cubic-bezier(0.25, 0.1, 0.25, 1) forwards !important;
+}
+
+/* Layer 4: Swiveling / Organic Living Antenna on the Git Node */
+.dn-logo .dn-nuby-antenna {
+  transform-box: view-box;
+  transform-origin: 192px 12px;
+  animation: dn-antenna-sway 4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transition: transform 0.35s ease;
+}
+
+/* Hop reaction on antenna (direction-aware aerodynamic tilt & landing recoil) */
+.dn-logo .dn-nuby-jump.is-jumping .dn-nuby-antenna {
+  animation: dn-antenna-hop-react 0.72s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+}
+
+.dn-logo[data-jump-dir="left"] .dn-nuby-jump.is-jumping .dn-nuby-antenna {
+  animation: dn-antenna-hop-react-left 0.72s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+}
+
+/* Hover Interactions */
+.dn-interactive {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dn-interactive:hover .dn-mascot {
+  transform: rotate(-1deg) translateY(-2.5px) scale(1.05) !important;
+}
+
+.dn-interactive:hover .dn-eyes {
+  animation: dn-fast-blink 1.2s ease-in-out infinite !important;
+}
+
+.dn-interactive:hover .dn-antenna {
+  animation: dn-wiggle 0.9s ease-in-out infinite alternate !important;
+}
+
+.dn-wordmark:hover .dn-wordmark-group {
+  transform: translateX(3px);
+}
+
+.dn-wordmark:hover .dn-nuby-body {
+  transform: translateY(-2.5px) scale(1.15);
+}
+
+.dn-wordmark:hover .dn-nuby-antenna {
+  animation: dn-antenna-perk 1.4s ease-in-out infinite alternate !important;
+}
+
+/* Laugh Bounces on Active / Click */
+.dn-interactive:active .dn-mascot,
+.dn-logo.is-laughing .dn-mascot {
+  transform-origin: 32px 50px;
+  animation: dn-laugh 0.5s ease-in-out infinite !important;
+}
+
+.dn-wordmark:active .dn-wordmark-group,
+.dn-wordmark.is-laughing .dn-wordmark-group {
+  animation: dn-text-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate;
+}
+
+.dn-wordmark:active .dn-nuby-body,
+.dn-wordmark.is-laughing .dn-nuby-body {
+  animation: dn-dot-laugh-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate !important;
+}
+
+/* Natural Idle Eye Blinking Animation */
+@keyframes dn-idle-blink {
+  0%, 82%, 88%, 94%, 100% {
+    transform: scaleY(1);
+  }
+  85%, 91% {
+    transform: scaleY(0.08);
+  }
+}
+
+/* Fast Hover Blink Animation */
+@keyframes dn-fast-blink {
+  0%, 18%, 36%, 100% {
+    transform: scaleY(1);
+  }
+  9%, 27% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes dn-wiggle {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(9deg) translateY(-1px);
+  }
+}
+
+@keyframes dn-laugh {
+  0%, 100% {
+    transform: rotate(-3deg) translateY(0) scale(1.07, 0.93);
+  }
+  50% {
+    transform: rotate(2deg) translateY(-5.5px) scale(0.95, 1.06);
+  }
+}
+
+@keyframes dn-text-bounce {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-2.5px);
+  }
+}
+
+/* Organic continuous idle rotation / sway (smooth sine-wave cycle) */
+@keyframes dn-antenna-sway {
+  0% { transform: rotate(-14deg); }
+  30% { transform: rotate(12deg); }
+  60% { transform: rotate(-6deg); }
+  85% { transform: rotate(18deg); }
+  100% { transform: rotate(-14deg); }
+}
+
+/* Subtle vertical idle float at rest */
+@keyframes dn-body-idle {
+  0% { transform: translateY(0) scale(1, 1); }
+  100% { transform: translateY(-1.5px) scale(1.03, 0.97); }
+}
+
+/* Parabolic Jump Arc: High leap (-22px) + impact compression + elastic rebound bounce */
+@keyframes dn-jump-arc {
+  0% { transform: translateY(0); }
+  14% { transform: translateY(3.5px); } /* Crouch down before spring launch */
+  45% { transform: translateY(-22px); } /* Dramatic high apex in air! */
+  74% { transform: translateY(2.5px); } /* Touchdown impact */
+  87% { transform: translateY(-5px); }  /* Elastic bounce back up */
+  95% { transform: translateY(1px); }   /* Micro settle bounce */
+  100% { transform: translateY(0); }
+}
+
+/* Squash & Stretch Physics: Rightward jump */
+@keyframes dn-jump-stretch-right {
+  0% { transform: scale(1, 1) rotate(0deg); }
+  14% { transform: scale(1.45, 0.55) rotate(-12deg); } /* Crouch squash: flat and wide */
+  30% { transform: scale(0.65, 1.48) rotate(18deg); }  /* Explosive launch: tall and thin leaning right */
+  50% { transform: scale(0.78, 1.3) rotate(22deg); }   /* Weightless mid-air arc stretch */
+  70% { transform: scale(0.72, 1.4) rotate(14deg); }   /* Dive towards letter */
+  76% { transform: scale(1.5, 0.5) rotate(-8deg); }    /* Impact squash on touchdown! */
+  87% { transform: scale(0.88, 1.15) rotate(6deg); }   /* Elastic rebound stretch */
+  95% { transform: scale(1.06, 0.94) rotate(-2deg); }  /* Micro settle */
+  100% { transform: scale(1, 1) rotate(0deg); }
+}
+
+/* Squash & Stretch Physics: Leftward jump */
+@keyframes dn-jump-stretch-left {
+  0% { transform: scale(1, 1) rotate(0deg); }
+  14% { transform: scale(1.45, 0.55) rotate(12deg); }  /* Crouch squash */
+  30% { transform: scale(0.65, 1.48) rotate(-18deg); } /* Explosive launch leaning left */
+  50% { transform: scale(0.78, 1.3) rotate(-22deg); }  /* Weightless mid-air arc stretch */
+  70% { transform: scale(0.72, 1.4) rotate(-14deg); }  /* Dive towards letter */
+  76% { transform: scale(1.5, 0.5) rotate(8deg); }     /* Impact squash on touchdown! */
+  87% { transform: scale(0.88, 1.15) rotate(-6deg); }  /* Elastic rebound stretch */
+  95% { transform: scale(1.06, 0.94) rotate(2deg); }   /* Micro settle */
+  100% { transform: scale(1, 1) rotate(0deg); }
+}
+
+/* Dynamic Antenna Rotation during jump to right (aerodynamic lag & snap) */
+@keyframes dn-antenna-hop-react {
+  0% { transform: rotate(0deg); }
+  18% { transform: rotate(-22deg); }
+  48% { transform: rotate(32deg); }
+  76% { transform: rotate(-18deg); }
+  88% { transform: rotate(10deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Dynamic Antenna Rotation during jump to left */
+@keyframes dn-antenna-hop-react-left {
+  0% { transform: rotate(0deg); }
+  18% { transform: rotate(22deg); }
+  48% { transform: rotate(-32deg); }
+  76% { transform: rotate(18deg); }
+  88% { transform: rotate(-10deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Antenna perky alert on hover */
+@keyframes dn-antenna-perk {
+  0% { transform: rotate(4deg); }
+  100% { transform: rotate(22deg); }
+}
+
+/* Antenna joy swing during happy-chevrons */
+@keyframes dn-antenna-joy {
+  0%, 100% { transform: rotate(-8deg) scale(0.96); }
+  50% { transform: rotate(24deg) scale(1.08); }
+}
+
+@keyframes dn-dot-laugh-bounce {
+  0% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(-4px) scale(1.18); }
+}

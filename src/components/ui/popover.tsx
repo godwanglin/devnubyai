@@ -6,9 +6,14 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
+
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -19,6 +24,8 @@ export interface PopoverProps {
   align?: "start" | "end" | "center";
   side?: "top" | "bottom";
   className?: string;
+  triggerClassName?: string;
+  openOnHover?: boolean;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -36,6 +43,8 @@ export function Popover({
   align = "start",
   side = "bottom",
   className,
+  triggerClassName,
+  openOnHover = false,
   isOpen: controlledOpen,
   onOpenChange,
 }: PopoverProps) {
@@ -53,34 +62,39 @@ export function Popover({
 
   const triggerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const renderedRef = useRef(false);
 
-  const [mounted, setMounted] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [closing, setClosing] = useState(false);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    getClientSnapshot,
+    getServerSnapshot
+  );
   const [coords, setCoords] = useState<Coords | null>(null);
 
-  useEffect(() => setMounted(true), []);
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [visible, setVisible] = useState(open);
+  const [closing, setClosing] = useState(false);
 
-  /* Mount immediately on open; keep mounted through the exit animation. */
-  useEffect(() => {
+  if (prevOpen !== open) {
+    setPrevOpen(open);
     if (open) {
-      renderedRef.current = true;
-      setClosing(false);
       setVisible(true);
-      return;
-    }
-    if (renderedRef.current) {
+      setClosing(false);
+    } else if (visible) {
       setClosing(true);
+    }
+  }
+
+  /* Keep mounted through the 110ms exit animation, then unmount. */
+  useEffect(() => {
+    if (closing) {
       const timer = window.setTimeout(() => {
-        renderedRef.current = false;
         setVisible(false);
         setClosing(false);
         setCoords(null);
       }, 110);
       return () => window.clearTimeout(timer);
     }
-  }, [open]);
+  }, [closing]);
 
   const updatePosition = useCallback(() => {
     const triggerEl = triggerRef.current;
@@ -195,9 +209,45 @@ export function Popover({
     setOpen(!open);
   };
 
+  const hoverTimerRef = useRef<number | null>(null);
+
+  const handleMouseEnter = () => {
+    if (!openOnHover) return;
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (!openOnHover) return;
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+    hoverTimerRef.current = window.setTimeout(() => {
+      setOpen(false);
+      hoverTimerRef.current = null;
+    }, 150);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, []);
+
   return (
     <>
-      <div ref={triggerRef} onClick={handleTriggerClick} className="inline-flex">
+      <div
+        ref={triggerRef}
+        onClick={handleTriggerClick}
+        onMouseEnter={openOnHover ? handleMouseEnter : undefined}
+        onMouseLeave={openOnHover ? handleMouseLeave : undefined}
+        className={cn("inline-flex", triggerClassName)}
+      >
         {trigger}
       </div>
 
@@ -207,6 +257,8 @@ export function Popover({
           <div
             ref={contentRef}
             data-state={closing ? "closing" : "open"}
+            onMouseEnter={openOnHover ? handleMouseEnter : undefined}
+            onMouseLeave={openOnHover ? handleMouseLeave : undefined}
             style={{
               top: coords ? `${coords.top}px` : 0,
               left: coords ? `${coords.left}px` : 0,

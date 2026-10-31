@@ -8,6 +8,7 @@ import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 
 interface ThinkingAccordionProps {
   content: string;
+  durationSec?: number;
   isStreaming?: boolean;
 }
 
@@ -24,7 +25,7 @@ function ThinkingGlyph({ active }: { active?: boolean }) {
   );
 }
 
-export function ThinkingAccordion({ content, isStreaming }: ThinkingAccordionProps) {
+export function ThinkingAccordion({ content, durationSec, isStreaming }: ThinkingAccordionProps) {
   const { t } = useI18n();
 
   // default: chat lama selalu collapse (false).
@@ -33,9 +34,17 @@ export function ThinkingAccordion({ content, isStreaming }: ThinkingAccordionPro
   const userInteractedRef = useRef(false);
   const wasStreamingRef = useRef(Boolean(isStreaming));
 
-  // Durasi hanya dihitung untuk sesi live
+  // Durasi live atau durasi tersimpan dari database saat reload
   const startRef = useRef<number | null>(null);
-  const [seconds, setSeconds] = useState<number | null>(null);
+  const [seconds, setSeconds] = useState<number | null>(durationSec ?? null);
+
+  const [prevDurationSec, setPrevDurationSec] = useState(durationSec);
+  if (prevDurationSec !== durationSec) {
+    setPrevDurationSec(durationSec);
+    if (!isStreaming && durationSec !== undefined) {
+      setSeconds(durationSec);
+    }
+  }
 
   useEffect(() => {
     if (isStreaming) {
@@ -66,10 +75,11 @@ export function ThinkingAccordion({ content, isStreaming }: ThinkingAccordionPro
     setIsOpen((prev) => !prev);
   }
 
+  const effectiveSeconds = seconds ?? durationSec ?? null;
   const label = isStreaming
     ? t("message.thinking")
-    : seconds !== null
-      ? t("message.thoughtFor", { seconds })
+    : effectiveSeconds !== null
+      ? t("message.thoughtFor", { seconds: effectiveSeconds })
       : t("message.thoughtProcess");
 
   return (

@@ -1,50 +1,16 @@
+import { db } from "../db";
 import { uploadToR2 } from "../storage/r2";
+import {
+  MAX_FILE_BYTES,
+  BLOCKED_EXTENSIONS,
+  MIME_BY_EXTENSION,
+  getFileExtension,
+} from "../files/policy";
 import type {
   ToolDefinition,
   ToolExecutionContext,
   ToolExecutionResult,
 } from "./types";
-
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
-
-// Dangerous binary, installer, and executable extensions list
-const BLOCKED_EXTENSIONS = new Set([
-  // Windows Binaries & Installers
-  ".exe", ".com", ".scr", ".pif", ".msi", ".msp", ".dll",
-  ".hta", ".cpl", ".reg", ".lnk", ".inf", ".gadget", ".appx", ".msix",
-
-  // Legacy Obfuscated Windows Scripts
-  ".vbs", ".vbe", ".jse", ".wsf", ".wsh",
-
-  // macOS Installers & Application Bundles
-  ".app", ".dmg", ".pkg", ".workflow", ".scpt", ".scptd", ".action", ".osx", ".command", ".terminal",
-
-  // Linux / Unix Binaries & Packages
-  ".bin", ".out", ".elf", ".so", ".deb", ".rpm", ".appimage", ".snap", ".flatpak", ".run",
-
-  // Mobile App Packages
-  ".apk", ".aab", ".xapk", ".ipa",
-
-  // Office Macro Formats
-  ".docm", ".xlsm", ".pptm", ".dotm", ".xlam", ".ppam",
-]);
-
-const MIME_BY_EXTENSION: Record<string, string> = {
-  ".txt": "text/plain",
-  ".md": "text/markdown",
-  ".json": "application/json",
-  ".csv": "text/csv",
-  ".html": "text/html",
-  ".css": "text/css",
-  ".ts": "text/plain",
-  ".tsx": "text/plain",
-  ".js": "text/plain",
-  ".jsx": "text/plain",
-  ".py": "text/x-python",
-  ".go": "text/plain",
-  ".sql": "application/sql",
-  ".svg": "text/plain", // Served as text/plain to prevent inline XSS
-};
 
 export interface WriteFileParams {
   filename: string;
@@ -53,22 +19,30 @@ export interface WriteFileParams {
 }
 
 export interface WriteFileData {
+  id?: string;
   key: string;
   filename: string;
+  displayName: string;
   sizeBytes: number;
   mimeType: string;
+  linesChanged?: {
+    added: number;
+    removed: number;
+  };
   url: string;
 }
 
 export const writeFileTool: ToolDefinition<WriteFileParams, WriteFileData> = {
   name: "write_file",
-  description: "Saves a generated text or code document into the user's session storage.",
+  description:
+    "Saves a generated document, web page (.html), markdown report (.md), dataset (.csv/.json), diagram (.svg/.mmd), or source code file into the user's session storage so the user can preview and download it in the right-hand files panel.",
   parameters: {
     type: "object",
     properties: {
       filename: {
         type: "string",
-        description: "The desired filename (e.g. analysis.md, script.py, config.json).",
+        description:
+          "The desired filename with extension (e.g. landing-page.html, report.md, data.csv, architecture.mmd, script.py).",
         required: true,
       },
       content: {
@@ -93,13 +67,15 @@ export const writeFileTool: ToolDefinition<WriteFileParams, WriteFileData> = {
     if (!filename || filename.includes("..") || /[\\/\0]/.test(filename)) {
       return {
         success: false,
-        error: { code: "INVALID_PARAM", message: "Filename contains unsafe or illegal characters." },
+        error: {
+          code: "INVALID_PARAM",
+          message: "Filename contains unsafe or illegal characters.",
+        },
         metadata: { durationMs: Date.now() - startTime },
       };
     }
 
-    const lastDotIndex = filename.lastIndexOf(".");
-    const extension = lastDotIndex !== -1 ? filename.slice(lastDotIndex).toLowerCase() : "";
+    const extension = getFileExtension(filename);
 
     if (BLOCKED_EXTENSIONS.has(extension)) {
       return {
@@ -117,7 +93,10 @@ export const writeFileTool: ToolDefinition<WriteFileParams, WriteFileData> = {
     if (sizeBytes > MAX_FILE_BYTES) {
       return {
         success: false,
-        error: { code: "INVALID_PARAM", message: "File content exceeds maximum allowed size of 10 MB." },
+        error: {
+          code: "INVALID_PARAM",
+          message: "File content exceeds maximum allowed size of 10 MB.",
+        },
         metadata: { durationMs: Date.now() - startTime },
       };
     }
@@ -136,21 +115,69 @@ export const writeFileTool: ToolDefinition<WriteFileParams, WriteFileData> = {
         contentType: mimeType,
       });
 
+      const sessionRow = await db.chatSession.findUnique({
+        where: { publicId: context.sessionId },
+        select: { id: true, publicId: true, userId: true },
+      });
+
+      let filePublicId: string | undefined;
+      if (sessionRow) {
+        const savedFile = await db.sessionFile.upsert({
+          where: {
+            sessionId_filename: {
+              sessionId: sessionRow.id,
+              filename: uploaded.filename,
+            },
+          },
+          update: {
+            storageKey: uploaded.key,
+            mimeType: uploaded.contentType,
+            sizeBytes: BigInt(uploaded.sizeBytes),
+            source: "tool",
+          },
+          create: {
+            userId: sessionRow.userId,
+            sessionId: sessionRow.id,
+            filename: uploaded.filename,
+            storageKey: uploaded.key,
+            mimeType: uploaded.contentType,
+            sizeBytes: BigInt(uploaded.sizeBytes),
+            source: "tool",
+          },
+          select: { publicId: true },
+        });
+        filePublicId = savedFile.publicId;
+      }
+
+      const proxyUrl =
+        sessionRow && filePublicId
+          ? `/api/v1/chats/${sessionRow.publicId}/files/${filePublicId}`
+          : uploaded.url;
+
       return {
         success: true,
         data: {
+          id: filePublicId,
           key: uploaded.key,
           filename: uploaded.filename,
+          displayName: filename,
           sizeBytes: uploaded.sizeBytes,
           mimeType: uploaded.contentType,
-          url: uploaded.url,
+          linesChanged: {
+            added: content.split("\n").length,
+            removed: 0,
+          },
+          url: proxyUrl,
         },
         metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
       };
-    } catch (err: any) {
+    } catch {
       return {
         success: false,
-        error: { code: "STORAGE_ERROR", message: "Failed to persist file into session storage." },
+        error: {
+          code: "STORAGE_ERROR",
+          message: "Failed to persist file into session storage.",
+        },
         metadata: { durationMs: Date.now() - startTime },
       };
     }

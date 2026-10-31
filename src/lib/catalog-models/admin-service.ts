@@ -44,6 +44,9 @@ export interface SanitizedCatalogModelDto {
   supportsReasoning: boolean;
   status: string;
   sortOrder: number;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  pricingCurrency: string;
   createdAt: string;
   updatedAt: string;
   routes: SanitizedRouteDto[];
@@ -81,6 +84,9 @@ export const createCatalogModelSchema = z.object({
   supportsVision: z.boolean().default(false),
   supportsTools: z.boolean().default(false),
   supportsReasoning: z.boolean().default(false),
+  inputPricePerMillion: z.number().finite().min(0).max(1000000).default(0),
+  outputPricePerMillion: z.number().finite().min(0).max(1000000).default(0),
+  pricingCurrency: z.string().trim().length(3).default("USD"),
   status: z.enum(["active", "draft", "deprecated"]).default("active"),
   sortOrder: z.number().int().min(0).max(65535).default(100),
   routes: z.array(routeInputSchema).default([]),
@@ -271,6 +277,9 @@ export async function createCatalogModel(
         supportsVision: input.supportsVision,
         supportsTools: input.supportsTools,
         supportsReasoning: input.supportsReasoning,
+        inputPricePerMillion: input.inputPricePerMillion,
+        outputPricePerMillion: input.outputPricePerMillion,
+        pricingCurrency: input.pricingCurrency,
         status: input.status,
         sortOrder: input.sortOrder,
       },
@@ -307,7 +316,6 @@ export async function createCatalogModel(
     );
 
     await bumpRoutingVersion(actorUserId, tx);
-    void invalidateActiveCatalogCache();
 
     return tx.catalogModel.findUniqueOrThrow({
       where: { id: model.id },
@@ -327,6 +335,7 @@ export async function createCatalogModel(
     });
   });
 
+  await invalidateActiveCatalogCache();
   return mapCatalogModelToDto(created);
 }
 
@@ -380,6 +389,9 @@ export async function updateCatalogModel(
         supportsVision: input.supportsVision,
         supportsTools: input.supportsTools,
         supportsReasoning: input.supportsReasoning,
+        inputPricePerMillion: input.inputPricePerMillion !== undefined ? input.inputPricePerMillion : existing.inputPricePerMillion,
+        outputPricePerMillion: input.outputPricePerMillion !== undefined ? input.outputPricePerMillion : existing.outputPricePerMillion,
+        pricingCurrency: input.pricingCurrency !== undefined ? input.pricingCurrency : existing.pricingCurrency,
         status: input.status,
         sortOrder: input.sortOrder,
       },
@@ -438,7 +450,6 @@ export async function updateCatalogModel(
     );
 
     await bumpRoutingVersion(actorUserId, tx);
-    void invalidateActiveCatalogCache();
 
     return tx.catalogModel.findUniqueOrThrow({
       where: { id },
@@ -458,6 +469,7 @@ export async function updateCatalogModel(
     });
   });
 
+  await invalidateActiveCatalogCache();
   return mapCatalogModelToDto(updated);
 }
 
@@ -513,8 +525,9 @@ export async function deleteCatalogModel(id: bigint, actorUserId: bigint): Promi
     );
 
     await bumpRoutingVersion(actorUserId, tx);
-    void invalidateActiveCatalogCache();
   });
+
+  await invalidateActiveCatalogCache();
 }
 
 function mapCatalogModelToDto(
@@ -555,6 +568,9 @@ function mapCatalogModelToDto(
     supportsReasoning: Boolean(model.supportsReasoning),
     status: model.status,
     sortOrder: model.sortOrder,
+    inputPricePerMillion: Number(model.inputPricePerMillion),
+    outputPricePerMillion: Number(model.outputPricePerMillion),
+    pricingCurrency: model.pricingCurrency,
     createdAt: model.createdAt.toISOString(),
     updatedAt: model.updatedAt.toISOString(),
     routes: model.routes.map((r) => ({

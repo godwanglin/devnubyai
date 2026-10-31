@@ -4,9 +4,20 @@ export interface ToolActivity {
   id: string;
   name: string;
   state: "streaming" | "running" | "completed" | "error";
+  durationSec?: number;
   input?: unknown;
   output?: unknown;
   error?: string;
+}
+
+export interface MessageAttachment {
+  id: string; // SessionFile publicId
+  filename: string;
+  displayName?: string;
+  mimeType: string;
+  sizeBytes: number;
+  isImage: boolean;
+  url: string;
 }
 
 export interface Message {
@@ -15,18 +26,42 @@ export interface Message {
   content: string;
   createdAt: string;
   reasoning?: string | null;
+  reasoningDurationSec?: number;
   isReasoningStreaming?: boolean;
   toolCalls?: ToolActivity[];
+  attachments?: MessageAttachment[];
+  /** Excerpts the user selected from the chat and asked about ("Tanya Devnuby") */
+  quotes?: string[];
+  feedback?: "like" | "dislike" | null;
 }
+
+export type SessionGroupKey = "pinned" | "today" | "yesterday" | "week" | "earlier";
 
 export interface Session {
   id: string;
   slug: string;
   title: string;
+  isPinned?: boolean;
+  isArchived?: boolean;
+  shareToken?: string | null;
+  messageCount?: number;
   updatedAt: string;
   group: "today" | "yesterday" | "week" | "earlier";
   model: string;
   messages: Message[];
+}
+
+export interface SessionFileItem {
+  id: string;
+  filename: string;
+  displayName: string;
+  extension: string;
+  mimeType: string;
+  sizeBytes: number;
+  source: string;
+  isImage: boolean;
+  url: string;
+  createdAt: string;
 }
 
 export interface ModelOption {
@@ -35,14 +70,22 @@ export interface ModelOption {
   fullName: string;
   meta: string;
   description: string;
-  category: "Powerful" | "Fast";
+  category: "Powerful" | "Fast" | "Balanced" | "Flagship" | string;
   badge?: string | null;
+  isLocked?: boolean;
 }
 
 export interface QuickPrompt {
   id: string;
   label: string;
   prompt: string;
+}
+
+export interface QuotaWindowInfo {
+  limitTokens: number | null;
+  usedTokens: number;
+  usedPercent: number;
+  resetAt: string;
 }
 
 export interface UserProfile {
@@ -54,12 +97,26 @@ export interface UserProfile {
   plan: string;
   planLabel: string;
   avatarUrl: string | null;
-  quota: {
-    usedPercent: number;
-    resetInDays: number;
-    usedTokens?: number;
-    limitTokens?: number | null;
-    requestCount?: number;
+  quota?: UserQuota;
+}
+
+/** Response of /api/v1/me/quota, kept apart from /me so the account loads fast. */
+export interface UserQuota {
+  usedPercent: number;
+  resetInDays: number;
+  /** ISO timestamp when the monthly token quota resets */
+  resetAt: string;
+  usedTokens: number;
+  limitTokens: number | null;
+  requestCount: number;
+  windows: {
+    fiveHour: QuotaWindowInfo;
+    weekly: QuotaWindowInfo;
+    monthly: QuotaWindowInfo & {
+      requestCount: number;
+      promptTokens: number;
+      completionTokens: number;
+    };
   };
 }
 

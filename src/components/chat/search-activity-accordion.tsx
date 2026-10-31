@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ChevronDown, Globe, Loader2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
@@ -9,9 +9,13 @@ import type { ToolActivity } from "@/types";
 
 interface SearchActivityAccordionProps {
   tools: ToolActivity[];
+  embedded?: boolean;
 }
 
-export function SearchActivityAccordion({ tools }: SearchActivityAccordionProps) {
+export function SearchActivityAccordion({
+  tools,
+  embedded = false,
+}: SearchActivityAccordionProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -19,6 +23,32 @@ export function SearchActivityAccordion({ tools }: SearchActivityAccordionProps)
   const isRunning = tools.some(
     (t) => t.state === "running" || t.state === "streaming"
   );
+
+  // Calculate total duration for search tools:
+  // Either from persisted durationSec in DB or live elapsed timer
+  const persistedDuration = tools.reduce((acc, curr) => acc + (curr.durationSec ?? 0), 0);
+  const [liveSeconds, setLiveSeconds] = useState<number | null>(null);
+  const timerStartRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isRunning) {
+      if (timerStartRef.current === null) timerStartRef.current = Date.now();
+      const start = timerStartRef.current;
+      const tick = () => setLiveSeconds(Math.max(1, Math.round((Date.now() - start) / 1000)));
+      tick();
+      const interval = setInterval(tick, 1000);
+      return () => {
+        clearInterval(interval);
+        tick();
+      };
+    }
+  }, [isRunning]);
+
+  const effectiveDuration = isRunning
+    ? liveSeconds
+    : persistedDuration > 0
+      ? persistedDuration
+      : null;
 
   // Primary query/topic display
   const primaryQuery =
@@ -83,39 +113,48 @@ export function SearchActivityAccordion({ tools }: SearchActivityAccordionProps)
   const isDeep = tools.some((t) => t.name === "deep_search");
   const mainLabel = isRunning
     ? isDeep
-      ? t("message.searchingTopic", { topic: primaryQuery || "topik" })
+      ? t("message.deepSearching")
       : t("message.searchingWeb")
     : isDeep
       ? t("message.doneDeepSearch")
       : t("message.doneWebSearch");
 
   return (
-    <div className="mb-3.5 select-none font-sans">
-      {/* Header bar matching Claude.ai screenshot */}
+    <div className={cn("select-none font-sans", embedded ? "mb-0" : "mb-3")}>
+      {/* Header bar matching soft Thought-for-Xs style */}
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="inline-flex items-center gap-2 py-1 px-1.5 -ml-1.5 rounded-[8px] text-left cursor-pointer group hover:bg-[var(--hover)]/40 transition-colors"
+        className="inline-flex items-center gap-2 py-1 px-1.5 -ml-1.5 rounded-[8px] text-left cursor-pointer group hover:bg-[var(--hover)] transition-colors max-w-full"
         aria-expanded={isOpen}
       >
-        <span className="flex items-center gap-2 text-[13.5px] font-medium text-[var(--muted)] group-hover:text-[var(--ink)] transition-colors">
+        <span className="flex items-center gap-2 text-[13.5px] font-medium text-[var(--muted)] group-hover:text-[var(--ink)] transition-colors min-w-0 max-w-full">
           {isRunning ? (
-            <Loader2 className="w-4 h-4 text-[var(--accent)] animate-spin shrink-0" />
+            <Loader2 className="w-4 h-4 text-[var(--muted)] animate-spin shrink-0" />
           ) : (
-            <Globe className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Globe className="w-4 h-4 text-[var(--muted)] shrink-0" />
           )}
 
-          <span>{mainLabel}</span>
+          <span className="shrink-0">{mainLabel}</span>
+
+          {effectiveDuration !== null ? (
+            <span className="text-[12px] text-[var(--muted)] font-mono shrink-0">
+              ({effectiveDuration}s)
+            </span>
+          ) : null}
 
           {primaryQuery ? (
-            <span className="font-normal text-[var(--ink)]/85 truncate max-w-[240px] sm:max-w-[360px]">
-              {primaryQuery}
+            <span
+              title={primaryQuery}
+              className="font-normal text-[var(--ink)]/85 truncate max-w-[200px] sm:max-w-[340px]"
+            >
+              &ldquo;{primaryQuery}&rdquo;
             </span>
           ) : null}
 
           {allSources.length > 0 ? (
-            <span className="text-[11.5px] text-[var(--muted)] font-mono ml-0.5">
-              ({allSources.length})
+            <span className="text-[11.5px] text-[var(--muted)] font-mono ml-0.5 shrink-0">
+              · ({allSources.length})
             </span>
           ) : null}
         </span>

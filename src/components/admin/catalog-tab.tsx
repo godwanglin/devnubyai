@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus,
   RefreshCw,
@@ -18,6 +18,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
+import { useAccount, dispatchModelsInvalidated } from "@/providers/account-provider";
 import { CatalogModelModal } from "./catalog-model-modal";
 import { DeleteCatalogModal } from "./catalog-confirm-modals";
 import type {
@@ -30,6 +31,7 @@ import type {
 export function CatalogTab() {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { refresh: refreshAccount } = useAccount();
 
   const [models, setModels] = useState<SanitizedCatalogModelDto[]>([]);
   const [providers, setProviders] = useState<SanitizedProviderSummaryDto[]>([]);
@@ -59,6 +61,7 @@ export function CatalogTab() {
   }, []);
 
   const fetchModels = useCallback(async () => {
+    await Promise.resolve();
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -81,11 +84,16 @@ export function CatalogTab() {
     }
   }, [search, statusFilter, providerFilter, toast]);
 
+  const hasFetchedOptionsRef = useRef(false);
   useEffect(() => {
-    void Promise.resolve().then(() => {
-      fetchOptions();
-      fetchModels();
-    });
+    const timer = setTimeout(() => {
+      if (!hasFetchedOptionsRef.current) {
+        hasFetchedOptionsRef.current = true;
+        void fetchOptions();
+      }
+      void fetchModels();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchOptions, fetchModels]);
 
   async function handleSaveModel(input: CreateCatalogModelInput) {
@@ -112,7 +120,8 @@ export function CatalogTab() {
       toast(isEdit ? t("admin.catalog.updateSuccess") : t("admin.catalog.createSuccess"));
       setModalOpen(false);
       setSelectedModel(null);
-      await fetchModels();
+      await Promise.allSettled([fetchModels(), refreshAccount()]);
+      dispatchModelsInvalidated();
     } finally {
       setActionLoading(false);
     }
@@ -132,7 +141,8 @@ export function CatalogTab() {
       }
       toast(t("admin.catalog.deleteSuccess"));
       setDeleteTarget(null);
-      await fetchModels();
+      await Promise.allSettled([fetchModels(), refreshAccount()]);
+      dispatchModelsInvalidated();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Failed to delete model");
     } finally {
@@ -229,6 +239,7 @@ export function CatalogTab() {
                 <th className="py-2.5 px-3">{t("admin.catalog.displayName")}</th>
                 <th className="py-2.5 px-3">{t("admin.catalog.provider")}</th>
                 <th className="py-2.5 px-3">{t("admin.catalog.routes")}</th>
+                <th className="py-2.5 px-3">Price / 1M</th>
                 <th className="py-2.5 px-3">{t("admin.catalog.status")}</th>
                 <th className="py-2.5 px-3 text-right">{t("admin.catalog.actions")}</th>
               </tr>
@@ -236,13 +247,13 @@ export function CatalogTab() {
             <tbody className="divide-y divide-[var(--border)]">
               {loading && models.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-[var(--placeholder)]">
+                  <td colSpan={7} className="py-8 text-center text-[var(--placeholder)]">
                     Loading...
                   </td>
                 </tr>
               ) : models.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-[var(--placeholder)]">
+                  <td colSpan={7} className="py-8 text-center text-[var(--placeholder)]">
                     {t("admin.catalog.emptyList")}
                   </td>
                 </tr>
@@ -300,6 +311,13 @@ export function CatalogTab() {
                           ))}
                         </div>
                       )}
+                    </td>
+
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <div className="text-[11px] text-[var(--ink)]">
+                        <div>{m.inputPricePerMillion.toFixed(4)} {m.pricingCurrency}</div>
+                        <div className="text-[var(--muted)]">out: {m.outputPricePerMillion.toFixed(4)} {m.pricingCurrency}</div>
+                      </div>
                     </td>
 
                     <td className="py-3 px-3">

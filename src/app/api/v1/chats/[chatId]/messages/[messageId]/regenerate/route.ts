@@ -4,9 +4,11 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
+import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
 import { createUIMessageStreamResponse } from "ai";
 import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
+import { resolveClientTimeZone } from "@/lib/chat/timezone";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const regenerateSchema = z.object({
@@ -80,6 +82,7 @@ export async function POST(request: Request, context: RouteContext) {
       parsed.data.model,
       session.catalogModelPublicId
     );
+    await assertUserModelAccess(user.id, resolvedModel.id);
 
     // Reset target assistant message to status "streaming"
     await db.chatMessage.update({
@@ -114,8 +117,8 @@ export async function POST(request: Request, context: RouteContext) {
       sessionModelPublicId: session.catalogModelPublicId,
       reasoningEffort: mapReasoningEffort(parsed.data.reasoningLevel),
       conversationHistory: conversationMessages,
+      clientTimeZone: resolveClientTimeZone(request),
       requestId,
-      clientSignal: request.signal,
     });
 
     return createUIMessageStreamResponse({

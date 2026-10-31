@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { DevnubyIcon } from "@/components/brand/devnuby-logo";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 
@@ -50,9 +51,7 @@ export function LoginCard() {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>{t("login.backToChat")}</span>
           </Link>
-          <span className="grid place-items-center w-7 h-7 rounded-[6px] bg-[var(--accent)] text-[var(--accent-text)]">
-            <Sparkles className="w-3.5 h-3.5" />
-          </span>
+          <DevnubyIcon className="w-9 h-9" />
         </div>
 
         <div className="space-y-1 mb-6">

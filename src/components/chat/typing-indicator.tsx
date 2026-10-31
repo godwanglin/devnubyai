@@ -1,18 +1,49 @@
 "use client";
 
 import React from "react";
+import {
+  DevnubyLoaderInline,
+  type DevnubyLoaderState,
+} from "@/components/brand/devnuby-loader";
+import { cn } from "@/lib/cn";
 
-export function TypingIndicator() {
+export interface TypingIndicatorProps {
+  state?: DevnubyLoaderState;
+  size?: "sm" | "md" | "lg";
+  showLabel?: boolean;
+  labelKey?: string;
+  label?: string;
+  animateEnter?: boolean;
+  isExiting?: boolean;
+  className?: string;
+}
+
+export function TypingIndicator({
+  state = "normal",
+  size = "md",
+  showLabel = true,
+  labelKey,
+  label,
+  animateEnter = true,
+  isExiting = false,
+  className,
+}: TypingIndicatorProps) {
+  const resolvedLabelKey = labelKey || state;
+
   return (
-    <div className="flex items-center gap-1.5 py-4">
-      <span className="w-1.5 h-1.5 rounded-full bg-[var(--placeholder)] animate-pulse" />
-      <span
-        className="w-1.5 h-1.5 rounded-full bg-[var(--placeholder)] animate-pulse"
-        style={{ animationDelay: "150ms" }}
-      />
-      <span
-        className="w-1.5 h-1.5 rounded-full bg-[var(--placeholder)] animate-pulse"
-        style={{ animationDelay: "300ms" }}
+    <div
+      className={cn("flex items-center gap-2 py-3", className)}
+      role="status"
+      aria-live="polite"
+    >
+      <DevnubyLoaderInline
+        state={state}
+        size={size}
+        showLabel={showLabel}
+        labelKey={resolvedLabelKey}
+        label={label}
+        animateEnter={animateEnter}
+        isExiting={isExiting}
       />
     </div>
   );

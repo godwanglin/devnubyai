@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
 import type {
   R2Config,
@@ -70,8 +71,16 @@ export function sanitizeKey(input: string): string {
   const parts = clean.split("/").filter(Boolean);
   const baseName = parts[parts.length - 1] || "unnamed-file";
 
-  // Replace special characters with hyphens/dots
-  return baseName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 128);
+  // Replace special characters with hyphens/dots. Keep the extension intact
+  // when the original basename is longer than the storage column limit.
+  const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (safeName.length <= 128) return safeName;
+
+  const lastDot = safeName.lastIndexOf(".");
+  const extension = lastDot > 0 ? safeName.slice(lastDot) : "";
+  const stem = extension ? safeName.slice(0, -extension.length) : safeName;
+  const maxStemLength = Math.max(1, 128 - extension.length);
+  return `${stem.slice(0, maxStemLength)}${extension}`;
 }
 
 /**
@@ -196,6 +205,52 @@ export async function deleteFromR2(
 }
 
 /**
+ * Deletes an object in R2 directly by its persisted storageKey.
+ */
+export async function deleteKeyFromR2(storageKey: string): Promise<boolean> {
+  const s3 = getS3Client();
+  const config = getR2Config();
+
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: config.bucketName,
+      Key: storageKey,
+    })
+  );
+
+  return true;
+}
+
+/**
+ * Copies an object in R2 into a new session's tenant prefix and returns the new storageKey.
+ */
+export async function copyInR2(options: {
+  sourceKey: string;
+  userId: string;
+  targetSessionId: string;
+  filename: string;
+}): Promise<string> {
+  const s3 = getS3Client();
+  const config = getR2Config();
+  const safeFilename = sanitizeKey(options.filename);
+  const targetKey = buildTenantKey(options.userId, options.targetSessionId, safeFilename);
+  const encodedSource = `${config.bucketName}/${options.sourceKey
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: config.bucketName,
+      CopySource: encodedSource,
+      Key: targetKey,
+    })
+  );
+
+  return targetKey;
+}
+
+/**
  * Checks if an object exists in R2 without downloading the payload.
  */
 export async function objectExistsInR2(
@@ -215,8 +270,9 @@ export async function objectExistsInR2(
       })
     );
     return true;
-  } catch (err: any) {
-    if (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404) {
+  } catch (err: unknown) {
+    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
+    if (e?.name === "NotFound" || e?.$metadata?.httpStatusCode === 404) {
       return false;
     }
     throw err;

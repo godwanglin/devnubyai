@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useId, useState } from "react";
+import React, { useCallback, useId, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 
 export interface TooltipProps {
@@ -11,38 +12,75 @@ export interface TooltipProps {
   className?: string;
 }
 
-export function Tooltip({ content, side = "top", align = "center", children, className }: TooltipProps) {
+export function Tooltip({
+  content,
+  side = "top",
+  align = "center",
+  children,
+  className,
+}: TooltipProps) {
   const id = useId();
-  const [show, setShow] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const show = Boolean(anchorRect && content) && typeof document !== "undefined";
 
-  const sideClass =
-    side === "top" ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]";
-  const alignClass =
-    align === "end" ? "right-0" : align === "start" ? "left-0" : "left-1/2 -translate-x-1/2";
+  const positionTooltip = useCallback(
+    (node: HTMLSpanElement | null) => {
+      if (!node || !anchorRect) return;
+
+      const w = node.offsetWidth;
+      const h = node.offsetHeight;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const gap = 8;
+      const pad = 8;
+
+      let left =
+        align === "end"
+          ? anchorRect.right - w
+          : align === "start"
+            ? anchorRect.left
+            : anchorRect.left + (anchorRect.width - w) / 2;
+      left = Math.min(Math.max(pad, left), Math.max(pad, vw - w - pad));
+
+      let top = side === "top" ? anchorRect.top - h - gap : anchorRect.bottom + gap;
+      if (side === "top" && top < pad) {
+        top = anchorRect.bottom + gap;
+      } else if (side === "bottom" && top + h > vh - pad) {
+        top = anchorRect.top - h - gap;
+      }
+      top = Math.min(Math.max(pad, top), Math.max(pad, vh - h - pad));
+
+      node.style.left = `${left}px`;
+      node.style.top = `${top}px`;
+    },
+    [anchorRect, align, side]
+  );
 
   return (
     <span
-      className={cn("relative inline-flex", className)}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-      onFocus={() => setShow(true)}
-      onBlur={() => setShow(false)}
+      className={cn("inline-flex", className)}
+      onMouseEnter={(e) => setAnchorRect(e.currentTarget.getBoundingClientRect())}
+      onMouseLeave={() => setAnchorRect(null)}
+      onFocus={(e) => setAnchorRect(e.currentTarget.getBoundingClientRect())}
+      onBlur={() => setAnchorRect(null)}
+      onPointerDown={() => setAnchorRect(null)}
     >
-      <span aria-describedby={show ? id : undefined}>{children}</span>
-      {show && (
-        <span
-          id={id}
-          role="tooltip"
-          className={cn(
-            "absolute z-[130] pointer-events-none glass tooltip-panel px-2.5 py-1.5 rounded-[6px]",
-            "text-[12px] font-medium whitespace-nowrap text-[var(--ink)]",
-            sideClass,
-            alignClass
-          )}
-        >
-          {content}
-        </span>
-      )}
+      <span aria-describedby={show ? id : undefined} className="inline-flex">
+        {children}
+      </span>
+      {show &&
+        createPortal(
+          <span
+            id={id}
+            ref={positionTooltip}
+            role="tooltip"
+            style={{ top: 0, left: 0 }}
+            className="fixed z-[160] pointer-events-none glass tooltip-panel px-2.5 py-1.5 rounded-[6px] text-[12px] font-medium whitespace-nowrap text-[var(--ink)]"
+          >
+            {content}
+          </span>,
+          document.body
+        )}
     </span>
   );
 }

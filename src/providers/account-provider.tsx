@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -159,6 +160,32 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     };
   }, [apply]);
 
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+
+  // Listen for model mutations (C U D) across tabs and in-page components
+  useEffect(() => {
+    function handleInvalidate() {
+      void refreshRef.current();
+    }
+    window.addEventListener(MODELS_INVALIDATED_EVENT, handleInvalidate);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel("devnuby-models");
+      bc.onmessage = () => {
+        void refreshRef.current();
+      };
+    } catch {}
+
+    return () => {
+      window.removeEventListener(MODELS_INVALIDATED_EVENT, handleInvalidate);
+      if (bc) bc.close();
+    };
+  }, []);
+
   const value = useMemo(() => {
     const source = live ?? cached;
     return {
@@ -172,6 +199,18 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   }, [live, cached, refresh, logout]);
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
+}
+
+export const MODELS_INVALIDATED_EVENT = "devnuby:models-invalidated";
+
+export function dispatchModelsInvalidated(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MODELS_INVALIDATED_EVENT));
+  try {
+    const bc = new BroadcastChannel("devnuby-models");
+    bc.postMessage("refresh");
+    bc.close();
+  } catch {}
 }
 
 export function useAccount() {

@@ -68,14 +68,13 @@ async function performSearch(
 export const webSearchTool: ToolDefinition<WebSearchParams, WebSearchData> = {
   name: "web_search",
   description:
-    "Searches the web for up-to-date information, real-time facts, technical documentation, or online references.",
+    "Searches the web for up-to-date information, real-time facts, technical documentation, or online references. Always cite the exact source URLs in your answer using markdown links [Source Title or Domain](url) next to the facts.",
   parameters: {
     type: "object",
     properties: {
       query: {
         type: "string",
         description: "The specific and concise search query.",
-        required: true,
       },
       numResults: {
         type: "number",

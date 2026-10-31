@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import type { SseRecord } from "../sse";
 import { streamFromGateway } from "./http";
+import { sanitizeParametersSchema } from "./schema";
 
 /** OpenAI-compatible `POST {base_url}/chat/completions`. */
 function finishReason(value: unknown): FinishReason {
@@ -45,8 +46,15 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
   if (request.tools?.length) {
     body.tools = request.tools.map((tool) => ({
       type: "function",
-      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: sanitizeParametersSchema(tool.parameters as unknown as Record<string, unknown>),
+      },
     }));
+    if (request.toolChoice !== undefined) {
+      body.tool_choice = request.toolChoice;
+    }
   }
   return { ...body, ...(request.paramOverrides ?? {}), model: request.model };
 }

@@ -21,8 +21,9 @@ export async function GET(request: Request) {
       ? parseInt(url.searchParams.get("limit")!, 10)
       : undefined;
     const cursor = url.searchParams.get("cursor") || undefined;
+    const archived = url.searchParams.get("archived") === "true";
 
-    const result = await listUserChatSessions(user.id, { limit, cursor });
+    const result = await listUserChatSessions(user.id, { limit, cursor, archived });
 
     return jsonSuccess(result.sessions, {
       requestId,

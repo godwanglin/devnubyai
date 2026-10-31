@@ -10,6 +10,7 @@ import {
 const updateChatSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   isPinned: z.boolean().optional(),
+  isArchived: z.boolean().optional(),
   model: z.string().trim().max(128).optional(),
 });
 
@@ -28,6 +29,8 @@ export async function GET(request: Request, context: RouteContext) {
         id: session.publicId,
         title: session.title,
         isPinned: session.isPinned,
+        isArchived: session.isArchived,
+        shareToken: session.shareToken,
         catalogModelId: session.catalogModelPublicId,
         lastMessageAt: session.lastMessageAt.toISOString(),
         createdAt: session.createdAt.toISOString(),
@@ -62,6 +65,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const updated = await updateChatSession(user.id, chatId, {
       title: parsed.data.title,
       isPinned: parsed.data.isPinned,
+      isArchived: parsed.data.isArchived,
       modelPublicId: parsed.data.model,
     });
 

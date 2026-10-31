@@ -1,33 +1,83 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   PanelLeftClose,
   Plus,
   Search,
-  MoreHorizontal,
-  Settings as SettingsIcon,
-  Globe,
-  LogOut,
-  Sparkles,
-  Shield,
+  Pin,
 } from "lucide-react";
-import { Popover } from "@/components/ui/popover";
-import { DropdownSeparator } from "@/components/ui/dropdown";
+import { SidebarAccountCard, AccountSkeleton } from "./sidebar-account";
+import { DevnubyWordmark } from "@/components/brand/devnuby-logo";
+import { Tooltip } from "@/components/ui/tooltip";
+import { PanelResizeHandle } from "@/components/ui/panel-resize-handle";
+import { CollapsibleGroup } from "./collapsible-group";
+import { SessionItem } from "./session-item";
+import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
+import { getLocalStorage, setLocalStorage } from "@/lib/storage";
 import { cn } from "@/lib/cn";
-import type { Session } from "@/types";
+import type { Session, SessionGroupKey, UserProfile } from "@/types";
 
-interface SidebarProps {
+const COLLAPSED_GROUPS_KEY = "devnuby-collapsed-groups";
+const EMPTY_COLLAPSED: Partial<Record<SessionGroupKey, boolean>> = {};
+let cachedCollapsedRaw: string | null = null;
+let cachedCollapsedObj: Partial<Record<SessionGroupKey, boolean>> = EMPTY_COLLAPSED;
+const groupListeners = new Set<() => void>();
+
+function subscribeCollapsedGroups(listener: () => void) {
+  groupListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    groupListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function readCollapsedGroups(): Partial<Record<SessionGroupKey, boolean>> {
+  if (typeof window === "undefined") return EMPTY_COLLAPSED;
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_GROUPS_KEY);
+    if (raw === cachedCollapsedRaw) return cachedCollapsedObj;
+    cachedCollapsedRaw = raw;
+    cachedCollapsedObj = raw ? JSON.parse(raw) : EMPTY_COLLAPSED;
+    return cachedCollapsedObj;
+  } catch {
+    return EMPTY_COLLAPSED;
+  }
+}
+
+function updateCollapsedGroup(key: SessionGroupKey, collapsed: boolean) {
+  const current = getLocalStorage<Partial<Record<SessionGroupKey, boolean>>>(
+    COLLAPSED_GROUPS_KEY,
+    {}
+  );
+  const next = { ...current, [key]: collapsed };
+  setLocalStorage(COLLAPSED_GROUPS_KEY, next);
+  groupListeners.forEach((l) => l());
+}
+
+export function ensureGroupExpanded(key: SessionGroupKey) {
+  const current = readCollapsedGroups();
+  if (current[key]) {
+    updateCollapsedGroup(key, false);
+  }
+}
+
+export interface SidebarProps {
   sessions: Session[];
   isLoadingSessions?: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  onRenameSession: (session: Session) => void;
+  onTogglePinSession: (session: Session) => void;
+  onArchiveSession: (session: Session) => void;
+  onDeleteSession: (session: Session) => void;
 }
 
 export function Sidebar({
@@ -37,12 +87,40 @@ export function Sidebar({
   onToggleCollapse,
   mobileOpen,
   onCloseMobile,
+  onRenameSession,
+  onTogglePinSession,
+  onArchiveSession,
+  onDeleteSession,
 }: SidebarProps) {
   const { t, locale, setLocale } = useI18n();
   const { user, loading, stale, logout } = useAccount();
   const pathname = usePathname();
   const router = useRouter();
   const [query, setQuery] = useState("");
+
+  const {
+    panelRef: sidebarPanelRef,
+    width: sidebarWidth,
+    isDragging: isResizingSidebar,
+    handlePointerDown: handleSidebarResizeStart,
+    resetWidth: resetSidebarWidth,
+  } = useResizablePanel({
+    defaultWidth: 272,
+    minWidth: 220,
+    maxWidth: 460,
+    maxViewportRatio: 0.42,
+    edge: "right",
+    storageKey: "devnuby-sidebar-width",
+    cssVar: "--sidebar-w",
+  });
+
+  const collapsedGroups = useSyncExternalStore(
+    subscribeCollapsedGroups,
+    readCollapsedGroups,
+    () => EMPTY_COLLAPSED
+  );
+
+  const isSearching = query.trim().length > 0;
 
   async function handleLogout() {
     onCloseMobile();
@@ -57,11 +135,18 @@ export function Sidebar({
   }, [sessions, query]);
 
   const groups = useMemo(() => {
+    const byRecent = (a: Session, b: Session) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+
+    const pinned = filtered.filter((s) => s.isPinned).sort(byRecent);
+    const unpinned = filtered.filter((s) => !s.isPinned);
+
     return {
-      today: filtered.filter((s) => s.group === "today"),
-      yesterday: filtered.filter((s) => s.group === "yesterday"),
-      week: filtered.filter((s) => s.group === "week"),
-      earlier: filtered.filter((s) => s.group === "earlier"),
+      pinned,
+      today: unpinned.filter((s) => s.group === "today").sort(byRecent),
+      yesterday: unpinned.filter((s) => s.group === "yesterday").sort(byRecent),
+      week: unpinned.filter((s) => s.group === "week").sort(byRecent),
+      earlier: unpinned.filter((s) => s.group === "earlier").sort(byRecent),
     };
   }, [filtered]);
 
@@ -69,6 +154,40 @@ export function Sidebar({
     onCloseMobile();
     router.push("/");
   }
+
+  function handlePinFromSidebar(session: Session) {
+    if (!session.isPinned && collapsedGroups.pinned) {
+      updateCollapsedGroup("pinned", false);
+    }
+    onTogglePinSession(session);
+  }
+
+  function isGroupOpen(key: SessionGroupKey) {
+    if (isSearching) return true;
+    return !collapsedGroups[key];
+  }
+
+  function toggleGroup(key: SessionGroupKey) {
+    updateCollapsedGroup(key, !collapsedGroups[key]);
+  }
+
+  const groupConfigs: Array<{
+    key: SessionGroupKey;
+    label: string;
+    icon?: React.ReactNode;
+    items: Session[];
+  }> = [
+    {
+      key: "pinned",
+      label: t("nav.pinned"),
+      icon: <Pin className="w-3 h-3" />,
+      items: groups.pinned,
+    },
+    { key: "today", label: t("nav.today"), items: groups.today },
+    { key: "yesterday", label: t("nav.yesterday"), items: groups.yesterday },
+    { key: "week", label: t("nav.last7Days"), items: groups.week },
+    { key: "earlier", label: t("nav.earlier"), items: groups.earlier },
+  ];
 
   return (
     <>
@@ -83,30 +202,44 @@ export function Sidebar({
       />
 
       <aside
+        ref={sidebarPanelRef}
+        style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
         className={cn(
-          "fixed inset-y-0 left-0 z-[95] flex w-[280px] shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--panel)] md:static md:z-[90] md:translate-x-0",
-          "transition-[translate,width] duration-300 ease-[var(--ease-out)] motion-reduce:transition-none",
-          isCollapsed ? "md:w-0 md:border-r-0 md:pointer-events-none md:invisible" : "md:w-[272px]",
+          "fixed inset-y-0 left-0 z-[95] flex w-[280px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--panel)] md:z-[90] md:translate-x-0",
+          !isResizingSidebar &&
+            "transition-[translate,width] duration-300 ease-[var(--ease-out)] motion-reduce:transition-none",
+          isCollapsed
+            ? "md:static md:w-0 md:border-r-0 md:pointer-events-none md:invisible overflow-hidden"
+            : "md:relative md:w-[min(var(--sidebar-w),32vw)]",
+          isResizingSidebar && "select-none",
           mobileOpen ? "translate-x-0" : "-translate-x-full pointer-events-none md:pointer-events-auto",
           !mobileOpen && "invisible md:visible"
         )}
       >
+        {!isCollapsed && (
+          <PanelResizeHandle
+            edge="right"
+            isDragging={isResizingSidebar}
+            onPointerDown={handleSidebarResizeStart}
+            onDoubleClick={resetSidebarWidth}
+          />
+        )}
+
         {/* Top brand + collapse button */}
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3.5 border-b border-[var(--border)]">
-          <Link href="/" className="flex items-center gap-2.5 font-bold text-[17px] text-[var(--ink)]">
-            <span className="grid place-items-center w-8 h-8 rounded-[6px] bg-[var(--accent)] text-[var(--accent-text)]">
-              <Sparkles className="w-4 h-4" />
-            </span>
-            <span>{t("brand.name")}</span>
+        <div className="flex items-center justify-between gap-3 h-14 px-3.5 border-b border-[var(--border)] shrink-0">
+          <Link href="/" className="flex items-center min-w-0" aria-label={t("brand.name")}>
+            <DevnubyWordmark className="h-8 w-auto" />
           </Link>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="grid place-items-center w-8 h-8 rounded-[8px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-            aria-label={t("nav.hideSidebar")}
-          >
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
+          <Tooltip content={t("nav.hideSidebar")} side="bottom" align="end">
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="grid place-items-center w-8 h-8 rounded-[8px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
+              aria-label={t("nav.hideSidebar")}
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Action + Search + List */}
@@ -131,81 +264,38 @@ export function Sidebar({
             />
           </div>
 
-          <nav className="space-y-4">
+          <nav className="space-y-3">
             {isLoadingSessions && sessions.length === 0 ? (
               <SidebarSessionsSkeleton />
             ) : (
               <>
-                {groups.today.length > 0 && (
-                  <div>
-                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                      {t("nav.today")}
-                    </p>
-                    <div className="space-y-0.5">
-                      {groups.today.map((s) => (
-                        <SessionLink
-                          key={s.id}
-                          session={s}
-                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                          onClick={onCloseMobile}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {groups.yesterday.length > 0 && (
-                  <div>
-                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                      {t("nav.yesterday")}
-                    </p>
-                    <div className="space-y-0.5">
-                      {groups.yesterday.map((s) => (
-                        <SessionLink
-                          key={s.id}
-                          session={s}
-                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                          onClick={onCloseMobile}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {groups.week.length > 0 && (
-                  <div>
-                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                      {t("nav.last7Days")}
-                    </p>
-                    <div className="space-y-0.5">
-                      {groups.week.map((s) => (
-                        <SessionLink
-                          key={s.id}
-                          session={s}
-                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                          onClick={onCloseMobile}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {groups.earlier.length > 0 && (
-                  <div>
-                    <p className="px-1 text-[11px] font-semibold text-[var(--placeholder)] mb-1">
-                      {t("nav.earlier")}
-                    </p>
-                    <div className="space-y-0.5">
-                      {groups.earlier.map((s) => (
-                        <SessionLink
-                          key={s.id}
-                          session={s}
-                          active={pathname === `/c/${s.id}` || (s.slug ? pathname === `/c/${s.slug}` : false)}
-                          onClick={onCloseMobile}
-                        />
-                      ))}
-                    </div>
-                  </div>
+                {groupConfigs.map(
+                  (grp) =>
+                    grp.items.length > 0 && (
+                      <CollapsibleGroup
+                        key={grp.key}
+                        label={grp.label}
+                        icon={grp.icon}
+                        isOpen={isGroupOpen(grp.key)}
+                        onToggle={() => toggleGroup(grp.key)}
+                      >
+                        {grp.items.map((s) => (
+                          <SessionItem
+                            key={s.id}
+                            session={s}
+                            active={
+                              pathname === `/c/${s.id}` ||
+                              (s.slug ? pathname === `/c/${s.slug}` : false)
+                            }
+                            onNavigate={onCloseMobile}
+                            onRename={onRenameSession}
+                            onTogglePin={handlePinFromSidebar}
+                            onArchive={onArchiveSession}
+                            onDelete={onDeleteSession}
+                          />
+                        ))}
+                      </CollapsibleGroup>
+                    )
                 )}
 
                 {filtered.length === 0 && (
@@ -231,107 +321,14 @@ export function Sidebar({
               {t("nav.login")}
             </Link>
           ) : (
-          <div
-            aria-busy={stale}
-            className={cn(
-              "space-y-3 transition-[filter,opacity] duration-300",
-              stale && "blur-[2px] opacity-60 pointer-events-none select-none"
-            )}
-          >
-          <div>
-            <div className="flex justify-between text-xs mb-1.5">
-              <span className="text-[var(--muted)]">{t("nav.monthlyQuota")}</span>
-              <span className="font-semibold text-[var(--ink)]">
-                {user.quota.limitTokens === null ? "∞" : `${user.quota.usedPercent}%`}
-              </span>
-            </div>
-            <div className="h-1 rounded-full bg-[var(--border)] overflow-hidden">
-              <div
-                className="h-full bg-[var(--accent)] rounded-full transition-all"
-                style={{ width: `${user.quota.usedPercent}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-[var(--placeholder)] mt-1.5">
-              {t("nav.quotaResetsIn", { days: user.quota.resetInDays })}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5 p-1.5 rounded-[10px] hover:bg-[var(--hover)] transition-colors">
-            <span className="grid place-items-center w-7 h-7 rounded-full bg-[var(--accent)] text-[var(--accent-text)] text-[11px] font-bold">
-              {user.initials}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-[var(--ink)] truncate">
-                {user.name}
-              </p>
-              <p className="text-[11px] text-[var(--placeholder)] truncate">
-                {user.planLabel}
-              </p>
-            </div>
-
-            <Popover
-              side="top"
-              align="end"
-              className="w-[200px]"
-              trigger={
-                <button
-                  type="button"
-                  className="p-1 rounded-[6px] text-[var(--muted)] hover:text-[var(--ink)] cursor-pointer"
-                  aria-label={t("nav.accountOptions")}
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-              }
-            >
-              <div className="space-y-0.5">
-                <Link
-                  href="/settings"
-                  onClick={onCloseMobile}
-                  className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)]"
-                >
-                  <SettingsIcon className="w-3.5 h-3.5 text-[var(--muted)]" />
-                  <span>{t("nav.settings")}</span>
-                </Link>
-
-                {user.role === "admin" && (
-                  <Link
-                    href="/admin/gateway"
-                    onClick={onCloseMobile}
-                    className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)]"
-                  >
-                    <Shield className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>{t("nav.adminCatalog")}</span>
-                  </Link>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setLocale(locale === "id" ? "en" : "id")}
-                  className="glass-hover flex items-center justify-between w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)] cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <Globe className="w-3.5 h-3.5 text-[var(--muted)]" />
-                    <span>{locale === "id" ? "Bahasa: ID" : "Language: EN"}</span>
-                  </span>
-                  <span className="text-[10px] uppercase font-bold text-[var(--muted)]">
-                    {locale}
-                  </span>
-                </button>
-
-                <DropdownSeparator />
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-red-500 hover:bg-red-500/10 cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>{t("nav.logout")}</span>
-                </button>
-              </div>
-            </Popover>
-          </div>
-          </div>
+            <SidebarAccountCard
+              user={user}
+              stale={stale}
+              locale={locale}
+              setLocale={setLocale}
+              onCloseMobile={onCloseMobile}
+              onLogout={handleLogout}
+            />
           )}
         </div>
       </aside>
@@ -339,28 +336,6 @@ export function Sidebar({
   );
 }
 
-/** Placeholder with the same footprint as the quota + account block, shown before any data exists. */
-function AccountSkeleton() {
-  return (
-    <div className="space-y-3 animate-pulse" aria-busy="true">
-      <div>
-        <div className="flex justify-between mb-1.5">
-          <span className="h-3 w-24 rounded bg-[var(--hover)]" />
-          <span className="h-3 w-8 rounded bg-[var(--hover)]" />
-        </div>
-        <div className="h-1 rounded-full bg-[var(--hover)]" />
-        <span className="block h-2.5 w-20 mt-2 rounded bg-[var(--hover)]" />
-      </div>
-      <div className="flex items-center gap-2.5 p-1.5">
-        <span className="w-7 h-7 rounded-full bg-[var(--hover)]" />
-        <div className="flex-1 space-y-1.5">
-          <span className="block h-3 w-28 rounded bg-[var(--hover)]" />
-          <span className="block h-2.5 w-16 rounded bg-[var(--hover)]" />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** Skeleton shown when chat sessions are being initially fetched from the server. */
 function SidebarSessionsSkeleton() {
@@ -382,31 +357,5 @@ function SidebarSessionsSkeleton() {
         </div>
       </div>
     </div>
-  );
-}
-
-function SessionLink({
-  session,
-  active,
-  onClick,
-}: {
-  session: Session;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Link
-      href={`/c/${session.slug || session.id}`}
-      onClick={onClick}
-      className={cn(
-        "block w-full text-left px-2.5 py-2 rounded-[6px] text-[13.5px] truncate transition-colors",
-        active
-          ? "bg-[var(--accent-soft)] text-[var(--accent)] font-medium"
-          : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-      )}
-      title={session.title}
-    >
-      {session.title}
-    </Link>
   );
 }

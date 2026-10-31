@@ -21,7 +21,7 @@ export function DropdownItem({
     <button
       type="button"
       className={cn(
-        "glass-hover flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-[6px] text-sm text-[var(--ink)] cursor-pointer",
+        "glass-hover flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-[6px] text-sm text-[var(--ink)] cursor-pointer disabled:opacity-45 disabled:pointer-events-none",
         active && "bg-[var(--accent-soft)] text-[var(--accent)] font-medium",
         danger ? "text-red-500 hover:bg-red-500/10" : "",
         className

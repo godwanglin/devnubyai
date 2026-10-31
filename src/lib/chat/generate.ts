@@ -1,12 +1,19 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/client";
 import { ApiError } from "@/lib/api/response";
+import { GatewayError, isUpstreamRateLimitText } from "@/lib/routing/errors";
 import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool } from "@/lib/tools";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
 import { recordUserUsage } from "@/lib/chat/quota";
+import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
+import { startStreamHub } from "@/lib/chat/stream-hub";
+import { getChatSettings } from "@/lib/chat/settings";
+import { DEFAULT_TIME_ZONE } from "@/lib/chat/timezone";
+import { buildSystemPrompt } from "@/lib/chat/system-prompts";
+import { formatFileSize } from "@/lib/files/policy";
 import type {
   ChatMessageInput,
   ReasoningEffortVariant,
@@ -31,9 +38,37 @@ export interface StreamGenerationOptions {
   requestedModelPublicId?: string;
   sessionModelPublicId?: string | null;
   reasoningEffort?: ReasoningEffortVariant;
+  forceWebSearch?: boolean;
   conversationHistory: ChatMessageInput[];
+  /** Validated IANA zone of the user (see `resolveClientTimeZone`) */
+  clientTimeZone?: string;
   requestId: string;
-  clientSignal: AbortSignal;
+}
+
+/**
+ * System prompt carrying the real current date/time from the server clock, rendered in
+ * the user's own time zone (from the `x-client-tz` header) alongside UTC.
+ */
+function buildCurrentDatePrompt(timeZone: string, now = new Date()): string {
+  const local = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZoneName: "longOffset",
+  }).format(now);
+  const year = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(now);
+
+  return [
+    `Current date and time for the user: ${local} (time zone ${timeZone}). UTC: ${now.toISOString()}.`,
+    `The current year is ${year}. This is a verified fact from the server clock and overrides anything you assume from your training data.`,
+    "Your training data ends before this date, so events, releases, and benchmarks dated up to the current date are real, not projections or fiction.",
+    "Never claim it is still an earlier year. When the user says \"now\", \"today\", or \"this year\", use the date above, including in web search queries.",
+  ].join(" ");
 }
 
 interface AccumulatedToolCall {
@@ -49,31 +84,61 @@ interface AccumulatedToolCall {
  * 3. Default model from admin-managed `app_settings` (validated active)
  * Returns the resolved publicId, DB internal id, and whether tools are supported.
  */
+const resolvedModelSelect = {
+  id: true,
+  publicId: true,
+  displayName: true,
+  description: true,
+  contextWindow: true,
+  supportsTools: true,
+  supportsVision: true,
+  supportsReasoning: true,
+  provider: { select: { name: true } },
+} as const;
+
+type ResolvedModelType = Prisma.CatalogModelGetPayload<{ select: typeof resolvedModelSelect }>;
+const resolvedModelCache = new Map<string, { model: ResolvedModelType; expiresAt: number }>();
+
+export function invalidateResolvedModelCache(): void {
+  resolvedModelCache.clear();
+}
+
 export async function resolveCatalogModel(
   requested?: string,
   sessionFallback?: string | null
-): Promise<{ id: bigint; publicId: string; supportsTools: boolean }> {
+) {
   const candidatePublicId =
     requested?.trim() ||
     sessionFallback?.trim() ||
     (await getRoutingSettings()).defaultModel;
 
+  const now = Date.now();
+  const cached = resolvedModelCache.get(candidatePublicId);
+  if (cached && now < cached.expiresAt) {
+    return cached.model;
+  }
+
   let model = await db.catalogModel.findFirst({
     where: { publicId: candidatePublicId, status: "active" },
-    select: { id: true, publicId: true, supportsTools: true },
+    select: resolvedModelSelect,
   });
 
   if (!model && candidatePublicId !== (await getRoutingSettings()).defaultModel) {
     const defaultPublicId = (await getRoutingSettings()).defaultModel;
     model = await db.catalogModel.findFirst({
       where: { publicId: defaultPublicId, status: "active" },
-      select: { id: true, publicId: true, supportsTools: true },
+      select: resolvedModelSelect,
     });
   }
 
   if (!model) {
     throw ApiError.modelUnavailable("No active AI model is currently available.");
   }
+
+  resolvedModelCache.set(candidatePublicId, {
+    model,
+    expiresAt: now + 30_000,
+  });
 
   return model;
 }
@@ -132,6 +197,7 @@ export function createChatGenerationStream(
   const {
     userId,
     userPublicId,
+    sessionId,
     sessionPublicId,
     assistantMessageId,
     assistantMessagePublicId,
@@ -139,15 +205,18 @@ export function createChatGenerationStream(
     requestedModelPublicId,
     sessionModelPublicId,
     reasoningEffort,
+    forceWebSearch,
     conversationHistory,
+    clientTimeZone,
     requestId,
-    clientSignal,
   } = options;
 
+  // Only an explicit /stop aborts: a dropped client connection (reload) must not
+  // kill the generation, which keeps running in the stream hub for resumption.
   const streamController = registerStream(assistantMessagePublicId);
-  const combinedSignal = AbortSignal.any([clientSignal, streamController.signal]);
+  const combinedSignal = streamController.signal;
 
-  return createUIMessageStream({
+  const source = createUIMessageStream({
     execute: async ({ writer }) => {
       let fullContent = "";
       let fullReasoning = "";
@@ -163,6 +232,9 @@ export function createChatGenerationStream(
           requestedModelPublicId,
           sessionModelPublicId
         );
+
+        // Verify model access permissions for this user
+        await assertUserModelAccess(userId, resolvedModel.id);
 
         // Bind the resolved catalog model to the assistant message record
         await db.chatMessage.update({
@@ -184,14 +256,134 @@ export function createChatGenerationStream(
 
         // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
+
+        // Parallelize initial DB lookups (sessionFiles, user, chatSettings) to minimize TTFT
+        const [sessionFiles, user, chatSettings] = await Promise.all([
+          resolvedModel.supportsTools
+            ? db.sessionFile.findMany({
+                where: { sessionId },
+                select: {
+                  publicId: true,
+                  filename: true,
+                  mimeType: true,
+                  sizeBytes: true,
+                },
+                orderBy: { createdAt: "asc" },
+              })
+            : Promise.resolve([]),
+          db.user.findUnique({ where: { id: userId }, select: { name: true } }),
+          resolvedModel.supportsTools ? getChatSettings() : Promise.resolve({ maxToolRounds: 0 }),
+        ]);
+
+        // If tools are supported, inject comprehensive tool guidelines and active session files
+        if (resolvedModel.supportsTools) {
+          currentMessages.unshift({
+            role: "system",
+            content: [
+              "# Tools & Operating Protocol",
+              "",
+              "## 1. Document Reading (`read_file`)",
+              "- You have persistent access to files in this chat session via `read_file`. ALWAYS use `read_file` when the user asks about an uploaded document, previous file, page count, or specific facts.",
+              "- NEVER guess document contents, NEVER use `web_search` to substitute user documents, and NEVER use `execute_code` (Python) to read or parse files (the code sandbox cannot access storage files).",
+              "- Document structure markers:",
+              "  * PDF files: marked per page with `=== [PAGE X] ===`. Use these exact page numbers when referencing pages.",
+              "  * Excel spreadsheets: marked per sheet with `=== [SHEET: SheetName] ===`.",
+              "  * PowerPoint: marked per slide with `=== [SLIDE X] ===`.",
+              "  * Word DOCX: preserved with Markdown headings, lists, and tables.",
+              "- Pagination: `read_file` returns up to 100 lines per call. If `hasMore: true`, continue reading with `nextStartLine` as needed.",
+              "",
+              "## 2. Canvas Artifacts (`write_file`) & Web/Landing Pages",
+              "- MANDATORY FILE CREATION RULE: If the user asks to create, build, generate, or code any file, website, web page (HTML/CSS/JS), landing page, app, component, markdown document, SVG, script, or program:",
+              "  * YOU MUST IMMEDIATELY CALL THE `write_file` TOOL in your very first response!",
+              "  * DO NOT stop after writing an intro message or saying 'Mari kita simpan dan buat file' without invoking `write_file` in the exact same turn!",
+              "  * Place the entire, functional, high-quality code in the `content` argument of `write_file`.",
+              "  * You may include a brief 1-2 sentence introduction before the tool call, but the tool call `write_file` MUST be executed in that response.",
+              "- Saved files appear in the user's right-hand canvas panel for live interactive preview and download.",
+              "",
+              "## 3. WebAssembly Sandbox (`execute_code`)",
+              "- Browser-isolated runtime for Python (numpy, pandas, matplotlib) and JavaScript. Use ONLY for pure computation, data calculations, and mathematical plotting (`matplotlib.pyplot`).",
+              "- Sandbox has NO internet/network access and NO access to session files.",
+              "",
+              "## 4. Web Search Citations (`web_search` / `deep_search`)",
+              "- When citing search results, ALWAYS format sources as inline Markdown links `[Domain or Title](exact_url)` immediately next to each referenced claim or fact.",
+              "",
+              "## 5. Calculation (`calculate`)",
+              "- For any arithmetic, percentages, ratios, statistics, or unit conversions, ALWAYS use `calculate` instead of mental math to guarantee exact results.",
+              "",
+              "## 6. Fetching URLs (`fetch_url`)",
+              "- When the user provides a URL or asks to read a specific web page/documentation, use `fetch_url`. Do NOT guess page contents.",
+              "",
+              "## 7. Persistent Memory (`memory_note`)",
+              "- Use `memory_note` with action 'save' to remember user preferences/facts that should persist across sessions; 'list' to recall them; 'delete' to remove. Only store facts the user explicitly wants retained.",
+              "",
+              "## 8. Surgical File Editing (`edit_file`) & Creation (`write_file`)",
+              "- When modifying an existing text or code file (.html, .css, .js, .ts, .md, .csv, .json, .py, etc.), PREFER calling `edit_file` with `targetText` (or `startLine`/`endLine`) and `replacementText`. This performs a precise, surgical diff edit on the exact same file without rewriting the whole document.",
+              "- Use `write_file` when creating a brand-new file from scratch or when completely rewriting an entire document.",
+              "- When editing, `edit_file` updates the exact same file in session storage and returns a unified diff.",
+              "- If the user asks to revert or undo a change, you can call `edit_file` to invert the diff or restore the previous text snippet.",
+              "- Do NOT edit raw binary files (PDF/DOCX) with `edit_file`. For PDFs, explain changes in chat or create a revised markdown/HTML version."
+            ].join("\n"),
+          });
+
+          if (sessionFiles.length > 0) {
+            const fileLines = sessionFiles.map((f) => {
+              const cleanName = f.filename.replace(/^\d+-[a-f0-9]+-/, "");
+              const sizeLabel = formatFileSize(Number(f.sizeBytes));
+              return `- Name: ${cleanName} | ID: ${f.publicId} | Size: ${sizeLabel} | Type: ${f.mimeType}`;
+            });
+
+            currentMessages.unshift({
+              role: "system",
+              content: `[Active Session Files]:\n${fileLines.join("\n")}\nTo read or inspect any of these files, call \`read_file\` passing either the file Name or ID.`,
+            });
+          }
+        }
+
+        // Models only know their training cutoff; ground every request in the real server clock
+        currentMessages.unshift({
+          role: "system",
+          content: buildCurrentDatePrompt(clientTimeZone ?? DEFAULT_TIME_ZONE),
+        });
+
+        // Admin-managed prompts (identity, active model, ...) go first, placeholders filled
+        const adminPrompt = await buildSystemPrompt({
+          model: {
+            publicId: resolvedModel.publicId,
+            displayName: resolvedModel.displayName,
+            providerName: resolvedModel.provider.name,
+            description: resolvedModel.description,
+            contextWindow: resolvedModel.contextWindow,
+            supportsVision: resolvedModel.supportsVision,
+            supportsTools: resolvedModel.supportsTools,
+            supportsReasoning: resolvedModel.supportsReasoning,
+          },
+          userName: user?.name ?? "",
+        });
+        if (adminPrompt) {
+          currentMessages.unshift({ role: "system", content: adminPrompt });
+        }
+
         const executedToolParts: Record<string, unknown>[] = [];
-        let remainingToolRounds = resolvedModel.supportsTools ? 3 : 0;
+        // Round budget is admin-managed (app_settings `chat.max_tool_rounds`)
+        let remainingToolRounds = chatSettings.maxToolRounds;
         let stepIndex = 0;
+        let reasoningStartTime: number | null = null;
+        let reasoningDurationSec: number | null = null;
+        // Set once the model must answer in prose from what it already gathered
+        let forceFinalAnswer = false;
 
         while (true) {
           if (combinedSignal.aborted) {
             throw new Error("CLIENT_ABORTED");
           }
+
+          // Force web_search on first turn if user activated web search toggle
+          // Tools stay declared on the final pass (history holds tool turns) but can't be called
+          const toolChoice = forceFinalAnswer
+            ? ("none" as const)
+            : stepIndex === 0 && forceWebSearch && resolvedModel.supportsTools
+              ? ({ type: "function" as const, function: { name: "web_search" } })
+              : undefined;
 
           const gatewayStream = executeWithFallback({
             publicModelId: resolvedModel.publicId,
@@ -202,6 +394,7 @@ export function createChatGenerationStream(
               messages: currentMessages,
               reasoningEffort,
               tools: resolvedModel.supportsTools ? devnubyTools : undefined,
+              toolChoice,
               signal: combinedSignal,
             },
           });
@@ -227,9 +420,20 @@ export function createChatGenerationStream(
               if (event.type === "delta") {
                 turnContent += event.text;
                 fullContent += event.text;
+
+                if (isUpstreamRateLimitText(turnContent) || isUpstreamRateLimitText(fullContent)) {
+                  throw new GatewayError({
+                    errorClass: "rate_limited",
+                    httpStatus: 429,
+                    message: "Anda sudah mencapai batas pada model ini. Silakan coba lagi nanti.",
+                  });
+                }
                 // Jawaban mulai keluar → fase berpikir selesai, tutup reasoning part sekarang
                 if (hasEmittedReasoningStart && !hasEndedReasoning) {
                   hasEndedReasoning = true;
+                  if (reasoningStartTime) {
+                    reasoningDurationSec = Math.max(1, Math.round((Date.now() - reasoningStartTime) / 1000));
+                  }
                   yield { type: "reasoning-end", id: reasoningPartId };
                 }
                 if (!hasEmittedTextStart) {
@@ -238,6 +442,9 @@ export function createChatGenerationStream(
                 }
                 yield { type: "text-delta", id: textPartId, text: event.text };
               } else if (event.type === "reasoning") {
+                if (reasoningStartTime === null) {
+                  reasoningStartTime = Date.now();
+                }
                 fullReasoning += event.text;
                 if (!hasEmittedReasoningStart) {
                   hasEmittedReasoningStart = true;
@@ -267,6 +474,9 @@ export function createChatGenerationStream(
             }
 
             if (hasEmittedReasoningStart && !hasEndedReasoning) {
+              if (reasoningStartTime) {
+                reasoningDurationSec = Math.max(1, Math.round((Date.now() - reasoningStartTime) / 1000));
+              }
               yield { type: "reasoning-end", id: reasoningPartId };
             }
             if (hasEmittedTextStart) {
@@ -291,7 +501,7 @@ export function createChatGenerationStream(
             (c) => c.name.trim().length > 0
           );
 
-          if (assembledCalls.length > 0 && remainingToolRounds > 0) {
+          if (assembledCalls.length > 0 && remainingToolRounds > 0 && !forceFinalAnswer) {
             remainingToolRounds -= 1;
             stepIndex += 1;
 
@@ -326,17 +536,20 @@ export function createChatGenerationStream(
                 dynamic: true,
               });
 
+              const toolStart = Date.now();
               const result = await executeTool(tool.name, parsedArgs, {
                 userId: userPublicId,
                 sessionId: sessionPublicId,
                 signal: combinedSignal,
               });
+              const toolDurationSec = Math.max(1, Math.round((Date.now() - toolStart) / 1000));
 
               executedToolParts.push({
                 type: "dynamic-tool",
                 toolCallId: effectiveCallId,
                 toolName: tool.name,
                 state: result.success ? "output-available" : "output-error",
+                durationSec: toolDurationSec,
                 input: parsedArgs,
                 output: result.success
                   ? sanitizeToolOutputForStorage(tool.name, result.data)
@@ -370,7 +583,56 @@ export function createChatGenerationStream(
             continue;
           }
 
+          // Check if model ended with an unfulfilled promise to create/save/write a file
+          const lowerTurn = turnContent.toLowerCase();
+          const seemsUnfulfilledFilePromise =
+            stepIndex === 0 &&
+            remainingToolRounds > 0 &&
+            resolvedModel.supportsTools &&
+            (lowerTurn.includes("mari kita simpan") ||
+              lowerTurn.includes("mari kita buat file") ||
+              lowerTurn.includes("buatkan file html") ||
+              lowerTurn.includes("simpan dan buat file"));
+
+          if (seemsUnfulfilledFilePromise && !forceFinalAnswer) {
+            stepIndex += 1;
+            remainingToolRounds -= 1;
+            currentMessages.push({
+              role: "assistant",
+              content: turnContent,
+            });
+            currentMessages.push({
+              role: "user",
+              content: "Panggil tool `write_file` sekarang untuk membuat file lengkapnya.",
+            });
+            continue;
+          }
+
+          // After tool use the model sometimes ends with no prose (empty reply, or more
+          // tool calls once the round budget is spent). Give it one tool-free pass to answer.
+          const endedWithoutAnswer =
+            stepIndex > 0 && (assembledCalls.length > 0 || !turnContent.trim());
+          if (endedWithoutAnswer && !forceFinalAnswer) {
+            forceFinalAnswer = true;
+            stepIndex += 1;
+            // A user turn, since some providers reject system messages mid-conversation
+            currentMessages.push({
+              role: "user",
+              content:
+                "Do not call any more tools. Using the tool results above, write your complete final answer to the user now.",
+            });
+            continue;
+          }
+
           break;
+        }
+
+        // If reasoning was executed, append reasoning-meta so duration survives page reloads
+        if (reasoningDurationSec !== null) {
+          executedToolParts.push({
+            type: "reasoning-meta",
+            durationSec: reasoningDurationSec,
+          });
         }
 
         // Persist final completed message to DB
@@ -406,17 +668,23 @@ export function createChatGenerationStream(
           errAny?.message === "CLIENT_ABORTED" ||
           errAny?.errorClass === "client_aborted";
 
+        const isUpstreamRateLimit =
+          isUpstreamRateLimitText(fullContent) ||
+          (streamErr instanceof GatewayError && streamErr.errorClass === "rate_limited");
+
         const finalStatus = isAbort ? "aborted" : "failed";
         const errorCode = isAbort
           ? "CLIENT_ABORTED"
-          : (errAny?.code as string) || (errAny?.errorClass as string) || "STREAM_ERROR";
+          : isUpstreamRateLimit
+            ? "RATE_LIMITED"
+            : (errAny?.code as string) || (errAny?.errorClass as string) || "STREAM_ERROR";
 
         await db.chatMessage
           .update({
             where: { id: assistantMessageId },
             data: {
-              content: fullContent,
-              reasoning: fullReasoning || null,
+              content: isUpstreamRateLimit ? "" : fullContent,
+              reasoning: isUpstreamRateLimit ? null : fullReasoning || null,
               status: finalStatus,
               errorCode,
               promptTokens: promptTokens || null,
@@ -436,6 +704,8 @@ export function createChatGenerationStream(
 
           if (streamErr instanceof ApiError) {
             publicMessage = streamErr.message;
+          } else if (streamErr instanceof GatewayError) {
+            publicMessage = streamErr.message || "The model is temporarily unavailable.";
           }
 
           writer.write({
@@ -449,4 +719,6 @@ export function createChatGenerationStream(
       }
     },
   });
+
+  return startStreamHub(sessionPublicId, assistantMessagePublicId, source);
 }

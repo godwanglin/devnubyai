@@ -1,0 +1,92 @@
+import { z } from "zod";
+import { db } from "@/lib/db";
+import { requireUser } from "@/lib/auth/session";
+import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
+import { getChatSession } from "@/lib/chat/service";
+
+const updateMessageSchema = z.object({
+  content: z.string().trim().min(1, "Message content cannot be empty"),
+  truncateAfter: z.boolean().optional(),
+});
+
+type RouteContext = { params: Promise<{ chatId: string; messageId: string }> };
+
+/**
+ * PATCH /api/v1/chats/[chatId]/messages/[messageId]
+ * Edits a message (typically a user message) and optionally truncates/prunes
+ * all subsequent conversation turns from the database so the chat branches freshly.
+ */
+export async function PATCH(request: Request, context: RouteContext) {
+  const requestId = getRequestId(request);
+
+  try {
+    const user = await requireUser();
+    const { chatId, messageId } = await context.params;
+
+    let body: unknown = {};
+    try {
+      body = await request.json();
+    } catch {
+      throw ApiError.badRequest("Invalid JSON body");
+    }
+
+    const parsed = updateMessageSchema.safeParse(body);
+    if (!parsed.success) {
+      throw ApiError.badRequest("Invalid update payload", parsed.error.format());
+    }
+
+    const session = await getChatSession(user.id, chatId);
+
+    const targetMessage = await db.chatMessage.findFirst({
+      where: {
+        publicId: messageId,
+        sessionId: session.id,
+      },
+    });
+
+    if (!targetMessage) {
+      throw ApiError.notFound("Message to edit not found");
+    }
+
+    const result = await db.$transaction(async (tx) => {
+      // 1. Update the message's content
+      const updated = await tx.chatMessage.update({
+        where: { id: targetMessage.id },
+        data: {
+          content: parsed.data.content,
+          updatedAt: new Date(),
+        },
+      });
+
+      let deletedCount = 0;
+      // 2. If truncateAfter is requested, delete all subsequent messages in this session
+      if (parsed.data.truncateAfter) {
+        const deleted = await tx.chatMessage.deleteMany({
+          where: {
+            sessionId: session.id,
+            id: { gt: targetMessage.id },
+          },
+        });
+        deletedCount = deleted.count;
+
+        await tx.chatSession.update({
+          where: { id: session.id },
+          data: { lastMessageAt: new Date() },
+        });
+      }
+
+      return { updated, deletedCount };
+    });
+
+    return jsonSuccess(
+      {
+        id: result.updated.publicId,
+        content: result.updated.content,
+        deletedSubsequentMessages: result.deletedCount,
+      },
+      { requestId }
+    );
+  } catch (err) {
+    return jsonError(err, { requestId });
+  }
+}

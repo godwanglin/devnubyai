@@ -1,5 +1,11 @@
 import { db } from "@/lib/db";
-import { getCachedJson, setCachedJson, invalidateCacheKey } from "@/lib/redis/client";
+import {
+  getCachedJson,
+  setCachedJson,
+  invalidateCacheKey,
+  invalidateCachePattern,
+} from "@/lib/redis/client";
+import { invalidateResolvedModelCache } from "@/lib/chat/generate";
 import type { ApiModelItem } from "@/app/api/v1/models/route";
 
 const CATALOG_CACHE_KEY = "catalog:models:active";
@@ -7,21 +13,25 @@ const CATALOG_CACHE_TTL = 3600; // 1 hour in Redis (invalidated on mutation)
 
 // Local memory fallback if Redis is unavailable or cold
 let localCatalogFallback: { models: ApiModelItem[]; timestamp: number } | null = null;
+const localPlanCatalogFallback = new Map<string, { models: ApiModelItem[]; timestamp: number }>();
 
 /**
  * Fetch active catalog models for users/composer.
  * Uses Redis cache (with fallback to local memory) to avoid repeated DB hits.
  */
 export async function getActiveCatalogModels(): Promise<ApiModelItem[]> {
-  // 1. Try Redis cache first
-  const redisCached = await getCachedJson<ApiModelItem[]>(CATALOG_CACHE_KEY);
-  if (redisCached && Array.isArray(redisCached) && redisCached.length > 0) {
-    return redisCached;
+  const now = Date.now();
+
+  // 1. Check local fast memory cache first (0.01ms)
+  if (localCatalogFallback && now - localCatalogFallback.timestamp < 30_000) {
+    return localCatalogFallback.models;
   }
 
-  // 2. Check local memory fallback
-  if (localCatalogFallback && Date.now() - localCatalogFallback.timestamp < 60_000) {
-    return localCatalogFallback.models;
+  // 2. Try Redis cache (remote L2)
+  const redisCached = await getCachedJson<ApiModelItem[]>(CATALOG_CACHE_KEY);
+  if (redisCached && Array.isArray(redisCached) && redisCached.length > 0) {
+    localCatalogFallback = { models: redisCached, timestamp: now };
+    return redisCached;
   }
 
   // 3. Query Database
@@ -87,10 +97,76 @@ export async function getActiveCatalogModels(): Promise<ApiModelItem[]> {
 }
 
 /**
+ * Fetch active catalog models with lock state based on a subscription plan.
+ */
+export async function getActiveCatalogModelsForPlan(
+  planId: bigint | null
+): Promise<ApiModelItem[]> {
+  const now = Date.now();
+  const allModels = await getActiveCatalogModels();
+
+  // If user has no plan, look up 'free' plan
+  let effectivePlanId = planId;
+  if (!effectivePlanId) {
+    const freePlan = await db.plan.findUnique({
+      where: { slug: "free" },
+      select: { id: true },
+    });
+    effectivePlanId = freePlan?.id ?? null;
+  }
+
+  if (!effectivePlanId) {
+    return allModels.map((m) => ({ ...m, isLocked: false }));
+  }
+
+  const planKey = `catalog:models:plan:${effectivePlanId.toString()}`;
+
+  // 1. Check local fast memory cache first (0.01ms)
+  const memCached = localPlanCatalogFallback.get(planKey);
+  if (memCached && now - memCached.timestamp < 30_000) {
+    return memCached.models;
+  }
+
+  // 2. Try Redis cache (remote L2)
+  const redisCached = await getCachedJson<ApiModelItem[]>(planKey);
+  if (redisCached && Array.isArray(redisCached) && redisCached.length > 0) {
+    localPlanCatalogFallback.set(planKey, { models: redisCached, timestamp: now });
+    return redisCached;
+  }
+
+  // Get allowed model IDs for this plan
+  const allowed = await db.planModelAccess.findMany({
+    where: { planId: effectivePlanId },
+    include: { catalogModel: { select: { publicId: true } } },
+  });
+  const allowedPublicIds = new Set(allowed.map((a) => a.catalogModel.publicId));
+
+  const modelsWithLockState = allModels.map((m) => ({
+    ...m,
+    isLocked: !allowedPublicIds.has(m.id),
+  }));
+
+  localPlanCatalogFallback.set(planKey, {
+    models: modelsWithLockState,
+    timestamp: Date.now(),
+  });
+  await setCachedJson(planKey, modelsWithLockState, CATALOG_CACHE_TTL);
+
+  return modelsWithLockState;
+}
+
+/**
  * Invalidate the active catalog models cache in Redis & memory.
  * Called on admin model create/update/delete/toggle events.
  */
 export async function invalidateActiveCatalogCache(): Promise<void> {
   localCatalogFallback = null;
-  await invalidateCacheKey(CATALOG_CACHE_KEY);
+  localPlanCatalogFallback.clear();
+  try {
+    invalidateResolvedModelCache();
+  } catch {}
+  await Promise.allSettled([
+    invalidateCacheKey(CATALOG_CACHE_KEY),
+    invalidateCachePattern("catalog:models:*"),
+  ]);
 }

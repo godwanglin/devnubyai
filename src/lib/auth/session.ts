@@ -56,10 +56,31 @@ export async function getSession(): Promise<SessionContext | null> {
   return validateSessionToken(token);
 }
 
+interface CachedSessionContext {
+  ctx: SessionContext;
+  expiresAt: number;
+}
+
+const sessionL1Cache = new Map<string, CachedSessionContext>();
+
+export function invalidateSessionTokenCache(rawToken?: string): void {
+  if (rawToken) {
+    sessionL1Cache.delete(rawToken);
+  } else {
+    sessionL1Cache.clear();
+  }
+}
+
 /**
  * Validate a raw session token string against the database.
  */
 export async function validateSessionToken(rawToken: string): Promise<SessionContext | null> {
+  const now = Date.now();
+  const cached = sessionL1Cache.get(rawToken);
+  if (cached && now < cached.expiresAt && cached.ctx.expiresAt.getTime() > now) {
+    return cached.ctx;
+  }
+
   const tokenHash = hashSessionToken(rawToken);
 
   const session = await db.authSession.findUnique({
@@ -73,10 +94,14 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
     },
   });
 
-  if (!session) return null;
+  if (!session) {
+    sessionL1Cache.delete(rawToken);
+    return null;
+  }
 
   // Check expiration
-  if (session.expiresAt.getTime() <= Date.now()) {
+  if (session.expiresAt.getTime() <= now) {
+    sessionL1Cache.delete(rawToken);
     // Lazy purge expired session
     try {
       await db.authSession.delete({ where: { id: session.id } });
@@ -88,10 +113,11 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
 
   // Check user status
   if (session.user.status !== "active") {
+    sessionL1Cache.delete(rawToken);
     return null;
   }
 
-  return {
+  const ctx: SessionContext = {
     sessionId: session.id,
     expiresAt: session.expiresAt,
     user: {
@@ -106,6 +132,13 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
       plan: session.user.plan,
     },
   };
+
+  sessionL1Cache.set(rawToken, {
+    ctx,
+    expiresAt: Math.min(now + 20_000, session.expiresAt.getTime()),
+  });
+
+  return ctx;
 }
 
 /**
@@ -174,6 +207,7 @@ export async function destroySession(): Promise<void> {
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (token) {
+    invalidateSessionTokenCache(token);
     const tokenHash = hashSessionToken(token);
     try {
       await db.authSession.deleteMany({

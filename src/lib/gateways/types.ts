@@ -40,9 +40,13 @@ export interface ToolCallInput {
   arguments: string;
 }
 
+export type MultimodalContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+
 export interface ChatMessageInput {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  content: string | MultimodalContentPart[];
   name?: string;
   toolCallId?: string;
   /** Tool calls requested by an assistant turn (needed before the matching `tool` messages). */
@@ -60,6 +64,7 @@ export interface GatewayExecutionRequest {
   maxTokens?: number;
   reasoningEffort?: ReasoningEffortVariant;
   tools?: ToolDefinition[];
+  toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
   paramOverrides?: Record<string, unknown> | null;
   signal?: AbortSignal;
 }

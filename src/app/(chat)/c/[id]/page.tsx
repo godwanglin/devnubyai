@@ -1,5 +1,4 @@
-import { ChatShell } from "@/components/chat/chat-shell";
-
+// Rendered by the persistent (chat) layout; this page only claims the route.
 export default function ChatSessionPage() {
-  return <ChatShell />;
+  return null;
 }

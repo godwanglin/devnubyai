@@ -50,6 +50,7 @@ export function LogsTab() {
   const [telemetryOutcome, setTelemetryOutcome] = useState("all");
 
   const fetchAuditLogs = useCallback(async () => {
+    await Promise.resolve();
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -76,6 +77,7 @@ export function LogsTab() {
   }, [auditPage, auditSearch, auditEntityType, toast]);
 
   const fetchTelemetry = useCallback(async () => {
+    await Promise.resolve();
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -102,13 +104,14 @@ export function LogsTab() {
   }, [telemetryPage, telemetrySearch, telemetryOutcome, toast]);
 
   useEffect(() => {
-    void Promise.resolve().then(() => {
+    const timer = setTimeout(() => {
       if (activeSubtab === "audit") {
-        fetchAuditLogs();
+        void fetchAuditLogs();
       } else {
-        fetchTelemetry();
+        void fetchTelemetry();
       }
-    });
+    }, 0);
+    return () => clearTimeout(timer);
   }, [activeSubtab, fetchAuditLogs, fetchTelemetry]);
 
   return (
@@ -195,6 +198,8 @@ export function LogsTab() {
                   { value: "catalog_model", label: "Catalog Model" },
                   { value: "route", label: "Route" },
                   { value: "routing_setting", label: "Routing Setting" },
+                  { value: "app_setting", label: "App Setting" },
+                  { value: "system_prompt", label: "System Prompt" },
                 ]}
                 value={auditEntityType}
                 onChange={(val) => {
@@ -469,20 +474,10 @@ export function LogsTab() {
                 })}
               </span>
               <div className="flex gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={telemetryPage <= 1}
-                  onClick={() => setTelemetryPage((p) => Math.max(1, p - 1))}
-                >
+                <Button variant="ghost" size="sm" disabled={telemetryPage <= 1} onClick={() => setTelemetryPage((p) => Math.max(1, p - 1))}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={telemetryPage >= telemetryTotalPages}
-                  onClick={() => setTelemetryPage((p) => Math.min(telemetryTotalPages, p + 1))}
-                >
+                <Button variant="ghost" size="sm" disabled={telemetryPage >= telemetryTotalPages} onClick={() => setTelemetryPage((p) => Math.min(telemetryTotalPages, p + 1))}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -491,11 +486,7 @@ export function LogsTab() {
         </div>
       )}
 
-      {/* Audit State Diff Modal */}
-      <AuditStateModal
-        log={selectedAuditLog}
-        onClose={() => setSelectedAuditLog(null)}
-      />
+      <AuditStateModal log={selectedAuditLog} onClose={() => setSelectedAuditLog(null)} />
     </div>
   );
 }

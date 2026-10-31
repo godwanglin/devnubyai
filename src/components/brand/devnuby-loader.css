@@ -1,0 +1,484 @@
+/* DevNuby AI Interactive Loader Animations (thinking, tools, normal, done) */
+
+/* 1. Base Loader Container */
+svg.dn-loader {
+  overflow: visible !important;
+}
+
+/* Cursor-reactive Body Tilt & Lean Layer */
+.dn-body-tracker {
+  transform-box: view-box;
+  transform-origin: 32px 50px;
+  transition: transform 0.12s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Eyeball Socket Layer */
+.dn-eyeball {
+  transform-box: view-box;
+  transition: transform 0.08s ease-out;
+}
+
+/* Pupil Highlight Layer */
+.dn-pupil-highlight {
+  transform-box: view-box;
+  transition: transform 0.06s ease-out;
+}
+
+.dn-loader-mascot {
+  transform-box: view-box;
+  transform-origin: 32px 36px;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dn-loader-shadow {
+  transform-origin: center;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* Crossfading Face Layers */
+.dn-loader-face {
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 32px 34px;
+  transform: scale(0.92);
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+/* ========================================================================= */
+/* STATE 1: THINKING (Deep Thought / Berpikir)                              */
+/* ========================================================================= */
+.dn-loader[data-state="thinking"] .dn-face-thinking {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dn-loader[data-state="thinking"] .dn-loader-mascot {
+  animation: dn-thinking-float 3.2s ease-in-out infinite alternate;
+}
+
+.dn-loader[data-state="thinking"] .dn-thinking-eyes {
+  transform-origin: 32px 32.5px;
+  animation: dn-idle-blink 3.4s ease-in-out infinite;
+}
+
+.dn-loader[data-state="thinking"] .dn-thought-ring {
+  transform-origin: 44.5px 12px;
+  animation: dn-thought-expand 2.4s ease-out infinite;
+}
+
+.dn-loader[data-state="thinking"] .dn-thought-ring.ring-2 {
+  animation-delay: 0.8s;
+}
+
+.dn-loader[data-state="thinking"] .dn-thought-ring.ring-3 {
+  animation-delay: 1.6s;
+}
+
+.dn-loader[data-state="thinking"] .dn-thought-sparkle {
+  transform-origin: 14px 22px;
+  animation: dn-sparkle-twinkle 2s ease-in-out infinite alternate;
+}
+
+@keyframes dn-thinking-float {
+  0% {
+    transform: rotate(-3deg) translateY(0px);
+  }
+  50% {
+    transform: rotate(2deg) translateY(-5px);
+  }
+  100% {
+    transform: rotate(-3deg) translateY(0px);
+  }
+}
+
+@keyframes dn-thinking-glance {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  30%, 70% {
+    transform: translate(1.5px, -1.8px);
+  }
+  85% {
+    transform: translate(-1px, -0.5px);
+  }
+}
+
+@keyframes dn-thought-expand {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.85;
+    stroke-width: 2px;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+    stroke-width: 0.8px;
+  }
+}
+
+@keyframes dn-sparkle-twinkle {
+  0% {
+    transform: scale(0.6) rotate(0deg);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1.15) rotate(45deg);
+    opacity: 0.95;
+  }
+}
+
+/* ========================================================================= */
+/* STATE 2: TOOLS (Executing Tools / Terminal Interaktif)                   */
+/* ========================================================================= */
+.dn-loader[data-state="tools"] .dn-face-tools {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dn-loader[data-state="tools"] .dn-loader-mascot {
+  animation: dn-tools-jitter 0.18s ease-in-out infinite alternate;
+}
+
+.dn-loader[data-state="tools"] .dn-antenna {
+  transform-origin: 37px 18px;
+  animation: dn-antenna-radar 1.1s linear infinite;
+}
+
+.dn-loader[data-state="tools"] .dn-terminal-cursor {
+  animation: dn-cursor-blink 0.65s step-start infinite;
+}
+
+.dn-loader[data-state="tools"] .dn-terminal-scanline {
+  animation: dn-scanline-sweep 1.6s ease-in-out infinite;
+}
+
+.dn-loader[data-state="tools"] .dn-matrix-bit {
+  animation: dn-matrix-float 1.8s ease-out infinite;
+}
+
+.dn-loader[data-state="tools"] .dn-matrix-bit.bit-2 {
+  animation-delay: 0.6s;
+}
+
+.dn-loader[data-state="tools"] .dn-matrix-bit.bit-3 {
+  animation-delay: 1.2s;
+}
+
+@keyframes dn-tools-jitter {
+  0% {
+    transform: rotate(-1deg) translateY(0);
+  }
+  100% {
+    transform: rotate(1deg) translateY(-1px);
+  }
+}
+
+@keyframes dn-antenna-radar {
+  0% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(20deg) scale(1.08);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes dn-cursor-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes dn-scanline-sweep {
+  0% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.55;
+  }
+  80% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+
+@keyframes dn-matrix-float {
+  0% {
+    transform: translateY(6px) scale(0.7);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-16px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* ========================================================================= */
+/* STATE 3: NORMAL (Loading Normal / Synthesizing / Smooth Work Float)       */
+/* ========================================================================= */
+.dn-loader[data-state="normal"] .dn-face-normal {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dn-loader[data-state="normal"] .dn-loader-mascot {
+  transform-origin: 32px 50px;
+  animation: dn-normal-float 2.4s ease-in-out infinite alternate;
+}
+
+.dn-loader[data-state="normal"] .dn-loader-shadow {
+  animation: dn-shadow-breathe 2.4s ease-in-out infinite alternate;
+}
+
+.dn-loader[data-state="normal"] .dn-antenna {
+  transform-origin: 37px 18px;
+  animation: dn-normal-antenna 1.2s ease-in-out infinite alternate;
+}
+
+.dn-loader[data-state="normal"] .dn-eyes-normal {
+  transform-origin: 32px 33.8px;
+  animation: dn-idle-blink 2.8s ease-in-out infinite;
+}
+
+@keyframes dn-normal-float {
+  0% {
+    transform: rotate(-2deg) translateY(0) scale(1);
+  }
+  50% {
+    transform: rotate(1deg) translateY(-5px) scale(1.02);
+  }
+  100% {
+    transform: rotate(-2deg) translateY(0) scale(1);
+  }
+}
+
+@keyframes dn-shadow-breathe {
+  0%, 100% {
+    transform: scaleX(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scaleX(0.75);
+    opacity: 0.2;
+  }
+}
+
+@keyframes dn-normal-antenna {
+  0% {
+    transform: rotate(-8deg);
+  }
+  100% {
+    transform: rotate(14deg) translateY(-1px);
+  }
+}
+
+/* ========================================================================= */
+/* STATE 4: DONE (Success / Selesai - Loncat-loncat gembira!)                 */
+/* ========================================================================= */
+.dn-loader[data-state="done"] .dn-face-done {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dn-loader[data-state="done"] .dn-blush {
+  opacity: 0.95;
+  transform: scale(1.22);
+}
+
+.dn-loader[data-state="done"] .dn-loader-mascot {
+  transform-origin: 32px 50px;
+  animation: dn-done-squish-joy 0.72s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+}
+
+.dn-loader[data-state="done"] .dn-loader-shadow {
+  animation: dn-shadow-squish 0.72s ease-in-out infinite;
+}
+
+.dn-loader[data-state="done"] .dn-antenna {
+  transform-origin: 37px 18px;
+  animation: dn-done-antenna-joy 0.72s ease-in-out infinite alternate;
+}
+
+@keyframes dn-done-squish-joy {
+  0%, 100% {
+    transform: rotate(-3deg) translateY(0) scale(1.08, 0.92);
+  }
+  20% {
+    transform: rotate(0deg) translateY(-3px) scale(0.96, 1.05);
+  }
+  50% {
+    transform: rotate(3deg) translateY(-14px) scale(0.92, 1.1);
+  }
+  80% {
+    transform: rotate(0deg) translateY(-2px) scale(0.98, 1.03);
+  }
+  92% {
+    transform: rotate(-3deg) translateY(0) scale(1.1, 0.9);
+  }
+}
+
+@keyframes dn-shadow-squish {
+  0%, 100% {
+    transform: scaleX(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scaleX(0.55);
+    opacity: 0.18;
+  }
+}
+
+@keyframes dn-done-antenna-joy {
+  0% {
+    transform: rotate(-12deg);
+  }
+  100% {
+    transform: rotate(24deg) translateY(-2px);
+  }
+}
+
+/* ========================================================================= */
+/* HOVER INTERACTIONS (State remains strictly locked, no ambient filter box) */
+/* ========================================================================= */
+.dn-loader-interactive {
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Progress bar slider */
+@keyframes dn-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.dn-loader-progress-slide {
+  animation: dn-progress-slide 1.6s ease-in-out infinite;
+}
+
+/* Eye blink animation */
+@keyframes dn-idle-blink {
+  0%, 18%, 36%, 100% {
+    transform: scaleY(1);
+  }
+  9%, 27% {
+    transform: scaleY(0.08);
+  }
+}
+
+/* ========================================================================= */
+/* POP-IN (Entrance Jump) & JUMP-SHRINK (Exit Loncat & Menyusut)            */
+/* ========================================================================= */
+@keyframes dn-loader-jump-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.08);
+  }
+  82% {
+    transform: translateY(2px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dn-loader-jump-shrink {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  25% {
+    transform: translateY(3px) scale(1.08, 0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-16px) scale(0.92, 1.12);
+  }
+  80% {
+    opacity: 0.8;
+    transform: translateY(-10px) scale(0.5, 0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2px) scale(0);
+  }
+}
+
+.dn-loader-enter {
+  animation: dn-loader-jump-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transform-origin: center bottom;
+}
+
+.dn-loader-exit {
+  animation: dn-loader-jump-shrink 0.38s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transform-origin: center bottom;
+  pointer-events: none;
+}
+
+/* ========================================================================= */
+/* GLASS SHEEN EFFECT ON TEXT (Specular Glass Glare Sweeping Left to Right) */
+/* ========================================================================= */
+@keyframes dn-glass-sweep {
+  0% {
+    background-position: 125% 0;
+  }
+  100% {
+    background-position: -125% 0;
+  }
+}
+
+.dn-loader-text-glass {
+  background: linear-gradient(
+    115deg,
+    var(--muted, #94a3b8) 0%,
+    var(--muted, #94a3b8) 28%,
+    var(--ink, #f1f5f9) 42%,
+    #ffffff 49%,
+    #a5f3fc 53%,
+    var(--ink, #f1f5f9) 58%,
+    var(--muted, #94a3b8) 72%,
+    var(--muted, #94a3b8) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: dn-glass-sweep 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  display: inline-block;
+  will-change: background-position;
+  filter: drop-shadow(0 0 6px rgba(165, 243, 252, 0.2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dn-loader-text-glass {
+    animation: none;
+    -webkit-text-fill-color: initial;
+    color: var(--ink, #f1f5f9);
+  }
+}
+

@@ -77,6 +77,13 @@ function CatalogModelModalInner({
   const [supportsVision, setSupportsVision] = useState(() => model?.supportsVision ?? false);
   const [supportsTools, setSupportsTools] = useState(() => model?.supportsTools ?? false);
   const [supportsReasoning, setSupportsReasoning] = useState(() => model?.supportsReasoning ?? false);
+  const [inputPricePerMillion, setInputPricePerMillion] = useState<string>(() =>
+    model?.inputPricePerMillion !== undefined ? String(model.inputPricePerMillion) : "0"
+  );
+  const [outputPricePerMillion, setOutputPricePerMillion] = useState<string>(() =>
+    model?.outputPricePerMillion !== undefined ? String(model.outputPricePerMillion) : "0"
+  );
+  const [pricingCurrency, setPricingCurrency] = useState(() => model?.pricingCurrency ?? "USD");
   const [status, setStatus] = useState<"active" | "draft" | "deprecated">(() => (model?.status as "active") ?? "active");
   const [sortOrder, setSortOrder] = useState<number>(() => model?.sortOrder ?? 100);
 
@@ -162,6 +169,9 @@ function CatalogModelModalInner({
         supportsVision,
         supportsTools,
         supportsReasoning,
+        inputPricePerMillion: parseFloat(inputPricePerMillion) || 0,
+        outputPricePerMillion: parseFloat(outputPricePerMillion) || 0,
+        pricingCurrency: pricingCurrency.trim() || "USD",
         status,
         sortOrder,
         routes: routes.map((r) => ({
@@ -387,6 +397,56 @@ function CatalogModelModalInner({
                 />
                 <span>{t("admin.catalog.reasoning")}</span>
               </label>
+            </div>
+          </div>
+
+          {/* Pricing Section per 1M Tokens */}
+          <div className="border-t border-[var(--border)] pt-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)] mb-2">
+              Model Pricing (Per 1 Million Tokens)
+            </h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-[var(--ink)] mb-1">
+                  Input Price / 1M
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={inputPricePerMillion}
+                  onChange={(e) => setInputPricePerMillion(e.target.value)}
+                  placeholder="0.0000"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--ink)] mb-1">
+                  Output Price / 1M
+                </label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={outputPricePerMillion}
+                  onChange={(e) => setOutputPricePerMillion(e.target.value)}
+                  placeholder="0.0000"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--ink)] mb-1">
+                  Pricing Currency
+                </label>
+                <input
+                  type="text"
+                  maxLength={3}
+                  value={pricingCurrency}
+                  onChange={(e) => setPricingCurrency(e.target.value.toUpperCase())}
+                  placeholder="USD"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] outline-none font-mono"
+                />
+              </div>
             </div>
           </div>
         </div>

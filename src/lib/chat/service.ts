@@ -1,16 +1,34 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import type { Prisma } from "@/generated/client";
+import { deleteKeyFromR2 } from "@/lib/storage/r2";
+import { formatDisplayFilename } from "@/lib/files/policy";
+import { extractQuotes, withQuotedContext } from "./quotes";
+import { assertUserModelAccess } from "./model-access";
+
+export { duplicateChatSession } from "./duplicate";
 
 export interface SessionWithMeta {
   id: string; // publicId
   title: string;
   isPinned: boolean;
+  isArchived: boolean;
+  shareToken: string | null;
   catalogModelId: string | null;
   lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+}
+
+export interface MessageAttachmentDto {
+  id: string; // SessionFile publicId
+  filename: string;
+  displayName: string;
+  mimeType: string;
+  sizeBytes: number;
+  isImage: boolean;
+  url: string;
 }
 
 export interface ChatMessageDto {
@@ -24,6 +42,7 @@ export interface ChatMessageDto {
   promptTokens?: number | null;
   completionTokens?: number | null;
   catalogModelId?: string | null;
+  attachments?: MessageAttachmentDto[];
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +55,8 @@ function toSessionDto(
     publicId: string;
     title: string;
     isPinned: boolean;
+    isArchived: boolean;
+    shareToken: string | null;
     lastMessageAt: Date;
     createdAt: Date;
     updatedAt: Date;
@@ -47,6 +68,8 @@ function toSessionDto(
     id: session.publicId,
     title: session.title,
     isPinned: session.isPinned,
+    isArchived: session.isArchived,
+    shareToken: session.shareToken,
     catalogModelId: session.catalogModel?.publicId ?? null,
     lastMessageAt: session.lastMessageAt.toISOString(),
     createdAt: session.createdAt.toISOString(),
@@ -58,20 +81,45 @@ function toSessionDto(
 /**
  * Format a DB chat message into public DTO.
  */
-export function toMessageDto(message: {
-  publicId: string;
-  role: string;
-  content: string;
-  reasoning: string | null;
-  parts: unknown;
-  status: string;
-  errorCode: string | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  catalogModel?: { publicId: string } | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): ChatMessageDto {
+export function toMessageDto(
+  message: {
+    publicId: string;
+    role: string;
+    content: string;
+    reasoning: string | null;
+    parts: unknown;
+    status: string;
+    errorCode: string | null;
+    promptTokens: number | null;
+    completionTokens: number | null;
+    catalogModel?: { publicId: string } | null;
+    files?: Array<{
+      publicId: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: bigint;
+    }>;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  sessionPublicId?: string
+): ChatMessageDto {
+  const attachments = message.files?.map((f) => {
+    const displayName = formatDisplayFilename(f.filename);
+    const fileUrl = sessionPublicId
+      ? `/api/v1/chats/${sessionPublicId}/files/${f.publicId}`
+      : "";
+    return {
+      id: f.publicId,
+      filename: f.filename,
+      displayName,
+      mimeType: f.mimeType,
+      sizeBytes: Number(f.sizeBytes),
+      isImage: f.mimeType.startsWith("image/"),
+      url: fileUrl,
+    };
+  });
+
   return {
     id: message.publicId,
     role: message.role as ChatMessageDto["role"],
@@ -83,6 +131,7 @@ export function toMessageDto(message: {
     promptTokens: message.promptTokens,
     completionTokens: message.completionTokens,
     catalogModelId: message.catalogModel?.publicId ?? null,
+    attachments: attachments && attachments.length > 0 ? attachments : undefined,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   };
@@ -93,45 +142,54 @@ export function toMessageDto(message: {
  */
 export async function listUserChatSessions(
   userId: bigint,
-  options: { limit?: number; cursor?: string } = {}
+  options: { limit?: number; cursor?: string; archived?: boolean } = {}
 ): Promise<{ sessions: SessionWithMeta[]; nextCursor: string | null }> {
   const limit = Math.min(Math.max(1, options.limit ?? 30), 100);
+  const archived = Boolean(options.archived);
 
   let cursorCondition: Prisma.ChatSessionWhereInput | undefined;
   if (options.cursor) {
     const cursorSession = await db.chatSession.findFirst({
-      where: { publicId: options.cursor, userId },
+      where: { publicId: options.cursor, userId, isArchived: archived },
       select: { id: true, isPinned: true, lastMessageAt: true },
     });
 
     if (cursorSession) {
-      cursorCondition = {
-        OR: [
-          { isPinned: false, lastMessageAt: { lt: cursorSession.lastMessageAt } },
-          {
-            isPinned: false,
-            lastMessageAt: cursorSession.lastMessageAt,
-            id: { lt: cursorSession.id },
-          },
-        ],
-      };
+      cursorCondition = archived
+        ? {
+            OR: [
+              { lastMessageAt: { lt: cursorSession.lastMessageAt } },
+              {
+                lastMessageAt: cursorSession.lastMessageAt,
+                id: { lt: cursorSession.id },
+              },
+            ],
+          }
+        : {
+            OR: [
+              { isPinned: false, lastMessageAt: { lt: cursorSession.lastMessageAt } },
+              {
+                isPinned: false,
+                lastMessageAt: cursorSession.lastMessageAt,
+                id: { lt: cursorSession.id },
+              },
+            ],
+          };
     }
   }
 
   const sessions = await db.chatSession.findMany({
     where: {
       userId,
+      isArchived: archived,
       ...(cursorCondition ? cursorCondition : {}),
     },
-    orderBy: [
-      { isPinned: "desc" },
-      { lastMessageAt: "desc" },
-      { id: "desc" },
-    ],
+    orderBy: archived
+      ? [{ lastMessageAt: "desc" }, { id: "desc" }]
+      : [{ isPinned: "desc" }, { lastMessageAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     include: {
       catalogModel: { select: { publicId: true } },
-      _count: { select: { messages: true } },
     },
   });
 
@@ -161,7 +219,10 @@ export async function createChatSession(
       where: { publicId: data.modelPublicId },
       select: { id: true },
     });
-    if (model) catalogModelId = model.id;
+    if (model) {
+      await assertUserModelAccess(userId, model.id);
+      catalogModelId = model.id;
+    }
   }
 
   const session = await db.chatSession.create({
@@ -173,7 +234,6 @@ export async function createChatSession(
     },
     include: {
       catalogModel: { select: { publicId: true } },
-      _count: { select: { messages: true } },
     },
   });
 
@@ -191,6 +251,9 @@ export async function getChatSession(
   publicId: string;
   title: string;
   isPinned: boolean;
+  isArchived: boolean;
+  shareToken: string | null;
+  sharedAt: Date | null;
   catalogModelId: bigint | null;
   catalogModelPublicId: string | null;
   createdAt: Date;
@@ -211,6 +274,9 @@ export async function getChatSession(
     publicId: session.publicId,
     title: session.title,
     isPinned: session.isPinned,
+    isArchived: session.isArchived,
+    shareToken: session.shareToken,
+    sharedAt: session.sharedAt,
     catalogModelId: session.catalogModelId,
     catalogModelPublicId: session.catalogModel?.publicId ?? null,
     createdAt: session.createdAt,
@@ -220,12 +286,12 @@ export async function getChatSession(
 }
 
 /**
- * Update chat session (title, isPinned, or default model).
+ * Update chat session (title, isPinned, isArchived, or default model).
  */
 export async function updateChatSession(
   userId: bigint,
   sessionPublicId: string,
-  data: { title?: string; isPinned?: boolean; modelPublicId?: string }
+  data: { title?: string; isPinned?: boolean; isArchived?: boolean; modelPublicId?: string }
 ): Promise<SessionWithMeta> {
   const existing = await getChatSession(userId, sessionPublicId);
 
@@ -242,16 +308,23 @@ export async function updateChatSession(
     }
   }
 
+  const nextPinned =
+    data.isPinned !== undefined
+      ? data.isPinned
+      : data.isArchived === true
+        ? false
+        : undefined;
+
   const updated = await db.chatSession.update({
     where: { id: existing.id },
     data: {
       ...(data.title !== undefined ? { title: data.title.trim() } : {}),
-      ...(data.isPinned !== undefined ? { isPinned: data.isPinned } : {}),
+      ...(nextPinned !== undefined ? { isPinned: nextPinned } : {}),
+      ...(data.isArchived !== undefined ? { isArchived: data.isArchived } : {}),
       ...(catalogModelId !== undefined ? { catalogModelId } : {}),
     },
     include: {
       catalogModel: { select: { publicId: true } },
-      _count: { select: { messages: true } },
     },
   });
 
@@ -259,16 +332,43 @@ export async function updateChatSession(
 }
 
 /**
- * Delete chat session and its cascaded messages/files.
+ * Delete chat session and its cascaded messages/files (including R2 cleanup).
  */
 export async function deleteChatSession(
   userId: bigint,
   sessionPublicId: string
 ): Promise<void> {
   const session = await getChatSession(userId, sessionPublicId);
+
+  const attachedFiles = await db.sessionFile.findMany({
+    where: { sessionId: session.id },
+    select: { storageKey: true },
+  });
+
   await db.chatSession.delete({
     where: { id: session.id },
   });
+
+  // Best-effort cleanup of R2 storage objects outside DB transaction
+  await Promise.allSettled(
+    attachedFiles.map((f) => deleteKeyFromR2(f.storageKey))
+  );
+}
+
+export interface ListChatMessagesResult {
+  session: {
+    id: string;
+    title: string;
+    isPinned: boolean;
+    isArchived: boolean;
+    shareToken: string | null;
+    catalogModelId: string | null;
+    lastMessageAt: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  messages: ChatMessageDto[];
+  nextCursor: string | null;
 }
 
 /**
@@ -278,9 +378,9 @@ export async function listChatMessages(
   userId: bigint,
   sessionPublicId: string,
   options: { limit?: number; cursor?: string } = {}
-): Promise<{ messages: ChatMessageDto[]; nextCursor: string | null }> {
+): Promise<ListChatMessagesResult> {
   const session = await getChatSession(userId, sessionPublicId);
-  const limit = Math.min(Math.max(1, options.limit ?? 10), 100);
+  const limit = Math.min(Math.max(1, options.limit ?? 10), 500);
 
   let cursorCondition: Prisma.ChatMessageWhereInput | undefined;
   if (options.cursor) {
@@ -289,7 +389,7 @@ export async function listChatMessages(
       select: { id: true },
     });
     if (cursorMsg) {
-      cursorCondition = { id: { lt: cursorMsg.id } };
+      cursorCondition = { id: { lte: cursorMsg.id } };
     }
   }
 
@@ -303,20 +403,40 @@ export async function listChatMessages(
     take: limit + 1,
     include: {
       catalogModel: { select: { publicId: true } },
+      files: {
+        select: {
+          publicId: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+        },
+      },
     },
   });
 
+  // When more items exist, the extra item at index `limit` is popped and its publicId becomes nextCursor
   let nextCursor: string | null = null;
   if (messagesDesc.length > limit) {
-    const nextItem = messagesDesc.pop()!;
-    nextCursor = nextItem.publicId;
+    const overflowItem = messagesDesc.pop()!;
+    nextCursor = overflowItem.publicId;
   }
 
   // Reverse back to chronological order (asc) for UI display
   const messages = messagesDesc.reverse();
 
   return {
-    messages: messages.map(toMessageDto),
+    session: {
+      id: session.publicId,
+      title: session.title,
+      isPinned: session.isPinned,
+      isArchived: session.isArchived,
+      shareToken: session.shareToken,
+      catalogModelId: session.catalogModelPublicId,
+      lastMessageAt: session.lastMessageAt.toISOString(),
+      createdAt: session.createdAt.toISOString(),
+      updatedAt: session.updatedAt.toISOString(),
+    },
+    messages: messages.map((m) => toMessageDto(m, session.publicId)),
     nextCursor,
   };
 }
@@ -338,11 +458,12 @@ export async function getRecentMessagesForGateway(
     select: {
       role: true,
       content: true,
+      parts: true,
     },
   });
 
   return messages.reverse().map((m) => ({
     role: m.role as "system" | "user" | "assistant" | "tool",
-    content: m.content,
+    content: m.role === "user" ? withQuotedContext(m.content, extractQuotes(m.parts)) : m.content,
   }));
 }

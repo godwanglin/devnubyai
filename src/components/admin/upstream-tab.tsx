@@ -53,6 +53,7 @@ export function UpstreamTab() {
   }, []);
 
   const loadModels = React.useCallback(async () => {
+    await Promise.resolve();
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: "50", available });
@@ -70,8 +71,16 @@ export function UpstreamTab() {
     }
   }, [available, gatewayId, page, search, toast]);
 
+  const hasLoadedGatewaysRef = React.useRef(false);
   React.useEffect(() => {
-    void Promise.resolve().then(() => Promise.all([loadGateways(), loadModels()]));
+    const timer = setTimeout(() => {
+      if (!hasLoadedGatewaysRef.current) {
+        hasLoadedGatewaysRef.current = true;
+        void loadGateways();
+      }
+      void loadModels();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadGateways, loadModels]);
 
   function changeFilter(next: () => void) {

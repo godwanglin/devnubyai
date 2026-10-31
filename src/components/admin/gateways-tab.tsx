@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus,
   RefreshCw,
@@ -66,8 +66,11 @@ export function GatewaysTab() {
     }
   }, []);
 
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
-    void Promise.resolve().then(fetchGateways);
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+    void fetchGateways();
   }, [fetchGateways]);
 
   async function handleTest(g: SanitizedGatewayDto) {

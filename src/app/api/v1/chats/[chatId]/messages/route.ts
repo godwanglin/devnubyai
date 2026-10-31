@@ -4,15 +4,27 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { getChatSession, listChatMessages, getRecentMessagesForGateway } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
+import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
 import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
+import { resolveClientTimeZone } from "@/lib/chat/timezone";
 import { createUIMessageStreamResponse } from "ai";
-import type { ChatMessageInput } from "@/lib/gateways/types";
+import { downloadFromR2 } from "@/lib/storage/r2";
+import { MAX_IMAGE_BYTES } from "@/lib/files/policy";
+import { MAX_QUOTES_PER_MESSAGE, MAX_QUOTE_CHARS, withQuotedContext } from "@/lib/chat/quotes";
+import type { ChatMessageInput, MultimodalContentPart } from "@/lib/gateways/types";
 
 const sendMessageSchema = z.object({
   content: z.string().trim().min(1, "Message content cannot be empty"),
   model: z.string().trim().optional(),
   reasoningLevel: z.enum(["0", "1", "2", "3", "4"]).optional(),
+  webSearch: z.boolean().optional(),
+  extendedThinking: z.boolean().optional(),
+  fileIds: z.array(z.string().trim()).optional(),
+  quotes: z
+    .array(z.string().trim().min(1).max(MAX_QUOTE_CHARS))
+    .max(MAX_QUOTES_PER_MESSAGE)
+    .optional(),
 });
 
 type RouteContext = { params: Promise<{ chatId: string }> };
@@ -33,7 +45,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     return jsonSuccess(result.messages, {
       requestId,
-      meta: { nextCursor: result.nextCursor },
+      meta: { nextCursor: result.nextCursor, session: result.session },
     });
   } catch (err) {
     return jsonError(err, { requestId });
@@ -70,23 +82,31 @@ export async function POST(request: Request, context: RouteContext) {
       parsed.data.model,
       session.catalogModelPublicId
     );
+    await assertUserModelAccess(user.id, resolvedModel.id);
 
-    // Atomically persist user message, assistant placeholder, and update session metadata
+    // Atomically persist user message, assistant placeholder, link uploaded files, and update session metadata
     const autoTitle =
       session.title === "New chat"
         ? parsed.data.content.slice(0, 40).trim() || "New chat"
         : undefined;
 
-    const [userMessage, assistantMessage] = await db.$transaction([
-      db.chatMessage.create({
+    const fileIds = parsed.data.fileIds ?? [];
+    const quotes = parsed.data.quotes ?? [];
+
+    const [userMessage, assistantMessage] = await db.$transaction(async (tx) => {
+      const uMsg = await tx.chatMessage.create({
         data: {
           sessionId: session.id,
           role: "user",
           content: parsed.data.content,
           status: "completed",
+          ...(quotes.length > 0
+            ? { parts: quotes.map((text) => ({ type: "quote", text })) }
+            : {}),
         },
-      }),
-      db.chatMessage.create({
+      });
+
+      const aMsg = await tx.chatMessage.create({
         data: {
           sessionId: session.id,
           role: "assistant",
@@ -94,15 +114,31 @@ export async function POST(request: Request, context: RouteContext) {
           catalogModelId: resolvedModel.id,
           status: "streaming",
         },
-      }),
-      db.chatSession.update({
+      });
+
+      if (fileIds.length > 0) {
+        await tx.sessionFile.updateMany({
+          where: {
+            publicId: { in: fileIds },
+            sessionId: session.id,
+            userId: user.id,
+          },
+          data: {
+            messageId: uMsg.id,
+          },
+        });
+      }
+
+      await tx.chatSession.update({
         where: { id: session.id },
         data: {
           lastMessageAt: new Date(),
           ...(autoTitle ? { title: autoTitle } : {}),
         },
-      }),
-    ]);
+      });
+
+      return [uMsg, aMsg];
+    });
 
     // 3. Prepare recent conversation context for gateway
     const history = await getRecentMessagesForGateway(session.id, 20);
@@ -110,6 +146,79 @@ export async function POST(request: Request, context: RouteContext) {
     const conversationMessages: ChatMessageInput[] = history.filter(
       (m) => !(m.role === "assistant" && m.content === "")
     );
+
+    // If attachments exist and the resolved model supports vision, inject image multimodal parts into the user's turn
+    if (fileIds.length > 0) {
+      const attachedFiles = await db.sessionFile.findMany({
+        where: {
+          publicId: { in: fileIds },
+          sessionId: session.id,
+        },
+        select: {
+          publicId: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+        },
+      });
+
+      const imageFiles = attachedFiles.filter((f) => f.mimeType.startsWith("image/"));
+      const docFiles = attachedFiles.filter((f) => !f.mimeType.startsWith("image/"));
+
+      // Replace the last user message in conversationMessages with rich multimodal parts
+      const lastUserIdx = conversationMessages.map((m) => m.role).lastIndexOf("user");
+      if (lastUserIdx !== -1) {
+        let textPrompt = withQuotedContext(parsed.data.content, quotes);
+        if (docFiles.length > 0) {
+          const docList = docFiles
+            .map((d) => `- ${d.filename} (${d.mimeType})`)
+            .join("\n");
+          textPrompt += `\n\n[User attached documents to session storage]:\n${docList}\n(Use read_file with the exact filename above to inspect their contents.)`;
+        }
+
+        // Upstream providers cannot reach localhost or the private R2 bucket,
+        // so images are read server-side and inlined as Base64 data URIs.
+        const contentParts: MultimodalContentPart[] = [];
+        const unreadableImages: string[] = [];
+        if (resolvedModel.supportsVision) {
+          for (const img of imageFiles) {
+            try {
+              const downloaded = await downloadFromR2({
+                userId: user.publicId,
+                sessionId: session.publicId,
+                filename: img.filename,
+                maxBytes: MAX_IMAGE_BYTES,
+              });
+              contentParts.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${img.mimeType};base64,${downloaded.content.toString("base64")}`,
+                },
+              });
+            } catch {
+              unreadableImages.push(img.filename);
+            }
+          }
+        } else if (imageFiles.length > 0) {
+          const imgList = imageFiles.map((img) => `- ${img.filename}`).join("\n");
+          textPrompt += `\n\n[User attached images, but the selected model cannot view images]:\n${imgList}\n(Tell the user to switch to a vision-capable model to analyze them.)`;
+        }
+
+        if (unreadableImages.length > 0) {
+          textPrompt += `\n\n[These attached images could not be loaded]:\n${unreadableImages
+            .map((name) => `- ${name}`)
+            .join("\n")}`;
+        }
+
+        conversationMessages[lastUserIdx] = {
+          ...conversationMessages[lastUserIdx],
+          content:
+            contentParts.length > 0
+              ? [{ type: "text", text: textPrompt }, ...contentParts]
+              : textPrompt,
+        };
+      }
+    }
 
     const stream = createChatGenerationStream({
       userId: user.id,
@@ -121,10 +230,13 @@ export async function POST(request: Request, context: RouteContext) {
       userMessagePublicId: userMessage.publicId,
       requestedModelPublicId: parsed.data.model,
       sessionModelPublicId: session.catalogModelPublicId,
-      reasoningEffort: mapReasoningEffort(parsed.data.reasoningLevel),
+      reasoningEffort: mapReasoningEffort(
+        parsed.data.extendedThinking ? "4" : parsed.data.reasoningLevel
+      ),
+      forceWebSearch: parsed.data.webSearch,
       conversationHistory: conversationMessages,
+      clientTimeZone: resolveClientTimeZone(request),
       requestId,
-      clientSignal: request.signal,
     });
 
     return createUIMessageStreamResponse({

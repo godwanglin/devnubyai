@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { useAccount } from "@/providers/account-provider";
+import { useQuota } from "@/hooks/use-quota";
 
 export function ProfileTab() {
   const { t } = useI18n();
   const { toast } = useToast();
   const { user } = useAccount();
+  const { quota } = useQuota(Boolean(user));
 
   if (!user) {
     return (
@@ -30,11 +32,13 @@ export function ProfileTab() {
     );
   }
 
-  const limitTokens = user.quota.limitTokens;
+  const limitTokens = quota?.limitTokens;
   const quotaDisplay =
-    limitTokens == null
+    !quota
+      ? "..."
+      : limitTokens == null
       ? "Unlimited (∞)"
-      : `${user.quota.usedPercent}% (${(user.quota.usedTokens ?? 0).toLocaleString()} / ${limitTokens.toLocaleString()} tokens)`;
+      : `${quota.usedPercent}% (${(quota.usedTokens ?? 0).toLocaleString()} / ${limitTokens.toLocaleString()} tokens)`;
 
   return (
     <div className="space-y-5">

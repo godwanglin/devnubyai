@@ -1,4 +1,6 @@
+import { db } from "../db";
 import { downloadFromR2, sanitizeKey } from "../storage/r2";
+import { extractDocumentText } from "../files/extractors";
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -29,13 +31,14 @@ export interface ReadFileData {
 export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
   name: "read_file",
   description:
-    "Reads text or document files from session storage in line-delimited chunks (up to 100 lines per call) to optimize context usage.",
+    "Reads and extracts clean, human-readable text from files in session storage in line-delimited chunks (up to 100 lines per call). Automatically parses PDF documents (with page markers === [PAGE X] ===), Word DOCX, Excel spreadsheets (with sheet markers === [SHEET: X] ===), PowerPoint PPTX (with slide markers === [SLIDE X] ===), Markdown, CSV, and code files. ALWAYS use this tool to inspect uploaded documents.",
   parameters: {
     type: "object",
     properties: {
       filename: {
         type: "string",
-        description: "The name of the file to read from the current session storage.",
+        description:
+          "The name, clean name, or unique file ID of the file to read from session storage (as listed in [Active Session Files]).",
         required: true,
       },
       startLine: {
@@ -68,6 +71,51 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
 
     const safeFilename = sanitizeKey(rawFilename);
 
+    // 1. Resolve storage filename via session files in DB (supports unique file ID, clean name, or full storage name)
+    let targetStorageFilename = safeFilename;
+
+    try {
+      const sessionFiles = await db.sessionFile.findMany({
+        where: {
+          session: { publicId: context.sessionId },
+        },
+        select: {
+          publicId: true,
+          filename: true,
+          mimeType: true,
+        },
+      });
+
+      if (sessionFiles.length > 0) {
+        const queryLower = rawFilename.toLowerCase();
+        const querySafe = safeFilename.toLowerCase();
+
+        const match = sessionFiles.find((f) => {
+          // Direct publicId match
+          if (f.publicId.toLowerCase() === queryLower) return true;
+          // Direct storage filename match
+          if (f.filename.toLowerCase() === querySafe) return true;
+          // Clean name match (strip timestamp-random prefix like "1793345483582-ba80aa05-")
+          const cleanName = f.filename.replace(/^\d+-[a-f0-9]+-/, "").toLowerCase();
+          if (cleanName === querySafe || cleanName === queryLower) return true;
+          // Match if clean name without extension matches
+          const cleanStem = cleanName.replace(/\.[^/.]+$/, "");
+          const queryStem = queryLower.replace(/\.[^/.]+$/, "");
+          if (cleanStem === queryStem) return true;
+          // Match if filename ends with query (e.g. -Testing_Artificial_Intelligence.pdf)
+          if (f.filename.toLowerCase().endsWith(`-${querySafe}`)) return true;
+          if (f.filename.toLowerCase().endsWith(querySafe)) return true;
+          return false;
+        });
+
+        if (match) {
+          targetStorageFilename = match.filename;
+        }
+      }
+    } catch {
+      // Non-fatal, fallback to direct safeFilename
+    }
+
     const rawStart = typeof params.startLine === "number" ? Math.floor(params.startLine) : 1;
     const startLine = Math.max(rawStart, 1);
 
@@ -78,12 +126,47 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
       const downloaded = await downloadFromR2({
         userId: context.userId,
         sessionId: context.sessionId,
-        filename: safeFilename,
+        filename: targetStorageFilename,
       });
 
-      const fullText = downloaded.content.toString("utf8");
-      const allLines = fullText.split(/\r?\n/);
+      // Extract clean text from the document (PDF, Excel, Word, PPTX, or Plain text)
+      const extraction = await extractDocumentText(
+        downloaded.content,
+        targetStorageFilename,
+        downloaded.contentType
+      );
+
+      if (!extraction.success) {
+        return {
+          success: false,
+          error: {
+            code: "EXECUTION_ERROR",
+            message: `Gagal membaca isi berkas '${rawFilename}': ${extraction.error || "Format tidak didukung"}`,
+          },
+          metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
+        };
+      }
+
+      const fullText = extraction.text;
+      const allLines = fullText ? fullText.split(/\r?\n/) : [];
       const totalLines = allLines.length;
+
+      if (totalLines === 0) {
+        return {
+          success: true,
+          data: {
+            filename: safeFilename,
+            startLine: 1,
+            endLine: 0,
+            totalLines: 0,
+            hasMore: false,
+            nextStartLine: null,
+            content: `[Berkas '${safeFilename}' kosong atau tidak memiliki teks yang dapat diekstrak]`,
+            mimeType: downloaded.contentType,
+          },
+          metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
+        };
+      }
 
       if (startLine > totalLines) {
         return {
@@ -134,14 +217,15 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
         metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2" },
       };
     } catch (err: any) {
-      const isNotFound = err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404;
+      console.error("[READ_FILE_ERROR]", err);
+      const isNotFound = err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404;
       return {
         success: false,
         error: {
           code: isNotFound ? "NOT_FOUND" : "STORAGE_ERROR",
           message: isNotFound
             ? `File '${safeFilename}' was not found in session storage.`
-            : "Failed to read file from storage.",
+            : `Failed to read file from storage: ${err?.message || err}`,
         },
         metadata: { durationMs: Date.now() - startTime },
       };

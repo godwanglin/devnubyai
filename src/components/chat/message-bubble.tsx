@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useMemo, useSyncExternalStore, useState } from "react";
-import {
-  Check,
-  Copy,
-  Volume2,
-  RefreshCw,
-  ThumbsUp,
-  ThumbsDown,
-} from "lucide-react";
+import React, { useMemo, useSyncExternalStore, useState, useRef, useEffect, memo } from "react";
+import { Check, Copy, Volume2, RefreshCw, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Tooltip } from "@/components/ui/tooltip";
+import { FeedbackModal } from "@/components/modals/feedback-modal";
+import { MessageAttachments } from "./message-attachments";
 import { ThinkingAccordion } from "./thinking-accordion";
 import { ToolActivityList } from "./tool-activity";
+import { TurnGeneratedFiles } from "./turn-generated-files";
+import { TypingIndicator } from "./typing-indicator";
+import { QuoteChip } from "./quote-chip";
+import { EditTargetChip, parseRequestEditMessage } from "./edit-target-chip";
+import { messageFeedbackMap } from "@/lib/chat/client-mappers";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import type { CompactWebSource } from "@/lib/tools/compact-source";
@@ -24,91 +24,138 @@ interface MessageBubbleProps {
   chatId?: string;
   isStreaming?: boolean;
   onRegenerate?: () => void;
+  onEditSubmit?: (messageId: string, content: string) => Promise<void>;
 }
 
 const emptySubscribe = () => () => {};
 
 /**
- * Formats a message timestamp into user's requested format:
- * - "sekarang" (< 1 minute)
- * - "x menit lalu" (< 1 hour)
- * - "x jam lalu" (< 24 hours)
- * - "x hari lalu" (<= 7 days)
- * - "12 Oktober 2026" / "12 October 2026" (> 7 days)
+ * Formats message timestamp into relative/absolute string.
  */
 function formatMessageTime(dateString: string, locale: "id" | "en"): string {
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return "";
-
-  const now = new Date();
-  const diffSec = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-
+  const sec = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  const min = Math.floor(sec / 60), hr = Math.floor(min / 60), day = Math.floor(hr / 24);
   const isId = locale === "id";
-
-  if (diffSec < 60) {
-    return isId ? "sekarang" : "just now";
-  }
-  if (diffMin < 60) {
-    return isId ? `${diffMin} menit lalu` : `${diffMin}m ago`;
-  }
-  if (diffHour < 24) {
-    return isId ? `${diffHour} jam lalu` : `${diffHour}h ago`;
-  }
-  if (diffDay <= 7) {
-    return isId ? `${diffDay} hari lalu` : `${diffDay}d ago`;
-  }
-
-  // > 7 days -> e.g. "12 Oktober 2026"
-  const day = date.getDate();
-  const year = date.getFullYear();
-  const monthFormatter = new Intl.DateTimeFormat(isId ? "id-ID" : "en-US", {
-    month: "long",
-  });
-  const monthName = monthFormatter.format(date);
-
-  return `${day} ${monthName} ${year}`;
+  if (sec < 60) return isId ? "sekarang" : "just now";
+  if (min < 60) return isId ? `${min} menit lalu` : `${min}m ago`;
+  if (hr < 24) return isId ? `${hr} jam lalu` : `${hr}h ago`;
+  if (day <= 7) return isId ? `${day} hari lalu` : `${day}d ago`;
+  return `${date.getDate()} ${new Intl.DateTimeFormat(isId ? "id-ID" : "en-US", { month: "long" }).format(date)} ${date.getFullYear()}`;
 }
 
-export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  chatId,
+  isStreaming,
+  onRegenerate,
+  onEditSubmit,
+}: MessageBubbleProps) {
   const { t, locale } = useI18n();
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
-  const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null);
+  const [localFeedback, setLocalFeedback] = useState<"like" | "dislike" | null | undefined>(undefined);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  // 1-second celebration state when generation completes ("done" event)
+  const [donePhase, setDonePhase] = useState<"idle" | "showing" | "exiting">("idle");
+  const prevStreamingRef = useRef(isStreaming);
+  const doneTimersRef = useRef<{ show?: NodeJS.Timeout; exit?: NodeJS.Timeout }>({});
+
+  const hasContent = Boolean(message.content.trim());
+  const hasActivity = Boolean(message.reasoning) || Boolean(message.toolCalls?.length);
+
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current;
+    prevStreamingRef.current = isStreaming;
+    const timers = doneTimersRef.current;
+
+    if (isStreaming) {
+      if (timers.show) clearTimeout(timers.show);
+      if (timers.exit) clearTimeout(timers.exit);
+      setDonePhase("idle");
+      return;
+    }
+
+    if (wasStreaming && !isStreaming && (hasContent || hasActivity)) {
+      setDonePhase("showing");
+      timers.show = setTimeout(() => {
+        setDonePhase("exiting");
+        timers.exit = setTimeout(() => {
+          setDonePhase("idle");
+        }, 380);
+      }, 1000);
+    }
+
+    return () => {
+      if (timers.show) clearTimeout(timers.show);
+      if (timers.exit) clearTimeout(timers.exit);
+    };
+  }, [isStreaming, hasContent, hasActivity]);
+
+  useEffect(() => {
+    if (!isEditing) setEditContent(message.content);
+  }, [message.content, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) {
+      editRef.current?.focus();
+      editRef.current?.setSelectionRange(editContent.length, editContent.length);
+    }
+  }, [isEditing, editContent.length]);
+
+  async function handleEditSubmit() {
+    const content = editContent.trim();
+    if (!content || !onEditSubmit || isSubmittingEdit) return;
+    setIsSubmittingEdit(true);
+    try {
+      await onEditSubmit(message.id, content);
+      setIsEditing(false);
+    } catch {
+      toast(t("toast.actionFailed"));
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  }
+
+  const [prevMessageId, setPrevMessageId] = useState(message.id);
+  if (prevMessageId !== message.id) {
+    setPrevMessageId(message.id);
+    setLocalFeedback(undefined);
+  }
+  if (isStreaming && localFeedback !== undefined) {
+    setLocalFeedback(undefined);
+  }
+
+  const effectiveFeedback = localFeedback !== undefined ? localFeedback : (message.feedback ?? null);
 
   // Client-mounted check without causing hydration layout jumps
-  const isMounted = useSyncExternalStore(
-    emptySubscribe,
-    () => true,
-    () => false
-  );
+  const isMounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   const isUser = message.role === "user";
+  const parsedEdit = useMemo(
+    () => (isUser ? parseRequestEditMessage(message.content) : null),
+    [isUser, message.content]
+  );
+  const userDisplayText = parsedEdit?.isEditRequest ? parsedEdit.userText : message.content;
   const formattedTime = isMounted ? formatMessageTime(message.createdAt, locale) : "";
 
   // Build a lookup map of URLs -> source metadata from search tool outputs
   const sourcesMap = useMemo(() => {
     const map = new Map<string, CompactWebSource>();
     if (!message.toolCalls) return map;
-
     for (const tool of message.toolCalls) {
       const out = tool.output as { sources?: CompactWebSource[]; results?: Array<{ title?: string; url?: string }> } | undefined;
       if (Array.isArray(out?.sources)) {
-        for (const s of out.sources) {
-          if (s?.url) map.set(s.url, s);
-        }
+        for (const s of out.sources) if (s?.url) map.set(s.url, s);
       } else if (Array.isArray(out?.results)) {
-        for (const r of out.results) {
-          if (r?.url) {
-            map.set(r.url, {
-              title: r.title || "Web Result",
-              url: r.url,
-              domain: "",
-            });
-          }
-        }
+        for (const r of out.results) if (r?.url) map.set(r.url, { title: r.title || "Web Result", url: r.url, domain: "" });
       }
     }
     return map;
@@ -122,50 +169,185 @@ export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: Me
     } catch {}
   }
 
-  function handleFeedback(type: "like" | "dislike") {
-    if (feedback === type) {
-      setFeedback(null);
-    } else {
-      setFeedback(type);
-      toast(t("message.feedbackRecorded"));
+  async function persistFeedback(
+    nextRating: "like" | "dislike" | null,
+    details?: { reason?: string; comment?: string }
+  ): Promise<boolean> {
+    if (!chatId) return false;
+    try {
+      const res = await fetch(
+        `/api/v1/chats/${chatId}/messages/${message.id}/feedback`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rating: nextRating,
+            ...(details?.reason ? { reason: details.reason } : {}),
+            ...(details?.comment ? { comment: details.comment } : {}),
+          }),
+          credentials: "same-origin",
+        }
+      );
+      if (!res.ok) return false;
+
+      if (nextRating) {
+        messageFeedbackMap.set(message.id, nextRating);
+      } else {
+        messageFeedbackMap.delete(message.id);
+      }
+      return true;
+    } catch {
+      return false;
     }
+  }
+
+  async function handleFeedback(type: "like" | "dislike") {
+    if (!chatId) return;
+
+    const prevRating = effectiveFeedback;
+    const nextRating = prevRating === type ? null : type;
+    setLocalFeedback(nextRating);
+    if (nextRating === "dislike") setIsFeedbackModalOpen(true);
+
+    const ok = await persistFeedback(nextRating);
+    if (!ok) {
+      setLocalFeedback(prevRating);
+      setIsFeedbackModalOpen(false);
+      toast(t("toast.actionFailed"));
+      return;
+    }
+    if (nextRating === "like") toast(t("message.feedbackRecorded"));
+    else if (nextRating === null) toast(t("message.feedbackRemoved"));
+  }
+
+  async function handleSubmitDislikeDetails(details: {
+    reason?: string;
+    comment?: string;
+  }) {
+    if (!chatId) return;
+    setIsSubmittingFeedback(true);
+    const ok = await persistFeedback("dislike", details);
+    setIsSubmittingFeedback(false);
+    setIsFeedbackModalOpen(false);
+    toast(ok ? t("message.feedbackRecorded") : t("toast.actionFailed"));
   }
 
   if (isUser) {
     return (
-      <div className="group flex flex-col items-end pl-6 sm:pl-14 py-4">
-        <div
-          className={cn(
-            "max-w-[80%] px-4 py-3 rounded-[16px] rounded-br-[6px]",
-            "bg-[var(--bubble-user)] text-[var(--bubble-user-text)]",
-            "text-[15px] leading-relaxed whitespace-pre-wrap break-words"
-          )}
-        >
-          {message.content}
-        </div>
-        {formattedTime ? (
-          <span className="text-[11px] text-[var(--muted)] mt-1 px-1 select-none opacity-0 group-hover:opacity-100 transition-opacity">
-            {formattedTime}
-          </span>
+      <div id={`message-${message.id}`} className="group flex flex-col items-end pl-6 sm:pl-14 py-4">
+        {message.attachments?.length ? (
+          <MessageAttachments attachments={message.attachments} chatId={chatId} />
+        ) : null}
+
+        {message.quotes?.length ? <QuoteChip quotes={message.quotes} /> : null}
+
+        {parsedEdit?.isEditRequest ? (
+          <EditTargetChip targets={parsedEdit.targets} />
+        ) : null}
+
+        {isEditing ? (
+          <div className="w-full max-w-[80%] flex flex-col gap-2">
+            <textarea
+              ref={editRef}
+              value={editContent}
+              onChange={(event) => setEditContent(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setIsEditing(false);
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  void handleEditSubmit();
+                }
+              }}
+              className="min-h-24 w-full resize-y rounded-[12px] border border-[var(--accent)] bg-[var(--surface)] px-3 py-2 text-[15px] leading-relaxed text-[var(--ink)] outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+              disabled={isSubmittingEdit}
+              aria-label={t("message.edit")}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setEditContent(userDisplayText || message.content); setIsEditing(false); }}
+                className="rounded-[7px] px-2.5 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--hover)] cursor-pointer"
+                disabled={isSubmittingEdit}
+              >
+                {t("message.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleEditSubmit()}
+                className="rounded-[7px] bg-[var(--accent)] px-2.5 py-1.5 text-xs text-white hover:opacity-90 cursor-pointer disabled:opacity-50"
+                disabled={isSubmittingEdit || !editContent.trim()}
+              >
+                {isSubmittingEdit ? "..." : t("message.saveAndSubmit")}
+              </button>
+            </div>
+          </div>
+        ) : userDisplayText ? (
+          <div
+            className={cn(
+              "max-w-[80%] px-4 py-3 rounded-[16px] rounded-br-[6px]",
+              "bg-[var(--bubble-user)] text-[var(--bubble-user-text)]",
+              "border border-[var(--border)] shadow-xs select-text",
+              "text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+            )}
+          >
+            {userDisplayText}
+          </div>
+        ) : null}
+        {!isEditing ? (
+          <div className="mt-1 flex items-center justify-end gap-1 select-none opacity-0 group-hover:opacity-100 transition-opacity">
+            {formattedTime ? (
+              <span className="text-[11px] text-[var(--muted)] px-0.5">
+                {formattedTime}
+              </span>
+            ) : null}
+            {onEditSubmit ? (
+              <>
+                <Tooltip content={t("message.copy")} side="top">
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="grid place-items-center w-6 h-6 rounded-[5px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer transition-colors"
+                    aria-label={t("message.copy")}
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </Tooltip>
+                <Tooltip content={t("message.edit")} side="top">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="grid place-items-center w-6 h-6 rounded-[5px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer transition-colors"
+                    aria-label={t("message.edit")}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </Tooltip>
+              </>
+            ) : null}
+          </div>
         ) : null}
       </div>
     );
   }
 
-  const hasContent = Boolean(message.content.trim());
-  const hasActivity = Boolean(message.reasoning) || Boolean(message.toolCalls?.length);
-  const isToolRunning = message.toolCalls?.some(
-    (tool) => tool.state === "running" || tool.state === "streaming"
+  const isToolRunning = Boolean(
+    message.toolCalls?.some(
+      (tool) => tool.state === "running" || tool.state === "streaming" || (!tool.output && !tool.error)
+    )
+  );
+  const isToolPhase = Boolean(
+    isToolRunning || (message.toolCalls && message.toolCalls.length > 0 && !hasContent)
   );
 
   // Balasan yang dibatalkan sebelum ada teks/aktivitas: biarkan kosong tanpa action bar
-  if (!isStreaming && !hasContent && !hasActivity) return null;
+  if (!isStreaming && !hasContent && !hasActivity && donePhase === "idle") return null;
 
   return (
-    <div className="py-4 group">
+    <div id={`message-${message.id}`} className="py-4 group min-w-0">
       {message.reasoning ? (
         <ThinkingAccordion
           content={message.reasoning}
+          durationSec={message.reasoningDurationSec}
           isStreaming={isStreaming && message.isReasoningStreaming && !hasContent}
         />
       ) : null}
@@ -175,6 +357,7 @@ export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: Me
           tools={message.toolCalls}
           messageId={message.id}
           chatId={chatId}
+          isMessageStreaming={isStreaming}
         />
       ) : null}
 
@@ -184,26 +367,31 @@ export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: Me
         </div>
       ) : null}
 
-      {!hasContent && !isStreaming ? null : isStreaming ? (
-        message.isReasoningStreaming || isToolRunning ? null : (
-        <div
-          className="flex items-center gap-1.5 mt-2.5 py-1"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--placeholder)] animate-pulse" />
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-[var(--placeholder)] animate-pulse"
-            style={{ animationDelay: "150ms" }}
-          />
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-[var(--placeholder)] animate-pulse"
-            style={{ animationDelay: "300ms" }}
+      <TurnGeneratedFiles tools={message.toolCalls} chatId={chatId} />
+
+      {isStreaming ? (
+        <div className="mt-2.5">
+          {message.isReasoningStreaming ? (
+            <TypingIndicator state="thinking" size="md" showLabel={true} />
+          ) : isToolPhase ? (
+            <TypingIndicator state="tools" size="md" showLabel={true} />
+          ) : !hasContent && !hasActivity ? (
+            <TypingIndicator state="normal" size="md" showLabel={true} labelKey="processing" />
+          ) : (
+            <TypingIndicator state="normal" size="md" showLabel={true} className="py-1 mt-1.5" />
+          )}
+        </div>
+      ) : donePhase !== "idle" ? (
+        <div className="mt-2.5">
+          <TypingIndicator
+            state="done"
+            size="md"
+            showLabel={true}
+            isExiting={donePhase === "exiting"}
           />
         </div>
-        )
       ) : (
-        <div className="flex items-center gap-2 mt-2.5">
+        <div className="flex items-center gap-2 mt-2.5 animate-fade-in">
           {/* Action buttons (icon-only with tooltips) */}
           <div className="flex items-center gap-0.5">
             {/* Copy button */}
@@ -211,10 +399,7 @@ export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: Me
               <button
                 type="button"
                 onClick={handleCopy}
-                className={cn(
-                  "grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer",
-                  copied && "text-[var(--accent)]"
-                )}
+                className={cn("grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer", copied && "text-[var(--accent)]")}
                 aria-label={copied ? t("message.copied") : t("message.copy")}
               >
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -247,37 +432,47 @@ export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: Me
               </Tooltip>
             ) : null}
 
-            <span className="w-px h-3.5 bg-[var(--border)] mx-1" aria-hidden="true" />
+            {chatId ? (
+              <>
+                <span className="w-px h-3.5 bg-[var(--border)] mx-1" aria-hidden="true" />
 
-            {/* Feedback: Like button */}
-            <Tooltip content={t("message.like")} side="top">
-              <button
-                type="button"
-                onClick={() => handleFeedback("like")}
-                className={cn(
-                  "grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer",
-                  feedback === "like" && "text-[var(--accent)] bg-[var(--accent-soft)]"
-                )}
-                aria-label={t("message.like")}
-              >
-                <ThumbsUp className="w-3.5 h-3.5" />
-              </button>
-            </Tooltip>
+                {/* Feedback: Like button */}
+                <Tooltip content={t("message.like")} side="top">
+                  <button
+                    type="button"
+                    aria-pressed={effectiveFeedback === "like"}
+                    onClick={() => handleFeedback("like")}
+                    className={cn(
+                      "grid place-items-center w-7 h-7 rounded-[6px] transition-colors cursor-pointer",
+                      effectiveFeedback === "like"
+                        ? "text-[var(--ink)] bg-[var(--accent-soft)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                        : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                    )}
+                    aria-label={t("message.like")}
+                  >
+                    <ThumbsUp className={cn("w-3.5 h-3.5", effectiveFeedback === "like" && "fill-current")} />
+                  </button>
+                </Tooltip>
 
-            {/* Feedback: Dislike button */}
-            <Tooltip content={t("message.dislike")} side="top">
-              <button
-                type="button"
-                onClick={() => handleFeedback("dislike")}
-                className={cn(
-                  "grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer",
-                  feedback === "dislike" && "text-red-500 bg-red-500/10"
-                )}
-                aria-label={t("message.dislike")}
-              >
-                <ThumbsDown className="w-3.5 h-3.5" />
-              </button>
-            </Tooltip>
+                {/* Feedback: Dislike button */}
+                <Tooltip content={t("message.dislike")} side="top">
+                  <button
+                    type="button"
+                    aria-pressed={effectiveFeedback === "dislike"}
+                    onClick={() => handleFeedback("dislike")}
+                    className={cn(
+                      "grid place-items-center w-7 h-7 rounded-[6px] transition-colors cursor-pointer",
+                      effectiveFeedback === "dislike"
+                        ? "text-[var(--ink)] bg-[var(--accent-soft)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                        : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                    )}
+                    aria-label={t("message.dislike")}
+                  >
+                    <ThumbsDown className={cn("w-3.5 h-3.5", effectiveFeedback === "dislike" && "fill-current")} />
+                  </button>
+                </Tooltip>
+              </>
+            ) : null}
           </div>
 
           {/* Timestamp right beside icons - only visible on bubble hover */}
@@ -288,6 +483,16 @@ export function MessageBubble({ message, chatId, isStreaming, onRegenerate }: Me
           ) : null}
         </div>
       )}
+
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        loading={isSubmittingFeedback}
+        onClose={() => {
+          setIsFeedbackModalOpen(false);
+          toast(t("message.feedbackRecorded"));
+        }}
+        onSubmit={handleSubmitDislikeDetails}
+      />
     </div>
   );
-}
+});

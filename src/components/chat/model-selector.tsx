@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useRef, useLayoutEffect, useState, useMemo } from "react";
-import { Check, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, ChevronDown, ChevronRight, Lock, Sparkles } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
+import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
 import type { ModelOption, ReasoningLevel } from "@/types";
@@ -29,15 +31,17 @@ export function ModelSelector({
   onReasoningChange,
 }: ModelSelectorProps) {
   const { t } = useI18n();
+  const router = useRouter();
   // Public catalog comes live from the DB (admin-managed); no static fallback
   const { models } = useAccount();
   const [view, setView] = useState<"quick" | "catalog">("quick");
   const [isOpen, setIsOpen] = useState(false);
 
-  const currentModel = useMemo(
-    () => models.find((m) => m.id === currentModelId) ?? models[0] ?? null,
-    [models, currentModelId]
-  );
+  const currentModel = useMemo(() => {
+    const found = models.find((m) => m.id === currentModelId && !m.isLocked);
+    if (found) return found;
+    return models.find((m) => !m.isLocked) ?? models[0] ?? null;
+  }, [models, currentModelId]);
 
   const quickRef = useRef<HTMLDivElement>(null);
   const catalogRef = useRef<HTMLDivElement>(null);
@@ -74,6 +78,11 @@ export function ModelSelector({
   function handleSelect(id: string) {
     onModelChange(id);
     close();
+  }
+
+  function handleLockedClick() {
+    close();
+    router.push("/plans");
   }
 
   const powerfulModels = models.filter((m) => m.category === "Powerful");
@@ -186,9 +195,9 @@ export function ModelSelector({
                 <p className="px-2 py-3 text-xs text-[var(--muted)]">{t("model.noModelsHint")}</p>
               )}
               {powerfulModels.length > 0 && (
-              <p className="px-2 py-1 text-[11px] font-semibold text-[var(--placeholder)]">
-                {t("model.powerful")}
-              </p>
+                <p className="px-2 py-1 text-[11px] font-semibold text-[var(--placeholder)]">
+                  {t("model.powerful")}
+                </p>
               )}
               {powerfulModels.map((m) => (
                 <ModelItem
@@ -196,13 +205,14 @@ export function ModelSelector({
                   model={m}
                   selected={m.id === currentModelId}
                   onSelect={handleSelect}
+                  onLockedClick={handleLockedClick}
                 />
               ))}
 
               {fastModels.length > 0 && (
-              <p className="px-2 py-1 mt-2 text-[11px] font-semibold text-[var(--placeholder)]">
-                {t("model.fast")}
-              </p>
+                <p className="px-2 py-1 mt-2 text-[11px] font-semibold text-[var(--placeholder)]">
+                  {t("model.fast")}
+                </p>
               )}
               {fastModels.map((m) => (
                 <ModelItem
@@ -210,6 +220,7 @@ export function ModelSelector({
                   model={m}
                   selected={m.id === currentModelId}
                   onSelect={handleSelect}
+                  onLockedClick={handleLockedClick}
                 />
               ))}
             </div>
@@ -224,29 +235,66 @@ function ModelItem({
   model,
   selected,
   onSelect,
+  onLockedClick,
 }: {
   model: ModelOption;
   selected: boolean;
   onSelect: (id: string) => void;
+  onLockedClick: () => void;
 }) {
+  const isLocked = Boolean(model.isLocked);
+
   return (
     <button
       type="button"
-      onClick={() => onSelect(model.id)}
-      className="glass-hover flex items-center gap-2.5 w-full p-2 rounded-[6px] text-left cursor-pointer"
+      onClick={() => {
+        if (isLocked) {
+          onLockedClick();
+        } else {
+          onSelect(model.id);
+        }
+      }}
+      className={cn(
+        "flex items-center gap-2.5 w-full p-2 rounded-[6px] text-left transition-colors cursor-pointer group",
+        isLocked
+          ? "hover:bg-[var(--hover)] opacity-70 hover:opacity-100"
+          : "glass-hover"
+      )}
     >
-      <span className="grid place-items-center w-6 h-6 rounded-full bg-[var(--accent)] text-[var(--accent-text)] shrink-0">
-        <Sparkles className="w-3.5 h-3.5" />
+      <span
+        className={cn(
+          "grid place-items-center w-6 h-6 rounded-full shrink-0 transition-colors",
+          isLocked
+            ? "bg-white/[0.06] text-[var(--placeholder)] group-hover:text-[var(--ink)]"
+            : "bg-[var(--accent)] text-[var(--accent-text)]"
+        )}
+      >
+        {isLocked ? (
+          <Lock className="w-3.5 h-3.5" />
+        ) : (
+          <Sparkles className="w-3.5 h-3.5" />
+        )}
       </span>
       <span className="flex-1 min-w-0">
-        <span className="block text-sm font-medium text-[var(--ink)]">
-          {model.fullName}
+        <span className="flex items-center gap-1.5">
+          <span className="block text-sm font-medium text-[var(--ink)] truncate">
+            {model.fullName}
+          </span>
+          {isLocked && (
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold tracking-wider bg-white/[0.08] text-[var(--placeholder)] border border-white/[0.08]">
+              PRO
+            </span>
+          )}
         </span>
         <span className="block text-xs text-[var(--muted)] truncate">
-          {model.description}
+          {isLocked ? "Tersedia di paket Pro" : model.description}
         </span>
       </span>
-      {selected && <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />}
+      {isLocked ? (
+        <Lock className="w-3.5 h-3.5 text-[var(--placeholder)] shrink-0 group-hover:text-[var(--ink)] transition-colors" />
+      ) : selected ? (
+        <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
+      ) : null}
     </button>
   );
 }

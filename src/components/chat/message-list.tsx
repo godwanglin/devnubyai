@@ -4,6 +4,11 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { ArrowDown } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { TypingIndicator } from "./typing-indicator";
+import {
+  DevnubyLoaderMascot,
+  useLookAtCursor,
+  type DevnubyLoaderState,
+} from "@/components/brand/devnuby-loader";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
@@ -15,6 +20,10 @@ interface MessageListProps {
   isThinking?: boolean;
   streamingId?: string | null;
   onRegenerate?: (id: string) => void;
+  onEditSubmit?: (messageId: string, content: string) => Promise<void>;
+  onLoadOlder?: () => void;
+  hasOlderMessages?: boolean;
+  isLoadingOlder?: boolean;
 }
 
 export function MessageList({
@@ -23,6 +32,10 @@ export function MessageList({
   isThinking,
   streamingId,
   onRegenerate,
+  onEditSubmit,
+  onLoadOlder,
+  hasOlderMessages = false,
+  isLoadingOlder = false,
 }: MessageListProps) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -30,6 +43,34 @@ export function MessageList({
   const stickRef = useRef(true);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const isEmpty = messages.length === 0 && !isThinking;
+
+  const isGenerating = Boolean(isThinking || streamingId);
+  const [scrollDone, setScrollDone] = useState(false);
+  const prevGeneratingRef = useRef(isGenerating);
+
+  useEffect(() => {
+    const wasGen = prevGeneratingRef.current;
+    prevGeneratingRef.current = isGenerating;
+    if (wasGen && !isGenerating) {
+      setScrollDone(true);
+      const timer = setTimeout(() => setScrollDone(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isGenerating]);
+
+  const showLoaderOnButton = isGenerating || scrollDone;
+  const { targetRef, tracking } = useLookAtCursor(showLoaderOnButton);
+
+  const streamingMsg = streamingId ? messages.find((m) => m.id === streamingId) : null;
+  const activeLoaderState: DevnubyLoaderState = scrollDone
+    ? "done"
+    : streamingMsg?.isReasoningStreaming
+    ? "thinking"
+    : streamingMsg?.toolCalls?.some(
+        (t) => t.state === "running" || t.state === "streaming" || (!t.output && !t.error)
+      )
+    ? "tools"
+    : "normal";
 
   const scrollToBottom = useCallback((smooth = true) => {
     const scroller = containerRef.current?.parentElement;
@@ -44,24 +85,49 @@ export function MessageList({
     if (lastRole === "user") scrollToBottom(false);
   }, [messages.length, lastRole, scrollToBottom]);
 
+  // Throttle trigger pagination to prevent rapid duplicate requests
+  const loadingTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoadingOlder) {
+      loadingTriggeredRef.current = false;
+    }
+  }, [isLoadingOlder]);
+
   useEffect(() => {
     const container = containerRef.current;
     const scroller = container?.parentElement;
     if (!container || !scroller) return;
 
     let lastTop = scroller.scrollTop;
+    let rafId: number | null = null;
 
     function updateButton() {
-      const { scrollTop, scrollHeight, clientHeight } = scroller!;
-      // Tombol hanya disembunyikan kalau benar-benar sudah di paling bawah
-      setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 4);
+      if (!scroller) return;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        if (!scroller) return;
+        const { scrollTop, scrollHeight, clientHeight } = scroller;
+        const distance = scrollHeight - scrollTop - clientHeight;
+        setShowScrollBottom((prev) => {
+          // Hysteresis deadband: appear when > 48px from bottom, disappear when <= 12px
+          if (!prev && distance > 48) return true;
+          if (prev && distance <= 12) return false;
+          return prev;
+        });
+      });
     }
 
     function handleScroll() {
       const { scrollTop, scrollHeight, clientHeight } = scroller!;
       const distance = scrollHeight - scrollTop - clientHeight;
-      if (scrollTop < lastTop - 1) stickRef.current = false;
-      else if (distance <= 24) stickRef.current = true;
+      if (scrollTop < lastTop - 1) {
+        stickRef.current = false;
+        if (scrollTop <= 80 && hasOlderMessages && !isLoadingOlder && !loadingTriggeredRef.current) {
+          loadingTriggeredRef.current = true;
+          onLoadOlder?.();
+        }
+      } else if (distance <= 24) stickRef.current = true;
       lastTop = scrollTop;
       updateButton();
     }
@@ -94,18 +160,25 @@ export function MessageList({
     scroller.addEventListener("touchstart", handleTouchStart, { passive: true });
     scroller.addEventListener("touchmove", handleTouchMove, { passive: true });
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       observer.disconnect();
       scroller.removeEventListener("scroll", handleScroll);
       scroller.removeEventListener("wheel", handleWheel);
       scroller.removeEventListener("touchstart", handleTouchStart);
       scroller.removeEventListener("touchmove", handleTouchMove);
     };
-  }, [isEmpty]);
+  }, [hasOlderMessages, isEmpty, isLoadingOlder, onLoadOlder]);
 
   if (isEmpty) return null;
 
   return (
     <div ref={containerRef} className="relative max-w-[768px] mx-auto px-4 sm:px-5 pb-32">
+      {isLoadingOlder ? (
+        <div className="flex justify-center py-3">
+          <div className="w-5 h-5 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin" />
+        </div>
+      ) : null}
+
       {messages.map((msg, i) => (
         <MessageBubble
           key={msg.id}
@@ -117,9 +190,12 @@ export function MessageList({
               ? () => onRegenerate?.(msg.id)
               : undefined
           }
+          onEditSubmit={msg.role === "user" ? onEditSubmit : undefined}
         />
       ))}
-      {isThinking && !streamingId && <TypingIndicator />}
+      {isThinking && !streamingId && (
+        <TypingIndicator state="normal" size="md" showLabel={true} labelKey="processing" />
+      )}
 
       {/* Floating Scroll to Bottom Button (centered within the chat content shell) */}
       <div
@@ -136,12 +212,28 @@ export function MessageList({
             type="button"
             onClick={() => scrollToBottom(true)}
             className={cn(
-              "glass flex items-center justify-center w-8 h-8 rounded-full text-[var(--muted)]",
-              "hover:text-[var(--ink)] active:scale-95 transition-[color,transform] cursor-pointer"
+              "glass flex items-center justify-center rounded-full text-[var(--muted)]",
+              "hover:text-[var(--ink)] active:scale-95 transition-all duration-300 ease-out cursor-pointer",
+              showLoaderOnButton
+                ? "w-9.5 h-9.5 shadow-lg shadow-cyan-500/15 border-cyan-400/40"
+                : "w-8 h-8"
             )}
             aria-label={t("message.scrollToBottom")}
           >
-            <ArrowDown className="w-4 h-4" />
+            {showLoaderOnButton ? (
+              <div
+                ref={targetRef as React.RefObject<HTMLDivElement>}
+                className="w-full h-full flex items-center justify-center overflow-visible dn-loader-enter"
+              >
+                <DevnubyLoaderMascot
+                  state={activeLoaderState}
+                  tracking={tracking}
+                  className="w-full h-full scale-[1.7] -translate-y-0.5 overflow-visible"
+                />
+              </div>
+            ) : (
+              <ArrowDown className="w-4 h-4" />
+            )}
           </button>
         </Tooltip>
       </div>

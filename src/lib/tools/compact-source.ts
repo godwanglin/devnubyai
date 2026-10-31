@@ -84,6 +84,26 @@ export function sanitizeToolOutputForStorage(
     };
   }
 
+  if (toolName === "read_file") {
+    const data = rawOutput as {
+      filename?: string;
+      startLine?: number;
+      endLine?: number;
+      totalLines?: number;
+      hasMore?: boolean;
+      mimeType?: string;
+    };
+    return {
+      filename: data.filename,
+      startLine: data.startLine,
+      endLine: data.endLine,
+      totalLines: data.totalLines,
+      hasMore: data.hasMore,
+      mimeType: data.mimeType,
+      // Omit heavy raw text content from database JSON storage
+    };
+  }
+
   // interactive_quiz doesn't produce heavy output
   return rawOutput;
 }

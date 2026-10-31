@@ -14,16 +14,34 @@ async function main() {
     {
       slug: "free",
       name: "Free Plan",
+      description: "For getting started with Devnuby AI",
+      priceMonthly: 0,
+      priceYearly: 0,
+      currency: "IDR",
       monthlyTokenLimit: 1_000_000n,
+      weeklyTokenLimit: 0n, // 0 = unlimited / no weekly window for free plan
+      fiveHourTokenLimit: 100_000n,
       dailyRequestLimit: 200,
       requestsPerMinute: 20,
+      badge: "Free",
+      isActive: true,
+      sortOrder: 10,
     },
     {
       slug: "pro",
       name: "Pro Plan",
+      description: "For power users and professionals",
+      priceMonthly: 149_000,
+      priceYearly: 1_490_000,
+      currency: "IDR",
       monthlyTokenLimit: 50_000_000n,
+      weeklyTokenLimit: 15_000_000n,
+      fiveHourTokenLimit: 5_000_000n,
       dailyRequestLimit: 2000,
       requestsPerMinute: 60,
+      badge: "Popular",
+      isActive: true,
+      sortOrder: 20,
     },
   ];
 
@@ -32,9 +50,18 @@ async function main() {
       where: { slug: plan.slug },
       update: {
         name: plan.name,
+        description: plan.description,
+        priceMonthly: plan.priceMonthly,
+        priceYearly: plan.priceYearly,
+        currency: plan.currency,
         monthlyTokenLimit: plan.monthlyTokenLimit,
+        weeklyTokenLimit: plan.weeklyTokenLimit,
+        fiveHourTokenLimit: plan.fiveHourTokenLimit,
         dailyRequestLimit: plan.dailyRequestLimit,
         requestsPerMinute: plan.requestsPerMinute,
+        badge: plan.badge,
+        isActive: plan.isActive,
+        sortOrder: plan.sortOrder,
       },
       create: plan,
     });
@@ -93,6 +120,7 @@ async function main() {
     { key: "routing.version", value: 1 },
     { key: "catalog.default_model", value: "openai/gpt-6-luna" },
     { key: "logs.routing_retention_days", value: 90 },
+    { key: "chat.max_tool_rounds", value: 20 },
   ];
 
   for (const s of defaultSettings) {

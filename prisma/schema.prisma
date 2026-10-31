@@ -18,17 +18,33 @@ datasource db {
 // ───────────── Users & auth ─────────────
 
 model Plan {
-  id                BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  slug              String   @unique(map: "uq_plans_slug") @db.VarChar(32)
-  name              String   @db.VarChar(80)
-  monthlyTokenLimit BigInt?  @map("monthly_token_limit") @db.UnsignedBigInt
-  dailyRequestLimit Int?     @map("daily_request_limit") @db.UnsignedInt
-  requestsPerMinute Int?     @map("requests_per_minute") @db.UnsignedSmallInt
-  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  id                 BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  slug               String   @unique(map: "uq_plans_slug") @db.VarChar(32)
+  name               String   @db.VarChar(80)
+  description        String?  @db.VarChar(255)
+  priceMonthly       Int      @default(0) @map("price_monthly") @db.UnsignedInt
+  priceYearly        Int      @default(0) @map("price_yearly") @db.UnsignedInt
+  currency           String   @default("IDR") @db.VarChar(8)
+  discountMonthlyType  String?  @map("discount_monthly_type") @db.VarChar(16)
+  discountMonthlyValue Int?     @map("discount_monthly_value") @db.UnsignedInt
+  discountYearlyType   String?  @map("discount_yearly_type") @db.VarChar(16)
+  discountYearlyValue  Int?     @map("discount_yearly_value") @db.UnsignedInt
+  monthlyTokenLimit  BigInt?  @map("monthly_token_limit") @db.UnsignedBigInt
+  weeklyTokenLimit   BigInt?  @map("weekly_token_limit") @db.UnsignedBigInt
+  fiveHourTokenLimit BigInt?  @map("five_hour_token_limit") @db.UnsignedBigInt
+  dailyRequestLimit  Int?     @map("daily_request_limit") @db.UnsignedInt
+  requestsPerMinute  Int?     @map("requests_per_minute") @db.UnsignedSmallInt
+  badge              String?  @db.VarChar(32)
+  features           Json?
+  isActive           Boolean  @default(true) @map("is_active")
+  sortOrder          Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
 
-  users User[]
+  users         User[]
+  modelAccesses PlanModelAccess[]
 
+  @@index([isActive, sortOrder], map: "idx_plans_listing")
   @@map("plans")
 }
 
@@ -51,8 +67,12 @@ model User {
   chatSessions     ChatSession[]
   sessionFiles     SessionFile[]
   usagePeriods     UserUsagePeriod[]
+  usageWindows     UserUsageWindow[]
   updatedSettings  AppSetting[]
   adminAuditLogs   AdminAuditLog[]
+  transactions     PaymentTransaction[]
+  manualUpdatedTrans PaymentTransaction[] @relation("ManualTransactionUpdater")
+  userNotes        UserNote[]
 
   @@index([planId], map: "idx_users_plan")
   @@index([role, status], map: "idx_users_role_status")
@@ -178,6 +198,11 @@ model CatalogModel {
   supportsReasoning Boolean  @default(false) @map("supports_reasoning")
   status            String   @default("draft") @db.VarChar(16)
   sortOrder         Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
+
+  inputPricePerMillion  Decimal  @default(0.0000) @map("input_price_per_million") @db.Decimal(10, 4)
+  outputPricePerMillion Decimal  @default(0.0000) @map("output_price_per_million") @db.Decimal(10, 4)
+  pricingCurrency       String   @default("USD") @map("pricing_currency") @db.VarChar(8)
+
   createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
 
@@ -185,10 +210,25 @@ model CatalogModel {
   routes       CatalogModelRoute[]
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
+  planAccesses PlanModelAccess[]
 
   @@index([status, sortOrder], map: "idx_catalog_models_listing")
   @@index([providerId], map: "idx_catalog_models_provider")
   @@map("catalog_models")
+}
+
+model PlanModelAccess {
+  id             BigInt       @id @default(autoincrement()) @db.UnsignedBigInt
+  planId         BigInt       @map("plan_id") @db.UnsignedBigInt
+  catalogModelId BigInt       @map("catalog_model_id") @db.UnsignedBigInt
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+
+  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade, map: "fk_pma_plan")
+  catalogModel CatalogModel @relation(fields: [catalogModelId], references: [id], onDelete: Cascade, map: "fk_pma_model")
+
+  @@unique([planId, catalogModelId], map: "uq_plan_model_access")
+  @@index([catalogModelId], map: "idx_pma_model")
+  @@map("plan_model_accesses")
 }
 
 model CatalogModelRoute {
@@ -222,26 +262,47 @@ model AppSetting {
   @@map("app_settings")
 }
 
+/// Admin-managed system prompts; active ones are joined by sortOrder and sent
+/// first on every chat request, with {placeholders} filled per request.
+model SystemPrompt {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  publicId  String   @unique(map: "uq_system_prompts_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  name      String   @db.VarChar(120)
+  content   String   @db.Text
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([isActive, sortOrder], map: "idx_system_prompts_active")
+  @@map("system_prompts")
+}
+
 // ───────────── Chat ─────────────
 
 model ChatSession {
-  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
   /// UUIDv7 used in the URL: /c/[uuid]
-  publicId       String   @unique(map: "uq_chat_sessions_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
-  userId         BigInt   @map("user_id") @db.UnsignedBigInt
-  title          String   @default("New chat") @db.VarChar(200)
-  catalogModelId BigInt?  @map("catalog_model_id") @db.UnsignedBigInt
-  isPinned       Boolean  @default(false) @map("is_pinned")
-  lastMessageAt  DateTime @default(now()) @map("last_message_at") @db.DateTime(3)
-  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+  publicId       String    @unique(map: "uq_chat_sessions_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  userId         BigInt    @map("user_id") @db.UnsignedBigInt
+  title          String    @default("New chat") @db.VarChar(200)
+  catalogModelId BigInt?   @map("catalog_model_id") @db.UnsignedBigInt
+  isPinned       Boolean   @default(false) @map("is_pinned")
+  isArchived     Boolean   @default(false) @map("is_archived")
+  shareToken     String?   @unique(map: "uq_chat_sessions_share_token") @map("share_token") @db.Char(36)
+  sharedAt       DateTime? @map("shared_at") @db.DateTime(3)
+  lastMessageAt  DateTime  @default(now()) @map("last_message_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_chat_sessions_user")
   catalogModel CatalogModel? @relation(fields: [catalogModelId], references: [id], onDelete: SetNull, map: "fk_chat_sessions_model")
   messages     ChatMessage[]
   files        SessionFile[]
+  notes        UserNote[]
 
   @@index([userId, isPinned(sort: Desc), lastMessageAt(sort: Desc), id(sort: Desc)], map: "idx_chat_sessions_sidebar")
+  @@index([userId, isArchived, lastMessageAt(sort: Desc), id(sort: Desc)], map: "idx_chat_sessions_archived")
   @@index([catalogModelId], map: "idx_chat_sessions_model")
   @@map("chat_sessions")
 }
@@ -338,6 +399,25 @@ model UserUsagePeriod {
   @@map("user_usage_periods")
 }
 
+model UserUsageWindow {
+  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  userId           BigInt   @map("user_id") @db.UnsignedBigInt
+  windowType       String   @map("window_type") @db.VarChar(16)
+  windowKey        String   @map("window_key") @db.VarChar(32)
+  windowStart      DateTime @map("window_start") @db.DateTime(3)
+  windowEnd        DateTime @map("window_end") @db.DateTime(3)
+  requestCount     Int      @default(0) @map("request_count") @db.UnsignedInt
+  promptTokens     BigInt   @default(0) @map("prompt_tokens") @db.UnsignedBigInt
+  completionTokens BigInt   @default(0) @map("completion_tokens") @db.UnsignedBigInt
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_usage_window_user")
+
+  @@unique([userId, windowType, windowKey], map: "uq_user_window")
+  @@index([userId, windowType, windowEnd], map: "idx_user_window_lookup")
+  @@map("user_usage_windows")
+}
+
 model AdminAuditLog {
   id          BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
   actorUserId BigInt?  @map("actor_user_id") @db.UnsignedBigInt
@@ -354,4 +434,92 @@ model AdminAuditLog {
   @@index([actorUserId, createdAt], map: "idx_audit_actor")
   @@index([createdAt], map: "idx_audit_created")
   @@map("admin_audit_logs")
+}
+
+// ───────────── Payments & transactions ─────────────
+
+model PaymentMethod {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  publicId     String   @unique(map: "uq_payment_methods_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  name         String   @db.VarChar(120)
+  code         String   @unique(map: "uq_payment_methods_code") @db.VarChar(64)
+  category     String   @default("virtual_account") @db.VarChar(32)
+  dokuCode     String?  @map("doku_code") @db.VarChar(64)
+  flowType     String   @default("direct") @map("flow_type") @db.VarChar(16)
+  imagePath    String?  @map("image_path") @db.VarChar(512)
+  description  String?  @db.VarChar(255)
+  instructions String?  @db.Text
+  minAmount    Int      @default(1000) @map("min_amount") @db.UnsignedInt
+  maxAmount    Int?     @map("max_amount") @db.UnsignedInt
+  feeType      String   @default("none") @map("fee_type") @db.VarChar(16)
+  feeValue     Int      @default(0) @map("fee_value") @db.UnsignedInt
+  isActive     Boolean  @default(true) @map("is_active")
+  sortOrder    Int      @default(100) @map("sort_order") @db.UnsignedSmallInt
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  transactions PaymentTransaction[]
+
+  @@index([isActive, sortOrder], map: "idx_payment_methods_listing")
+  @@map("payment_methods")
+}
+
+model PaymentTransaction {
+  id                 BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  publicId           String    @unique(map: "uq_payment_transactions_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  invoiceNumber      String    @unique(map: "uq_payment_transactions_invoice") @map("invoice_number") @db.VarChar(64)
+  userId             BigInt?   @map("user_id") @db.UnsignedBigInt
+  paymentMethodId    BigInt?   @map("payment_method_id") @db.UnsignedBigInt
+  paymentMethodCode  String    @map("payment_method_code") @db.VarChar(64)
+  paymentMethodName  String    @map("payment_method_name") @db.VarChar(120)
+  amount             Int       @db.UnsignedInt
+  fee                Int       @default(0) @db.UnsignedInt
+  totalAmount        Int       @map("total_amount") @db.UnsignedInt
+  currency           String    @default("IDR") @db.VarChar(8)
+  status             String    @default("PENDING") @db.VarChar(24)
+  paymentCode        String?   @map("payment_code") @db.VarChar(128)
+  checkoutUrl        String?   @map("checkout_url") @db.VarChar(2048)
+  qrContent          String?   @map("qr_content") @db.Text
+  howToPayUrl        String?   @map("how_to_pay_url") @db.VarChar(2048)
+  customerName       String    @map("customer_name") @db.VarChar(120)
+  customerEmail      String    @map("customer_email") @db.VarChar(320)
+  customerPhone      String?   @map("customer_phone") @db.VarChar(32)
+  metadata           Json?
+  dokuResponse       Json?     @map("doku_response")
+  manualNotes        String?   @map("manual_notes") @db.Text
+  manualUpdatedBy    BigInt?   @map("manual_updated_by") @db.UnsignedBigInt
+  manualUpdatedAt    DateTime? @map("manual_updated_at") @db.DateTime(3)
+  paidAt             DateTime? @map("paid_at") @db.DateTime(3)
+  expiredAt          DateTime? @map("expired_at") @db.DateTime(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user                User?          @relation(fields: [userId], references: [id], onDelete: SetNull, map: "fk_transactions_user")
+  paymentMethod       PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull, map: "fk_transactions_method")
+  manualUpdatedByUser User?          @relation("ManualTransactionUpdater", fields: [manualUpdatedBy], references: [id], onDelete: SetNull, map: "fk_transactions_manual_updater")
+
+  @@index([userId, createdAt], map: "idx_transactions_user")
+  @@index([status, createdAt], map: "idx_transactions_status")
+  @@index([paymentMethodCode], map: "idx_transactions_method_code")
+  @@index([createdAt], map: "idx_transactions_created")
+  @@map("payment_transactions")
+}
+
+// ───────────── User memory notes (AI tool: memory_note) ─────────────
+model UserNote {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  publicId  String   @unique(map: "uq_user_notes_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  userId    BigInt   @map("user_id") @db.UnsignedBigInt
+  sessionId BigInt?  @map("session_id") @db.UnsignedBigInt
+  title     String   @db.VarChar(200)
+  content   String   @db.MediumText
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_user_notes_user")
+  session ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull, map: "fk_user_notes_session")
+
+  @@index([userId, updatedAt], map: "idx_user_notes_user_updated")
+  @@index([sessionId], map: "idx_user_notes_session")
+  @@map("user_notes")
 }

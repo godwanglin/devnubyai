@@ -4,7 +4,18 @@ import type { Prisma } from "@/generated/client";
 export interface RecordAuditParams {
   actorUserId: bigint | null;
   action: string;
-  entityType: "gateway" | "upstream_model" | "catalog_model" | "route" | "routing_setting";
+  entityType:
+    | "gateway"
+    | "upstream_model"
+    | "catalog_model"
+    | "route"
+    | "routing_setting"
+    | "app_setting"
+    | "system_prompt"
+    | "payment_method"
+    | "payment_transaction"
+    | "plan"
+    | "plan_model_access";
   entityId: string;
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;

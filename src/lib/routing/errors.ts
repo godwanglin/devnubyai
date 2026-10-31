@@ -25,12 +25,30 @@ export class GatewayError extends Error implements GatewayErrorDetails {
 const MODEL_NOT_FOUND_PATTERN = /model[_\s-]?not[_\s-]?found|does not exist|unknown model|no such model/i;
 
 /**
+ * Detects upstream gateway / web-scraper quota and rate limit banners
+ * such as "[ChatGPT Web]: Anda sudah mencapai batas. Silakan coba lagi nanti."
+ */
+export function isUpstreamRateLimitText(text: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (/\[ChatGPT\s*Web\]:?\s*Anda sudah mencapai batas/i.test(trimmed)) return true;
+  if (/Anda sudah mencapai batas[.,\s]*Silakan coba lagi nanti/i.test(trimmed)) return true;
+  if (
+    /\[ChatGPT\s*Web\]/i.test(trimmed) &&
+    /(?:mencapai batas|coba lagi nanti|rate limit|too many requests|quota|limit reached)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Map an upstream HTTP error response to an error class.
  */
 export function classifyHttpError(status: number, bodyText: string): RoutingErrorClass {
   if (status === 404 || MODEL_NOT_FOUND_PATTERN.test(bodyText)) return "model_not_found";
   if (status === 401 || status === 403) return "auth";
-  if (status === 429) return "rate_limited";
+  if (status === 429 || isUpstreamRateLimitText(bodyText)) return "rate_limited";
   if (status === 408) return "timeout";
   if (status >= 500) return "http_5xx";
   if (status >= 400) return "bad_request";
