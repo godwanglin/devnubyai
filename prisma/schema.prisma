@@ -106,6 +106,7 @@ model AuthSession {
   expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
   ipAddress String?  @map("ip_address") @db.VarChar(45)
   userAgent String?  @map("user_agent") @db.VarChar(512)
+  location  String?  @map("location") @db.VarChar(128)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_auth_sessions_user")

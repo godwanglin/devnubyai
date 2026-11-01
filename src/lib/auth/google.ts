@@ -106,6 +106,7 @@ export async function handleGoogleCallback(params: {
   origin: string;
   ipAddress?: string | null;
   userAgent?: string | null;
+  location?: string | null;
 }): Promise<{ userId: bigint; email: string }> {
   const config = getGoogleConfig(params.origin);
   if (!config.isConfigured || !config.clientId || !config.clientSecret) {
@@ -250,6 +251,7 @@ export async function handleGoogleCallback(params: {
     userId: user.id,
     ipAddress: params.ipAddress,
     userAgent: params.userAgent,
+    location: params.location,
   });
 
   return { userId: user.id, email: user.email };

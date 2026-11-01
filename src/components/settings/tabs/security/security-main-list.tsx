@@ -14,7 +14,7 @@ interface SecurityMainListProps {
   onOpenPassword: () => void;
   onOpenPin: () => void;
   onNavigateToSessions: () => void;
-  onOpenHistory: () => void;
+  onNavigateToHistory: () => void;
 }
 
 export function SecurityMainList({
@@ -25,7 +25,7 @@ export function SecurityMainList({
   onOpenPassword,
   onOpenPin,
   onNavigateToSessions,
-  onOpenHistory,
+  onNavigateToHistory,
 }: SecurityMainListProps) {
   const { toast } = useToast();
   const [mfaEnabled, setMfaEnabled] = useState(false);
@@ -195,7 +195,7 @@ export function SecurityMainList({
           {/* Riwayat keamanan */}
           <button
             type="button"
-            onClick={onOpenHistory}
+            onClick={onNavigateToHistory}
             className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-[var(--hover)]/60 transition-colors cursor-pointer group"
           >
             <div className="min-w-0 flex-1 pr-2">

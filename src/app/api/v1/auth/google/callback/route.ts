@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleGoogleCallback } from "@/lib/auth/google";
+import { detectLocationFromRequest } from "@/lib/auth/location";
 import { getRequestId } from "@/lib/api/response";
 import { getPublicOrigin } from "@/lib/api/origin";
 
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
       request.headers.get("x-real-ip") ||
       null;
     const userAgent = request.headers.get("user-agent") || null;
+    const location = await detectLocationFromRequest(request, ipAddress);
 
     await handleGoogleCallback({
       code,
@@ -34,6 +36,7 @@ export async function GET(request: Request) {
       origin: appUrl,
       ipAddress,
       userAgent,
+      location,
     });
 
     return NextResponse.redirect(`${appUrl}/`);

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
+import { detectLocationFromRequest } from "@/lib/auth/location";
 import { ApiError, jsonError, jsonSuccess, getRequestId } from "@/lib/api/response";
 
 const loginSchema = z.object({
@@ -43,11 +44,13 @@ export async function POST(request: Request) {
       request.headers.get("x-real-ip") ||
       null;
     const userAgent = request.headers.get("user-agent") || null;
+    const location = await detectLocationFromRequest(request, ipAddress);
 
     await createSession({
       userId: user.id,
       ipAddress,
       userAgent,
+      location,
     });
 
     await db.user.update({

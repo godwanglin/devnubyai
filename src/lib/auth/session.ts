@@ -181,6 +181,7 @@ export async function createSession(params: {
   userId: bigint;
   ipAddress?: string | null;
   userAgent?: string | null;
+  location?: string | null;
 }): Promise<{ rawToken: string; expiresAt: Date }> {
   const rawToken = generateSessionToken();
   const tokenHash = hashSessionToken(rawToken);
@@ -193,6 +194,7 @@ export async function createSession(params: {
       expiresAt,
       ipAddress: params.ipAddress?.slice(0, 45) ?? null,
       userAgent: params.userAgent?.slice(0, 512) ?? null,
+      location: params.location?.slice(0, 128) ?? null,
     },
   });
 

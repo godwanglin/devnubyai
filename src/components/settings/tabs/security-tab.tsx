@@ -4,16 +4,16 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/providers/i18n-provider";
 import { SecurityMainList } from "./security/security-main-list";
 import { ActiveSessionsSubview, type SessionItem } from "./security/active-sessions-subview";
+import { SecurityHistorySubview } from "./security/security-history-subview";
 import { PasswordModal } from "./security/password-modal";
 import { PinModal } from "./security/pin-modal";
 import { PasskeyModal } from "./security/passkey-modal";
-import { SecurityHistoryModal } from "./security/security-history-modal";
 
 export function SecurityTab() {
   const { t } = useI18n();
 
-  // Navigation: main list vs sub-tab (sessions)
-  const [subView, setSubView] = useState<"main" | "sessions">("main");
+  // Navigation: main list vs sub-tabs ("sessions" | "history")
+  const [subView, setSubView] = useState<"main" | "sessions" | "history">("main");
 
   // Sessions state
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -27,7 +27,6 @@ export function SecurityTab() {
   const [showPasskeysModal, setShowPasskeysModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Load sessions helper
   const loadSessions = useCallback(async () => {
@@ -105,6 +104,10 @@ export function SecurityTab() {
           onBack={() => setSubView("main")}
           onRefresh={loadSessions}
         />
+      ) : subView === "history" ? (
+        <SecurityHistorySubview
+          onBack={() => setSubView("main")}
+        />
       ) : (
         <SecurityMainList
           sessions={sessions}
@@ -114,7 +117,7 @@ export function SecurityTab() {
           onOpenPassword={() => setShowPasswordModal(true)}
           onOpenPin={() => setShowPinModal(true)}
           onNavigateToSessions={() => setSubView("sessions")}
-          onOpenHistory={() => setShowHistoryModal(true)}
+          onNavigateToHistory={() => setSubView("history")}
         />
       )}
 
@@ -136,11 +139,6 @@ export function SecurityTab() {
         onClose={() => setShowPinModal(false)}
         hasPin={hasPin}
         onSuccess={() => setHasPin(true)}
-      />
-
-      <SecurityHistoryModal
-        isOpen={showHistoryModal}
-        onClose={() => setShowHistoryModal(false)}
       />
     </div>
   );
