@@ -48,40 +48,52 @@ function createPrismaClient(): PrismaClient {
  */
 export function reconfigureDbPool(): PrismaClient {
   const stalePrisma = globalForPrisma.prisma;
-  const stalePool = globalForPrisma.pgPool;
-
-  globalForPrisma.prisma = undefined;
-  globalForPrisma.pgPool = undefined;
 
   const nextPrisma = createPrismaClient();
   globalForPrisma.prisma = nextPrisma;
+  globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
 
-  setTimeout(() => {
-    stalePrisma?.$disconnect().catch(() => {});
-    stalePool?.end().catch(() => {});
-  }, 5000).unref?.();
+  if (stalePrisma) {
+    setTimeout(() => {
+      stalePrisma.$disconnect().catch(() => {});
+    }, 30_000).unref?.();
+  }
 
   return nextPrisma;
 }
 
-// Replace the cached singleton on HMR when the schema version changes. No `instanceof`
-// check: each route bundle can load its own copy of the client class, so it would fail
-// across bundles and one route would close the pool another route is still using
-// ("pool is closed"). The stale pool is closed later so in-flight queries can finish.
 if (globalForPrisma.prisma && globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION) {
   const stale = globalForPrisma.prisma;
   globalForPrisma.prisma = undefined;
   globalForPrisma.pgPool = undefined;
   setTimeout(() => {
     stale.$disconnect().catch(() => {});
-  }, 5_000).unref?.();
+  }, 30_000).unref?.();
 }
 
-export const db: PrismaClient = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = db;
-  globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
+function getActivePrisma(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    const client = createPrismaClient();
+    globalForPrisma.prisma = client;
+    globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
+    return client;
+  }
+  return globalForPrisma.prisma;
 }
+
+/**
+ * Global dynamic proxy for Prisma Client.
+ * Automatically delegates to the active singleton across runtime hot-swaps.
+ */
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getActivePrisma();
+    const val = (client as unknown as Record<string | symbol, unknown>)[prop];
+    if (typeof val === "function") {
+      return (val as (...args: unknown[]) => unknown).bind(client);
+    }
+    return val;
+  },
+});
 
 export default db;
