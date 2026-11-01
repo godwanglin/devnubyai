@@ -70,6 +70,7 @@ export async function POST(request: Request) {
           customerName: vaRequest.customer.name,
           customerEmail: vaRequest.customer.email,
           customerPhone: vaRequest.customer.phone || null,
+          metadata: (parsed.data.metadata as Prisma.InputJsonValue) || undefined,
           dokuResponse: result.rawResponse ? (result.rawResponse as Prisma.InputJsonValue) : undefined,
           expiredAt: result.expiredDateUtc ? new Date(result.expiredDateUtc) : undefined,
         },

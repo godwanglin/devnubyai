@@ -50,6 +50,7 @@ export const dokuCheckoutRequestSchema = z.object({
   callbackUrlCancel: z.string().url().optional(),
   lineItemsDescription: z.string().optional(),
   paymentMethodTypes: z.array(z.string()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const dokuDirectVaRequestSchema = z.object({
@@ -72,6 +73,7 @@ export const dokuDirectVaRequestSchema = z.object({
   info1: z.string().max(50).optional(),
   info2: z.string().max(50).optional(),
   info3: z.string().max(50).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type DokuDirectVaRequestInput = z.infer<typeof dokuDirectVaRequestSchema>;

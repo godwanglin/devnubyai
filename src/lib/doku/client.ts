@@ -324,7 +324,6 @@ export async function createDokuDirectVa(
     customer: {
       name: request.customer.name,
       email: request.customer.email,
-      phone: request.customer.phone?.trim() || DEFAULT_CUSTOMER_PHONE,
     },
   };
 

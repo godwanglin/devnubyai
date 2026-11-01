@@ -2,11 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { Check, Copy, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
+import { Check, Loader2, ShieldCheck } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
+import { DirectVaView, type DirectVaResult } from "./direct-va-view";
+import { QrisCheckoutView, type CheckoutResult } from "./qris-checkout-view";
+import { PaymentSuccessView } from "./payment-success-view";
 import type { PublicPlanItem } from "@/app/api/v1/plans/route";
 import type { PaymentMethodItem } from "@/lib/payments/types";
 
@@ -17,16 +20,6 @@ interface PlanCheckoutModalProps {
   initialCycle: "monthly" | "yearly";
 }
 
-interface DirectVaResult {
-  virtualAccountNumber?: string;
-  paymentCode?: string;
-  invoiceNumber: string;
-  amount: number;
-  expiredDate?: string;
-  bank: string;
-  howToPayPage?: string;
-}
-
 export function PlanCheckoutModal({
   isOpen,
   onClose,
@@ -34,7 +27,7 @@ export function PlanCheckoutModal({
   initialCycle,
 }: PlanCheckoutModalProps) {
   const { t } = useI18n();
-  const { user } = useAccount();
+  const { user, refresh } = useAccount();
 
   const [cycle, setCycle] = useState<"monthly" | "yearly">(initialCycle);
   const [methods, setMethods] = useState<PaymentMethodItem[]>([]);
@@ -43,15 +36,17 @@ export function PlanCheckoutModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [vaResult, setVaResult] = useState<DirectVaResult | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
+  const [isPaid, setIsPaid] = useState(false);
 
   // Sync initial cycle when modal opens
   useEffect(() => {
     if (isOpen) {
       setCycle(initialCycle);
       setVaResult(null);
+      setCheckoutResult(null);
+      setIsPaid(false);
       setError(null);
-      setCopied(false);
     }
   }, [isOpen, initialCycle]);
 
@@ -99,12 +94,13 @@ export function PlanCheckoutModal({
     }).format(val);
   };
 
-  const handleCopyVa = () => {
-    const code = vaResult?.virtualAccountNumber || vaResult?.paymentCode;
-    if (!code) return;
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handlePaymentSuccess = async () => {
+    setIsPaid(true);
+    try {
+      await refresh();
+    } catch (e) {
+      console.error("Failed to refresh user account state:", e);
+    }
   };
 
   const handlePay = async () => {
@@ -119,8 +115,8 @@ export function PlanCheckoutModal({
     const invoiceNumber = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     try {
-      // Direct VA flow (e.g. BRI, BCA, Mandiri)
       if (selectedMethod.flowType === "direct" && selectedMethod.code) {
+        // Direct VA flow (e.g. BRI, BCA, Mandiri)
         const res = await fetch("/api/v1/payments/doku/direct-va", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -134,6 +130,10 @@ export function PlanCheckoutModal({
               email: user?.email || "customer@devnuby.ai",
               phone: "088220783426",
             },
+            metadata: {
+              planId: plan.id,
+              cycle,
+            },
           }),
         });
 
@@ -144,7 +144,7 @@ export function PlanCheckoutModal({
 
         setVaResult(json.data);
       } else {
-        // Checkout flow (e.g. QRIS, Hosted Checkout)
+        // Checkout flow (QRIS) - in-modal iframe, no page redirect!
         const res = await fetch("/api/v1/payments/doku/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -152,6 +152,10 @@ export function PlanCheckoutModal({
           body: JSON.stringify({
             invoiceNumber,
             amount: effectivePrice,
+            paymentMethodTypes:
+              selectedMethod.code === "qris" || selectedMethod.category === "qris"
+                ? ["QRIS"]
+                : undefined,
             customer: {
               name: user?.name || "DevNuby Customer",
               email: user?.email || "customer@devnuby.ai",
@@ -164,8 +168,12 @@ export function PlanCheckoutModal({
                 quantity: 1,
               },
             ],
-            callbackUrl: `${window.location.origin}/plans?payment=success`,
-            callbackUrlCancel: `${window.location.origin}/plans?payment=cancel`,
+            callbackUrl: `${window.location.origin}/plans?payment=success&invoice=${invoiceNumber}`,
+            callbackUrlCancel: `${window.location.origin}/plans?payment=cancel&invoice=${invoiceNumber}`,
+            metadata: {
+              planId: plan.id,
+              cycle,
+            },
           }),
         });
 
@@ -175,7 +183,13 @@ export function PlanCheckoutModal({
         }
 
         if (json.data?.paymentUrl) {
-          window.location.href = json.data.paymentUrl;
+          // Render inside the modal! No page redirection!
+          setCheckoutResult({
+            paymentUrl: json.data.paymentUrl,
+            invoiceNumber: json.data.invoiceNumber || invoiceNumber,
+            amount: json.data.amount || effectivePrice,
+            paymentMethodCode: selectedMethod.code,
+          });
         } else {
           throw new Error("URL pembayaran tidak ditemukan");
         }
@@ -187,79 +201,46 @@ export function PlanCheckoutModal({
     }
   };
 
+  const getModalTitle = () => {
+    if (isPaid) return "Pembayaran Berhasil";
+    if (checkoutResult) return "Pembayaran QRIS";
+    if (vaResult) return t("plans.paymentSuccess");
+    return t("plans.checkoutTitle", { name: plan.name });
+  };
+
+  const getModalDescription = () => {
+    if (isPaid) return "Status langganan akun Anda telah diperbarui.";
+    if (checkoutResult) return "Pindai kode QRIS di bawah ini untuk menyelesaikan pembayaran.";
+    if (vaResult) return t("plans.vaNotice");
+    return t("plans.checkoutSubtitle");
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={vaResult ? t("plans.paymentSuccess") : t("plans.checkoutTitle", { name: plan.name })}
-      description={vaResult ? t("plans.vaNotice") : t("plans.checkoutSubtitle")}
+      title={getModalTitle()}
+      description={getModalDescription()}
       maxWidth="md"
     >
-      {vaResult ? (
-        // Direct VA Success View
-        <div className="space-y-5 py-1">
-          <div className="p-4 rounded-[12px] bg-[var(--panel-elevated)] border border-[var(--border)] text-center space-y-3">
-            <span className="text-xs uppercase font-semibold text-[var(--muted)] tracking-wider">
-              Nomor Virtual Account ({vaResult.bank.toUpperCase()})
-            </span>
-            <div className="flex items-center justify-center gap-3">
-              <span className="text-2xl font-mono font-bold text-[var(--ink)] tracking-wider select-all">
-                {vaResult.virtualAccountNumber || vaResult.paymentCode}
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyVa}
-                className="p-1.5 rounded-[6px] hover:bg-[var(--hover)] text-[var(--muted)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-                title={t("plans.copy")}
-              >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            {copied && <p className="text-[11px] text-emerald-400 font-medium">{t("plans.copied")}</p>}
-            {vaResult.howToPayPage && (
-              <div className="pt-1">
-                <a
-                  href={vaResult.howToPayPage}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline"
-                >
-                  <span>Lihat Petunjuk Pembayaran</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2 text-xs text-[var(--muted)]">
-            <div className="flex justify-between py-1 border-b border-[var(--border)]">
-              <span>Nomor Invoice</span>
-              <span className="font-mono text-[var(--ink)]">{vaResult.invoiceNumber}</span>
-            </div>
-            <div className="flex justify-between py-1 border-b border-[var(--border)]">
-              <span>Total Tagihan</span>
-              <span className="font-semibold text-[var(--ink)]">{formatRupiah(vaResult.amount)}</span>
-            </div>
-            {vaResult.expiredDate && (
-              <div className="flex justify-between py-1 border-b border-[var(--border)]">
-                <span>{t("plans.expiryTime")}</span>
-                <span className="text-amber-400 font-medium">
-                  {new Date(vaResult.expiredDate).toLocaleString("id-ID")}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-[var(--muted)] bg-white/[0.03] p-3 rounded-[8px] border border-white/5">
-            {t("plans.vaInstructions")}
-          </p>
-
-          <Button variant="primary" className="w-full text-xs" onClick={onClose}>
-            Selesai
-          </Button>
-        </div>
+      {isPaid ? (
+        <PaymentSuccessView
+          planName={plan.name}
+          invoiceNumber={checkoutResult?.invoiceNumber || vaResult?.invoiceNumber || ""}
+          amount={checkoutResult?.amount || vaResult?.amount || effectivePrice}
+          formatRupiah={formatRupiah}
+          onDone={onClose}
+        />
+      ) : checkoutResult ? (
+        <QrisCheckoutView
+          checkoutResult={checkoutResult}
+          formatRupiah={formatRupiah}
+          onPaid={handlePaymentSuccess}
+          onClose={onClose}
+        />
+      ) : vaResult ? (
+        <DirectVaView vaResult={vaResult} formatRupiah={formatRupiah} onClose={onClose} />
       ) : (
-        // Checkout Form View
         <div className="space-y-5 py-1">
           {/* Cycle Selector */}
           <div className="flex items-center p-1 rounded-[10px] bg-white/[0.04] border border-white/5">
@@ -356,7 +337,7 @@ export function PlanCheckoutModal({
                         <p className="text-[10px] text-[var(--placeholder)] truncate">
                           {m.flowType === "direct"
                             ? "Virtual Account Langsung"
-                            : "Pembayaran Instan (Checkout)"}
+                            : "Pembayaran Instan QRIS"}
                         </p>
                       </div>
                       {isSelected && (
@@ -390,13 +371,8 @@ export function PlanCheckoutModal({
                   <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
                   {t("plans.processing")}
                 </>
-              ) : selectedMethod?.flowType === "direct" ? (
-                t("plans.payNow")
               ) : (
-                <span className="flex items-center justify-center gap-1.5">
-                  {t("plans.payNow")}
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </span>
+                t("plans.payNow")
               )}
             </Button>
 

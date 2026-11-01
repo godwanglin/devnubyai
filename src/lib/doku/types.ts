@@ -48,6 +48,7 @@ export interface DokuCheckoutRequest {
   callbackUrlCancel?: string;
   lineItemsDescription?: string;
   paymentMethodTypes?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface DokuCheckoutResponse {
@@ -79,6 +80,7 @@ export interface DokuDirectVaRequest {
   info1?: string;
   info2?: string;
   info3?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DokuDirectVaResponse {

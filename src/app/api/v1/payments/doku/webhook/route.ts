@@ -61,14 +61,35 @@ export async function POST(request: Request) {
     const isSuccess = status === "SUCCESS";
     const newStatus = isSuccess ? "PAID" : status === "FAILED" ? "FAILED" : "PENDING";
 
-    await db.paymentTransaction.updateMany({
+    const tx = await db.paymentTransaction.findUnique({
       where: { invoiceNumber },
-      data: {
-        status: newStatus,
-        dokuResponse: payload as unknown as Prisma.InputJsonValue,
-        ...(isSuccess ? { paidAt: new Date() } : {}),
-      },
     });
+
+    if (tx) {
+      await db.paymentTransaction.update({
+        where: { invoiceNumber },
+        data: {
+          status: newStatus,
+          dokuResponse: payload as unknown as Prisma.InputJsonValue,
+          ...(isSuccess ? { paidAt: new Date() } : {}),
+        },
+      });
+
+      if (isSuccess && tx.userId) {
+        const metadata = tx.metadata as Record<string, unknown> | null;
+        const rawPlanId = metadata?.planId;
+        if (rawPlanId) {
+          try {
+            await db.user.update({
+              where: { id: tx.userId },
+              data: { planId: BigInt(String(rawPlanId)) },
+            });
+          } catch (e) {
+            console.error(`Failed to assign plan to user ${tx.userId}:`, e);
+          }
+        }
+      }
+    }
   }
 
   // DOKU expects 200 OK acknowledging receipt with correlation headers
