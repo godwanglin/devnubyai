@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   ShieldAlert,
@@ -124,9 +125,9 @@ export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetail
     }
   }
 
-  return (
+  const content = (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-150">
         <div className="relative flex max-h-[92vh] w-full max-w-[680px] flex-col rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 sm:px-6 py-3.5 sm:py-4">
@@ -389,4 +390,6 @@ export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetail
       )}
     </>
   );
+
+  return typeof document !== "undefined" ? createPortal(content, document.body) : null;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { X, KeyRound, Lock, AlertTriangle, Loader2 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { CustomSelect } from "@/components/ui/custom-select";
@@ -78,8 +79,8 @@ export function UserEditModal({ user, plans, onClose, onSuccess }: UserEditModal
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+  const content = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
       <div className="relative flex max-h-[90vh] w-full max-w-[560px] flex-col rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-2xl">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
@@ -264,4 +265,6 @@ export function UserEditModal({ user, plans, onClose, onSuccess }: UserEditModal
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(content, document.body) : null;
 }

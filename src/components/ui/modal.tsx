@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
 import { X } from "lucide-react";
 
@@ -20,6 +21,8 @@ const maxMap = {
   xl: "max-w-2xl",
 };
 
+const emptySubscribe = () => () => {};
+
 export function Modal({
   isOpen,
   onClose,
@@ -29,6 +32,11 @@ export function Modal({
   maxWidth = "md",
 }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const isMounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -39,12 +47,12 @@ export function Modal({
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !isMounted) return null;
 
-  return (
+  return createPortal(
     <div
       ref={overlayRef}
-      className="modal-overlay fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+      className="modal-overlay fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
@@ -65,7 +73,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors"
+            className="p-1.5 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
             aria-label="Tutup"
           >
             <X className="w-4 h-4" />
@@ -73,6 +81,7 @@ export function Modal({
         </div>
         <div>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
