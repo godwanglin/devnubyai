@@ -482,8 +482,14 @@
     "fillAllFields": "Please fill in email and password"
   },
   "admin": {
-    "title": "Model Catalog Admin",
+    "title": "Admin Console",
     "backToChat": "Back to Chat",
+    "badge": "Admin",
+    "groups": {
+      "ai": "AI & Routing",
+      "management": "Management",
+      "system": "System"
+    },
     "tabs": {
       "gateways": "Gateways",
       "upstream": "Upstream Catalog",

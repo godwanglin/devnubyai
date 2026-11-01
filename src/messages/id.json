@@ -482,8 +482,14 @@
     "fillAllFields": "Harap isi email dan kata sandi"
   },
   "admin": {
-    "title": "Admin Katalog Model",
+    "title": "Admin Console",
     "backToChat": "Kembali ke Percakapan",
+    "badge": "Admin",
+    "groups": {
+      "ai": "AI & Routing",
+      "management": "Manajemen",
+      "system": "Sistem"
+    },
     "tabs": {
       "gateways": "Gateways",
       "upstream": "Katalog Upstream",
