@@ -11,10 +11,12 @@ interface UpstreamModelSelectProps {
   onChange: (val: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  zIndex?: number;
 }
 
 interface Coords {
-  top: number;
+  top?: number;
+  bottom?: number;
   left: number;
   width: number;
   maxHeight: number;
@@ -27,6 +29,7 @@ export function UpstreamModelSelect({
   onChange,
   placeholder = "Pilih Model Upstream...",
   disabled = false,
+  zIndex = 10050,
 }: UpstreamModelSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -52,21 +55,25 @@ export function UpstreamModelSelect({
     const openUpward = spaceBelow < 240 && spaceAbove > spaceBelow;
 
     const availableHeight = openUpward ? spaceAbove : spaceBelow;
-    const maxHeight = Math.min(320, Math.max(160, availableHeight));
+    const maxHeight = Math.min(320, Math.max(80, availableHeight));
 
-    let top = openUpward
-      ? rect.top - maxHeight - gap
-      : rect.bottom + gap;
-
-    top = Math.max(pad, Math.min(top, vh - maxHeight - pad));
-
-    setCoords({
-      top,
-      left: rect.left,
-      width: Math.min(rect.width, vw - pad * 2),
-      maxHeight,
-      openUpward,
-    });
+    if (openUpward) {
+      setCoords({
+        bottom: Math.max(pad, vh - rect.top + gap),
+        left: rect.left,
+        width: Math.min(rect.width, vw - pad * 2),
+        maxHeight,
+        openUpward: true,
+      });
+    } else {
+      setCoords({
+        top: Math.max(pad, rect.bottom + gap),
+        left: rect.left,
+        width: Math.min(rect.width, vw - pad * 2),
+        maxHeight,
+        openUpward: false,
+      });
+    }
   }, []);
 
   function handleToggleOpen() {
@@ -212,7 +219,7 @@ export function UpstreamModelSelect({
         />
       </button>
 
-      {/* Render via Portal with glass token and top z-index (z-[300]) so it's always above modals */}
+      {/* Render via Portal with glass token and top z-index (default z-[10050]) so it's always above modals (z-[9999]) */}
       {open &&
         coords &&
         typeof document !== "undefined" &&
@@ -221,11 +228,14 @@ export function UpstreamModelSelect({
             ref={dropdownRef}
             style={{
               position: "fixed",
-              top: `${coords.top}px`,
+              ...(coords.openUpward
+                ? { bottom: `${coords.bottom}px` }
+                : { top: `${coords.top}px` }),
               left: `${coords.left}px`,
               width: `${coords.width}px`,
               maxHeight: `${coords.maxHeight}px`,
-              zIndex: 300,
+              transformOrigin: coords.openUpward ? "bottom center" : "top center",
+              zIndex,
             }}
             className="flex flex-col rounded-[14px] border border-[var(--glass-border)] bg-[var(--panel)]/90 backdrop-blur-md shadow-2xl overflow-hidden popover-panel"
           >

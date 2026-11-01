@@ -47,7 +47,7 @@ export function CustomSelect<T extends string = string>({
   size = "sm",
   variant = "default",
   align = "left",
-  zIndex = 10001,
+  zIndex = 10050,
 }: CustomSelectProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
