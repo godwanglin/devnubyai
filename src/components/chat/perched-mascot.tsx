@@ -534,6 +534,15 @@ export function PerchedMascot({ ref, stageRef, typewriterRef, onPushingChange, s
         }, PUNCH_WINDUP_MS + PUNCH_FLY_MS + PUNCH_IMPACT_MS);
 
         later(resolve, PUNCH_TOTAL_MS);
+        later(() => {
+          // Reset so tick() can move it again after the punch
+          mode = "rest";
+          perch = null;
+          setPunch(null);
+          setMood(IDLE_MOOD);
+          const [min, max] = REST_MS.headline;
+          nextHopAt = Date.now() + rand(min, max);
+        }, PUNCH_TOTAL_MS);
       });
 
     // Scrolling moves every spot: stick to the perch right away, without easing
@@ -579,6 +588,12 @@ export function PerchedMascot({ ref, stageRef, typewriterRef, onPushingChange, s
       )}
       style={
         {
+          // Inline so the mascot stays positioned even if perched-mascot.css
+          // hasn't been picked up yet (new file during dev HMR)
+          position: "fixed",
+          left: 0,
+          top: 0,
+          zIndex: 30,
           width: size,
           height,
           opacity: pos && !isHidden ? 1 : 0,
