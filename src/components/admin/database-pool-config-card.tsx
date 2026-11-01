@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Database, Loader2, Server, Activity } from "lucide-react";
+import { Database, Loader2, Zap, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 
@@ -112,112 +113,133 @@ export function DatabasePoolConfigCard() {
   }
 
   return (
-    <div className="space-y-4 pt-6 border-t border-[var(--border)]">
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Database className="w-4 h-4 text-[var(--accent)]" />
-          <h2 className="text-base font-semibold text-[var(--ink)]">{t("admin.dbPool.title")}</h2>
+    <div className="rounded-[14px] border border-[var(--border)] bg-[var(--panel)] p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+      {/* Card Header with Live Stats */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-[var(--border)]">
+        <div className="flex items-center gap-2">
+          <Database className="w-4 h-4 text-[var(--accent)] shrink-0" />
+          <h3 className="text-sm font-semibold text-[var(--ink)]">{t("admin.dbPool.title")}</h3>
         </div>
-        <p className="text-xs text-[var(--muted)]">{t("admin.dbPool.description")}</p>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {liveStats && (
+            <>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Active: {liveStats.activeConnections ?? "-"}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)]">
+                Max: {liveStats.serverMaxConnections}
+              </span>
+            </>
+          )}
+
+          {isDirty ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              Belum Disimpan
+            </span>
+          ) : (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              Tersinkron
+            </span>
+          )}
+        </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 text-xs text-[var(--muted)] py-6">
-          <Loader2 className="w-4 h-4 animate-spin" />
+        <div className="flex items-center justify-center py-12 text-xs text-[var(--muted)] gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
+          <span>Memuat konfigurasi pool...</span>
         </div>
       ) : (
-        <form
-          onSubmit={handleSave}
-          className="max-w-[560px] rounded-[12px] border border-[var(--border)] bg-[var(--panel)] p-4 space-y-4"
-        >
-          {liveStats && (
-            <div className="grid grid-cols-2 gap-2 p-3 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-xs">
-              <div className="flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="text-[var(--muted)]">{t("admin.dbPool.activeConnections")}:</span>
-                <span className="font-semibold text-[var(--ink)]">
-                  {liveStats.activeConnections !== null ? liveStats.activeConnections : "-"}
-                </span>
+        <form onSubmit={handleSave} className="mt-3.5 space-y-3.5 flex-1 flex flex-col justify-between">
+          <div className="space-y-3">
+            {/* 3-Column Compact Numeric Inputs */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Max Connections */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <label htmlFor="db-max-connections" className="text-xs font-medium text-[var(--muted)] truncate">
+                    Max Pool
+                  </label>
+                  <Tooltip
+                    content={t("admin.dbPool.maxHint", {
+                      serverMax: String(liveStats?.serverMaxConnections ?? 100),
+                    })}
+                    side="top"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-[var(--muted)] cursor-help shrink-0" />
+                  </Tooltip>
+                </div>
+                <input
+                  id="db-max-connections"
+                  type="number"
+                  min={5}
+                  max={100}
+                  required
+                  value={maxConnections}
+                  onChange={(e) => setMaxConnections(Number(e.target.value))}
+                  className="w-full h-9 px-3 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-xs font-medium outline-none focus:border-[var(--accent)] transition-colors"
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <Server className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-[var(--muted)]">{t("admin.dbPool.serverMaxConnections")}:</span>
-                <span className="font-semibold text-[var(--ink)]">
-                  {liveStats.serverMaxConnections}
-                </span>
+
+              {/* Connection Timeout */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <label htmlFor="db-connection-timeout" className="text-xs font-medium text-[var(--muted)] truncate">
+                    Conn Timeout (s)
+                  </label>
+                  <Tooltip content={t("admin.dbPool.connectionTimeoutHint")} side="top">
+                    <HelpCircle className="w-3.5 h-3.5 text-[var(--muted)] cursor-help shrink-0" />
+                  </Tooltip>
+                </div>
+                <input
+                  id="db-connection-timeout"
+                  type="number"
+                  min={3}
+                  max={60}
+                  required
+                  value={connectionTimeout}
+                  onChange={(e) => setConnectionTimeout(Number(e.target.value))}
+                  className="w-full h-9 px-3 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-xs font-medium outline-none focus:border-[var(--accent)] transition-colors"
+                />
+              </div>
+
+              {/* Idle Timeout */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-1">
+                  <label htmlFor="db-idle-timeout" className="text-xs font-medium text-[var(--muted)] truncate">
+                    Idle Timeout (s)
+                  </label>
+                  <Tooltip content={t("admin.dbPool.idleTimeoutHint")} side="top">
+                    <HelpCircle className="w-3.5 h-3.5 text-[var(--muted)] cursor-help shrink-0" />
+                  </Tooltip>
+                </div>
+                <input
+                  id="db-idle-timeout"
+                  type="number"
+                  min={5}
+                  max={300}
+                  required
+                  value={idleTimeout}
+                  onChange={(e) => setIdleTimeout(Number(e.target.value))}
+                  className="w-full h-9 px-3 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-xs font-medium outline-none focus:border-[var(--accent)] transition-colors"
+                />
               </div>
             </div>
-          )}
 
-          <div>
-            <label
-              htmlFor="db-max-connections"
-              className="block text-xs font-medium text-[var(--muted)] mb-1"
-            >
-              {t("admin.dbPool.max")}
-            </label>
-            <input
-              id="db-max-connections"
-              type="number"
-              min={5}
-              max={100}
-              required
-              value={maxConnections}
-              onChange={(e) => setMaxConnections(Number(e.target.value))}
-              className="w-32 px-3 py-2 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-sm outline-none focus:border-[var(--accent)]"
-            />
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
-              {t("admin.dbPool.maxHint", {
-                serverMax: String(liveStats?.serverMaxConnections ?? 100),
-              })}
-            </p>
+            {/* Compact Graceful Pool Note */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[11.5px] text-[var(--muted)]">
+              <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span className="truncate">Perubahan pool aktif otomatis via dynamic proxy tanpa restart server.</span>
+            </div>
           </div>
 
-          <div className="pt-4 border-t border-[var(--border)]">
-            <label
-              htmlFor="db-connection-timeout"
-              className="block text-xs font-medium text-[var(--muted)] mb-1"
-            >
-              {t("admin.dbPool.connectionTimeout")}
-            </label>
-            <input
-              id="db-connection-timeout"
-              type="number"
-              min={3}
-              max={60}
-              required
-              value={connectionTimeout}
-              onChange={(e) => setConnectionTimeout(Number(e.target.value))}
-              className="w-32 px-3 py-2 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-sm outline-none focus:border-[var(--accent)]"
-            />
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
-              {t("admin.dbPool.connectionTimeoutHint")}
-            </p>
-          </div>
-
-          <div className="pt-4 border-t border-[var(--border)]">
-            <label
-              htmlFor="db-idle-timeout"
-              className="block text-xs font-medium text-[var(--muted)] mb-1"
-            >
-              {t("admin.dbPool.idleTimeout")}
-            </label>
-            <input
-              id="db-idle-timeout"
-              type="number"
-              min={5}
-              max={300}
-              required
-              value={idleTimeout}
-              onChange={(e) => setIdleTimeout(Number(e.target.value))}
-              className="w-32 px-3 py-2 rounded-[8px] border border-[var(--border)] bg-[var(--surface)] text-[var(--ink)] text-sm outline-none focus:border-[var(--accent)]"
-            />
-            <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
-              {t("admin.dbPool.idleTimeoutHint")}
-            </p>
-          </div>
-
-          <div className="flex justify-end pt-2">
+          {/* Action Row */}
+          <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+            <span className="text-[11px] text-[var(--muted)]">
+              {isDirty ? "Ada perubahan belum disimpan" : "Konfigurasi aktif"}
+            </span>
             <Button type="submit" size="sm" disabled={!isValid || !isDirty || saving}>
               {saving ? t("admin.dbPool.saving") : t("admin.dbPool.save")}
             </Button>
