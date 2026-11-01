@@ -15,7 +15,8 @@ export interface RecordAuditParams {
     | "payment_method"
     | "payment_transaction"
     | "plan"
-    | "plan_model_access";
+    | "plan_model_access"
+    | "user";
   entityId: string;
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;
@@ -28,6 +29,8 @@ const REDACTED_KEYS = new Set([
   "apikeyraw",
   "apikeyciphertext",
   "password",
+  "passwordhash",
+  "chatpinhash",
   "secret",
   "token",
   "authorization",

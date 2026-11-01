@@ -3,7 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
 // Bump when the Prisma schema changes so dev HMR swaps in a client with the new models
-const PRISMA_SCHEMA_VERSION = "20261101_project_workspaces_auth";
+const PRISMA_SCHEMA_VERSION = "20261101_user_management";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

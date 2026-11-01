@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeft, Server, Database, Sparkles, FileText, Settings2, MessageSquareText, CreditCard, Layers3 } from "lucide-react";
+import { ArrowLeft, Server, Database, Sparkles, FileText, Settings2, MessageSquareText, CreditCard, Layers3, Users } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
 
@@ -42,6 +42,11 @@ export function AdminNavShell({ children }: { children: React.ReactNode }) {
       href: "/admin/system-prompts",
       labelKey: "admin.tabs.systemPrompts",
       icon: <MessageSquareText className="w-4 h-4" />,
+    },
+    {
+      href: "/admin/users",
+      labelKey: "admin.tabs.users",
+      icon: <Users className="w-4 h-4" />,
     },
     {
       href: "/admin/plans",

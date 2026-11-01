@@ -56,6 +56,7 @@ model User {
   avatarUrl   String?   @map("avatar_url") @db.VarChar(2048)
   role        String    @default("user") @db.VarChar(16)
   status      String    @default("active") @db.VarChar(16)
+  statusReason String?  @map("status_reason") @db.VarChar(500)
   planId      BigInt?   @map("plan_id") 
   chatPinHash  String?   @map("chat_pin_hash") @db.VarChar(255)
   passwordHash String?   @map("password_hash") @db.VarChar(255)
