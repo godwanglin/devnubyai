@@ -35,15 +35,16 @@ export function PreferencesTab() {
   const { locale, setLocale, t } = useI18n();
   const { toast } = useToast();
 
-  // Preferences states with localStorage persistence
+  // Preferences states with localStorage persistence & defaults
   const [uiFont, setUiFont] = useState(() => {
-    if (typeof window === "undefined") return "anthropic";
+    if (typeof window === "undefined") return "jakarta";
     try {
-      return localStorage.getItem("devnuby_pref_ui_font") || "anthropic";
+      return localStorage.getItem("devnuby_pref_ui_font") || "jakarta";
     } catch {
-      return "anthropic";
+      return "jakarta";
     }
   });
+
   const [responseFont, setResponseFont] = useState(() => {
     if (typeof window === "undefined") return "match";
     try {
@@ -52,6 +53,7 @@ export function PreferencesTab() {
       return "match";
     }
   });
+
   const [chatSize, setChatSize] = useState(() => {
     if (typeof window === "undefined") return "medium";
     try {
@@ -60,6 +62,7 @@ export function PreferencesTab() {
       return "medium";
     }
   });
+
   const [transcriptWidth, setTranscriptWidth] = useState(() => {
     if (typeof window === "undefined") return "narrow";
     try {
@@ -68,6 +71,7 @@ export function PreferencesTab() {
       return "narrow";
     }
   });
+
   const [motion, setMotion] = useState(() => {
     if (typeof window === "undefined") return "system";
     try {
@@ -76,6 +80,7 @@ export function PreferencesTab() {
       return "system";
     }
   });
+
   const [voiceStyle, setVoiceStyle] = useState(() => {
     if (typeof window === "undefined") return "select";
     try {
@@ -84,6 +89,7 @@ export function PreferencesTab() {
       return "select";
     }
   });
+
   const [voiceSpeed, setVoiceSpeed] = useState(() => {
     if (typeof window === "undefined") return "normal";
     try {
@@ -104,10 +110,20 @@ export function PreferencesTab() {
     }
   };
 
-  const handlePrefChange = (key: string, val: string, setter: (v: string) => void) => {
+  const handlePrefChange = (
+    key: string,
+    val: string,
+    dataAttr: string,
+    setter: (v: string) => void,
+    toastMsg?: string
+  ) => {
     setter(val);
     try {
       localStorage.setItem(key, val);
+      if (typeof document !== "undefined") {
+        document.documentElement.dataset[dataAttr] = val;
+      }
+      if (toastMsg) toast(toastMsg);
     } catch {
       // ignore
     }
@@ -181,12 +197,21 @@ export function PreferencesTab() {
           label="Font antarmuka"
           value={uiFont}
           options={[
-            { value: "anthropic", label: "Anthropic Sans" },
+            { value: "jakarta", label: "Plus Jakarta Sans" },
             { value: "inter", label: "Inter" },
-            { value: "geist", label: "Geist" },
+            { value: "outfit", label: "Outfit" },
+            { value: "roboto", label: "Roboto" },
             { value: "system", label: "Sistem (Default)" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_ui_font", val, setUiFont)}
+          onChange={(val) =>
+            handlePrefChange(
+              "devnuby_pref_ui_font",
+              val,
+              "fontUi",
+              setUiFont,
+              `Font antarmuka diubah: ${val}`
+            )
+          }
         />
 
         {/* 3. Font respons */}
@@ -195,10 +220,20 @@ export function PreferencesTab() {
           value={responseFont}
           options={[
             { value: "match", label: "Samakan dengan antarmuka" },
-            { value: "serif", label: "Serif" },
-            { value: "mono", label: "Monospace" },
+            { value: "lora", label: "Lora (Serif)" },
+            { value: "merriweather", label: "Merriweather (Serif)" },
+            { value: "jetbrains", label: "JetBrains Mono" },
+            { value: "fira", label: "Fira Code" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_resp_font", val, setResponseFont)}
+          onChange={(val) =>
+            handlePrefChange(
+              "devnuby_pref_resp_font",
+              val,
+              "fontResponse",
+              setResponseFont,
+              `Font respons diubah: ${val}`
+            )
+          }
         />
 
         {/* 4. Ukuran teks percakapan */}
@@ -206,11 +241,19 @@ export function PreferencesTab() {
           label="Ukuran teks percakapan"
           value={chatSize}
           options={[
-            { value: "small", label: "Kecil" },
-            { value: "medium", label: "Sedang" },
-            { value: "large", label: "Besar" },
+            { value: "small", label: "Kecil (14px)" },
+            { value: "medium", label: "Sedang (15.5px)" },
+            { value: "large", label: "Besar (17px)" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_chat_size", val, setChatSize)}
+          onChange={(val) =>
+            handlePrefChange(
+              "devnuby_pref_chat_size",
+              val,
+              "chatSize",
+              setChatSize,
+              `Ukuran teks diubah: ${val}`
+            )
+          }
         />
 
         {/* 5. Lebar transkrip */}
@@ -218,11 +261,19 @@ export function PreferencesTab() {
           label="Lebar transkrip"
           value={transcriptWidth}
           options={[
-            { value: "narrow", label: "Sempit" },
-            { value: "standard", label: "Standar" },
-            { value: "full", label: "Penuh" },
+            { value: "narrow", label: "Sempit (768px)" },
+            { value: "standard", label: "Standar (900px)" },
+            { value: "full", label: "Penuh (1200px)" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_transcript_width", val, setTranscriptWidth)}
+          onChange={(val) =>
+            handlePrefChange(
+              "devnuby_pref_transcript_width",
+              val,
+              "transcriptWidth",
+              setTranscriptWidth,
+              `Lebar transkrip diubah: ${val}`
+            )
+          }
         />
 
         {/* 6. Gerakan */}
@@ -234,7 +285,15 @@ export function PreferencesTab() {
             { value: "reduce", label: "Kurangi gerakan" },
             { value: "enable", label: "Aktif" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_motion", val, setMotion)}
+          onChange={(val) =>
+            handlePrefChange(
+              "devnuby_pref_motion",
+              val,
+              "motion",
+              setMotion,
+              `Gerakan diatur: ${val}`
+            )
+          }
         />
       </div>
 
@@ -265,7 +324,9 @@ export function PreferencesTab() {
             { value: "formal", label: "Formal" },
             { value: "casual", label: "Santai" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_voice_style", val, setVoiceStyle)}
+          onChange={(val) =>
+            handlePrefChange("devnuby_pref_voice_style", val, "voiceStyle", setVoiceStyle)
+          }
         />
 
         {/* 3. Kecepatan */}
@@ -274,10 +335,12 @@ export function PreferencesTab() {
           value={voiceSpeed}
           options={[
             { value: "slow", label: "Lambat (0.8x)" },
-            { value: "normal", label: "Normal" },
+            { value: "normal", label: "Normal (1.0x)" },
             { value: "fast", label: "Cepat (1.2x)" },
           ]}
-          onChange={(val) => handlePrefChange("devnuby_pref_voice_speed", val, setVoiceSpeed)}
+          onChange={(val) =>
+            handlePrefChange("devnuby_pref_voice_speed", val, "voiceSpeed", setVoiceSpeed)
+          }
         />
       </div>
     </div>

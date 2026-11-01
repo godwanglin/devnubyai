@@ -129,8 +129,83 @@
   /* Fonts are injected by next/font in app/layout.tsx */
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-fira-code), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-ui: var(--font-jakarta);
+  --font-ui: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-jakarta);
+  --font-response: var(--font-ui);
+  --chat-max-width: 768px;
+}
+
+/* Dynamic UI Fonts */
+:root[data-font-ui="jakarta"], [data-font-ui="jakarta"], :root:not([data-font-ui]) {
+  --font-ui: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+}
+:root[data-font-ui="inter"], [data-font-ui="inter"] {
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+:root[data-font-ui="outfit"], [data-font-ui="outfit"] {
+  --font-ui: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+}
+:root[data-font-ui="roboto"], [data-font-ui="roboto"] {
+  --font-ui: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+}
+:root[data-font-ui="system"], [data-font-ui="system"] {
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Dynamic Response Fonts */
+:root[data-font-response="match"], [data-font-response="match"], :root:not([data-font-response]) {
+  --font-response: var(--font-ui);
+}
+:root[data-font-response="lora"], [data-font-response="lora"] {
+  --font-response: var(--font-lora), Georgia, serif;
+}
+:root[data-font-response="merriweather"], [data-font-response="merriweather"] {
+  --font-response: var(--font-merriweather), Georgia, serif;
+}
+:root[data-font-response="jetbrains"], [data-font-response="jetbrains"] {
+  --font-response: var(--font-jetbrains-mono), monospace;
+}
+:root[data-font-response="fira"], [data-font-response="fira"] {
+  --font-response: var(--font-fira-code), monospace;
+}
+
+/* Dynamic Transcript Width */
+:root[data-transcript-width="narrow"], [data-transcript-width="narrow"], :root:not([data-transcript-width]) {
+  --chat-max-width: 768px;
+}
+:root[data-transcript-width="standard"], [data-transcript-width="standard"] {
+  --chat-max-width: 900px;
+}
+:root[data-transcript-width="full"], [data-transcript-width="full"] {
+  --chat-max-width: 1200px;
+}
+
+.max-w-\[768px\] {
+  max-width: var(--chat-max-width, 768px) !important;
+}
+
+/* Dynamic Chat Text Size */
+:root[data-chat-size="small"] .prose-chat, [data-chat-size="small"] .prose-chat {
+  font-size: 14px;
+}
+:root[data-chat-size="medium"] .prose-chat, [data-chat-size="medium"] .prose-chat, :root:not([data-chat-size]) .prose-chat {
+  font-family: var(--font-response, var(--font-ui));
+  font-size: 15.5px;
+}
+:root[data-chat-size="large"] .prose-chat, [data-chat-size="large"] .prose-chat {
+  font-size: 17px;
+}
+
+/* Dynamic Motion */
+:root[data-motion="reduce"] *,
+[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after,
+[data-motion="reduce"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
 
 /* ── Overlay animations ────────────────────────────────────────── */
@@ -454,7 +529,7 @@ body {
 body {
   background: var(--surface);
   color: var(--ink);
-  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-ui, var(--font-jakarta), ui-sans-serif, system-ui, sans-serif);
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -554,7 +629,7 @@ body > iframe[id^="i-mermaid"] {
 .prose-chat h2,
 .prose-chat h3,
 .prose-chat h4 {
-  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-response, var(--font-ui));
   font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.01em;
