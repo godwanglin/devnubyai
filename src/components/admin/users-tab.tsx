@@ -20,6 +20,7 @@ import type { AdminUserListItemDto } from "@/lib/users/types";
 import { UserEditModal } from "@/components/admin/user-edit-modal";
 import { CreateUserModal } from "@/components/admin/create-user-modal";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 interface PlanOption {
   id: string;
@@ -234,51 +235,53 @@ export function UsersTab() {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Role Filter */}
-          <select
+          <CustomSelect
             value={roleFilter}
-            onChange={(e) => {
-              setRoleFilter(e.target.value);
+            onChange={(val) => {
+              setRoleFilter(val);
               setPage(1);
             }}
-            className="rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-2.5 py-1.5 text-xs text-[var(--ink)] focus:border-[var(--primary)] focus:outline-none"
-          >
-            <option value="all">{t("admin.users.allRoles")}</option>
-            <option value="user">{t("admin.users.roleUser")}</option>
-            <option value="admin">{t("admin.users.roleAdmin")}</option>
-          </select>
+            options={[
+              { value: "all", label: t("admin.users.allRoles") },
+              { value: "user", label: t("admin.users.roleUser") },
+              { value: "admin", label: t("admin.users.roleAdmin") },
+            ]}
+            className="w-[125px]"
+            size="sm"
+          />
 
           {/* Status Filter */}
-          <select
+          <CustomSelect
             value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
+            onChange={(val) => {
+              setStatusFilter(val);
               setPage(1);
             }}
-            className="rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-2.5 py-1.5 text-xs text-[var(--ink)] focus:border-[var(--primary)] focus:outline-none"
-          >
-            <option value="all">{t("admin.users.allStatuses")}</option>
-            <option value="active">{t("admin.users.statusActive")}</option>
-            <option value="deactivated">{t("admin.users.statusDeactivated")}</option>
-            <option value="suspended">{t("admin.users.statusSuspended")}</option>
-          </select>
+            options={[
+              { value: "all", label: t("admin.users.allStatuses") },
+              { value: "active", label: t("admin.users.statusActive") },
+              { value: "deactivated", label: t("admin.users.statusDeactivated") },
+              { value: "suspended", label: t("admin.users.statusSuspended") },
+            ]}
+            className="w-[145px]"
+            size="sm"
+          />
 
           {/* Plan Filter */}
-          <select
+          <CustomSelect
             value={planFilter}
-            onChange={(e) => {
-              setPlanFilter(e.target.value);
+            onChange={(val) => {
+              setPlanFilter(val);
               setPage(1);
             }}
-            className="rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-2.5 py-1.5 text-xs text-[var(--ink)] focus:border-[var(--primary)] focus:outline-none"
-          >
-            <option value="all">{t("admin.users.allPlans")}</option>
-            <option value="none">Tanpa Paket</option>
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "all", label: t("admin.users.allPlans") },
+              { value: "none", label: "Tanpa Paket" },
+              ...plans.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            className="w-[145px]"
+            size="sm"
+          />
         </div>
       </div>
 

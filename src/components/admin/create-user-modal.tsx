@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { X, UserPlus, Loader2 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
+import { CustomSelect } from "@/components/ui/custom-select";
 import type { AdminUserListItemDto } from "@/lib/users/types";
 
 interface PlanOption {
@@ -135,42 +136,47 @@ export function CreateUserModal({ plans, onClose, onSuccess }: CreateUserModalPr
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-[var(--muted)]">Peran (Role)</label>
-              <select
+              <CustomSelect
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--ink)] focus:border-[var(--primary)] focus:outline-none"
-              >
-                <option value="user">User</option>
-                <option value="admin">Administrator</option>
-              </select>
+                onChange={setRole}
+                options={[
+                  { value: "user", label: "User" },
+                  { value: "admin", label: "Administrator" },
+                ]}
+                className="w-full"
+                size="md"
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-[var(--muted)]">Paket Langganan</label>
-              <select
+              <CustomSelect
                 value={planId}
-                onChange={(e) => setPlanId(e.target.value)}
-                className="w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--ink)] focus:border-[var(--primary)] focus:outline-none"
-              >
-                <option value="none">Tanpa Paket (Default)</option>
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setPlanId}
+                options={[
+                  { value: "none", label: "Tanpa Paket (Default)" },
+                  ...plans.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  })),
+                ]}
+                className="w-full"
+                size="md"
+              />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-[var(--muted)]">Status Awal</label>
-            <select
+            <CustomSelect
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--ink)] focus:border-[var(--primary)] focus:outline-none"
-            >
-              <option value="active">Aktif</option>
-              <option value="deactivated">Dinonaktifkan</option>
-            </select>
+              onChange={setStatus}
+              options={[
+                { value: "active", label: "Aktif" },
+                { value: "deactivated", label: "Dinonaktifkan" },
+              ]}
+              className="w-full"
+              size="md"
+            />
           </div>
 
           <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
