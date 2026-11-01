@@ -147,6 +147,20 @@ export async function POST(request: Request, context: RouteContext) {
       (m) => !(m.role === "assistant" && m.content === "")
     );
 
+    // If the chat session belongs to a project with custom instructions, inject them into context
+    if (session.projectInternalId) {
+      const proj = await db.project.findUnique({
+        where: { id: session.projectInternalId },
+        select: { name: true, customInstructions: true },
+      });
+      if (proj?.customInstructions?.trim()) {
+        conversationMessages.unshift({
+          role: "system",
+          content: `[Instruksi Khusus Proyek "${proj.name}"]:\n${proj.customInstructions.trim()}`,
+        });
+      }
+    }
+
     // If attachments exist and the resolved model supports vision, inject image multimodal parts into the user's turn
     if (fileIds.length > 0) {
       const attachedFiles = await db.sessionFile.findMany({

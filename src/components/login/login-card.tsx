@@ -34,10 +34,32 @@ export function LoginCard() {
     window.location.href = "/api/v1/auth/google";
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
-    toast("Login email belum tersedia, gunakan akun Google");
+    if (!email || !password) {
+      toast(t("login.fillAllFields") || "Harap isi email dan kata sandi");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error?.message || t("login.loginFailed") || "Email atau kata sandi salah");
+      }
+      toast(t("login.loginSuccess") || "Login berhasil!");
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = "/";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("login.loginFailed") || "Login gagal";
+      toast(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

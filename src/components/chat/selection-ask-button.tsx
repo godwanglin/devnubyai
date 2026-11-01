@@ -162,10 +162,28 @@ export function SelectionAskButton({
   useEffect(() => {
     if (!enabled) return;
 
+    // Only commit when the value actually changed; scroll/resize fire constantly
+    // and a fresh object on every event re-renders in a loop.
+    function commitSelection(next: SelectionState | null) {
+      setSelection((prev) => {
+        if (!next) return prev ? null : prev;
+        if (
+          prev &&
+          prev.text === next.text &&
+          prev.tone === next.tone &&
+          Math.abs(prev.top - next.top) < 1 &&
+          Math.abs(prev.left - next.left) < 1
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    }
+
     function updateDomSelection() {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-        setSelection(null);
+        commitSelection(null);
         return;
       }
       const text = sel.toString().trim();
@@ -177,16 +195,16 @@ export function SelectionAskButton({
         isEditable(sel.anchorNode) ||
         isEditable(sel.focusNode)
       ) {
-        setSelection(null);
+        commitSelection(null);
         return;
       }
       const rect = range.getBoundingClientRect();
       if (rect.width === 0 && rect.height === 0) {
-        setSelection(null);
+        commitSelection(null);
         return;
       }
       const pos = clampPosition(rect.top, rect.left + rect.width / 2);
-      setSelection({
+      commitSelection({
         text: text.slice(0, MAX_QUOTE_CHARS),
         top: pos.top,
         left: pos.left,
@@ -201,18 +219,18 @@ export function SelectionAskButton({
     function handleSelectionChange() {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {
-        setSelection((prev) => (prev ? null : prev));
+        commitSelection(null);
       }
     }
 
     function handleExternalSelection(e: Event) {
       const detail = (e as CustomEvent<ExternalTextSelectionPayload | null>).detail;
       if (!detail || !detail.text.trim()) {
-        setSelection(null);
+        commitSelection(null);
         return;
       }
       const pos = clampPosition(detail.top, detail.left);
-      setSelection({
+      commitSelection({
         text: detail.text.slice(0, MAX_QUOTE_CHARS),
         top: pos.top,
         left: pos.left,

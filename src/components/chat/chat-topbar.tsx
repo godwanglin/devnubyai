@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   PanelLeft,
   Share2,
@@ -11,6 +12,7 @@ import {
   Pin,
   PinOff,
   Copy,
+  Folder,
   FolderOpen,
   Archive,
   ArchiveRestore,
@@ -25,6 +27,8 @@ import { cn } from "@/lib/cn";
 
 export interface ChatTopbarProps {
   title: string;
+  projectName?: string | null;
+  projectId?: string | null;
   isLoading?: boolean;
   hasActiveChat?: boolean;
   isPinned?: boolean;
@@ -44,6 +48,8 @@ export interface ChatTopbarProps {
 
 export function ChatTopbar({
   title,
+  projectName,
+  projectId,
   isLoading = false,
   hasActiveChat = false,
   isPinned = false,
@@ -84,9 +90,21 @@ export function ChatTopbar({
             aria-label={t("common.loading")}
           />
         ) : (
-          <span className="text-[15px] font-semibold text-[var(--ink)] truncate max-w-full">
-            {title}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0 text-[15px] font-semibold text-[var(--ink)] truncate max-w-full">
+            {projectName && projectId && (
+              <>
+                <Link
+                  href={`/project/${projectId}`}
+                  className="flex items-center gap-1.5 text-[var(--muted)] hover:text-[var(--ink)] transition-colors truncate max-w-[200px]"
+                >
+                  <Folder className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                  <span className="truncate">{projectName}</span>
+                </Link>
+                <span className="text-[var(--placeholder)] text-xs">/</span>
+              </>
+            )}
+            <span className="truncate">{title}</span>
+          </div>
         )}
       </div>
 

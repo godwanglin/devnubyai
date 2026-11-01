@@ -19,6 +19,8 @@ import {
 } from "@/lib/chat/quota-shared";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/chat/quotes";
 import { Welcome } from "./welcome";
+import { ProjectHomeView } from "@/components/projects/project-home-view";
+import { dispatchProjectsUpdated } from "@/hooks/use-projects";
 import { ChatMessagesSkeleton } from "./chat-skeleton";
 import { RenameModal } from "@/components/modals/rename-modal";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
@@ -225,10 +227,21 @@ export function ChatShell() {
     deleteSession,
   } = useChatSessions(pathname);
 
-  const currentChatId = useMemo(() => {
-    if (!pathname || pathname === "/") return null;
+  const { currentChatId, currentProjectId, isProjectHome } = useMemo(() => {
+    if (!pathname || pathname === "/") {
+      return { currentChatId: null, currentProjectId: null, isProjectHome: false };
+    }
     const parts = pathname.split("/");
-    return parts[1] === "c" && parts[2] ? parts[2] : null;
+    if (parts[1] === "c" && parts[2]) {
+      return { currentChatId: parts[2], currentProjectId: null, isProjectHome: false };
+    }
+    if (parts[1] === "project" && parts[2] && parts[3] === "c" && parts[4]) {
+      return { currentChatId: parts[4], currentProjectId: parts[2], isProjectHome: false };
+    }
+    if (parts[1] === "project" && parts[2]) {
+      return { currentChatId: null, currentProjectId: parts[2], isProjectHome: true };
+    }
+    return { currentChatId: null, currentProjectId: null, isProjectHome: false };
   }, [pathname]);
 
   const currentModelId =
@@ -493,6 +506,7 @@ export function ChatShell() {
           body: JSON.stringify({
             title: text.slice(0, 40).trim() || options?.filesToUpload?.[0]?.name || "New chat",
             model: currentModelId || undefined,
+            projectId: currentProjectId || undefined,
           }),
           credentials: "same-origin",
         });
@@ -516,7 +530,12 @@ export function ChatShell() {
           ]);
         });
 
-        router.replace(`/c/${targetChatId}`);
+        if (currentProjectId) {
+          dispatchProjectsUpdated();
+          router.replace(`/project/${currentProjectId}/c/${targetChatId}`);
+        } else {
+          router.replace(`/c/${targetChatId}`);
+        }
         fetchSessions();
       }
 
@@ -726,6 +745,37 @@ export function ChatShell() {
     }
   }
 
+  const renderComposer = (customPlaceholder?: string) => (
+    <Composer
+      placeholder={customPlaceholder}
+      notice={
+        quotaNotice && quotaKey !== dismissedQuotaKey ? (
+          <QuotaBanner
+            key={quotaKey}
+            notice={quotaNotice}
+            onDismiss={() => setDismissedQuotaKey(quotaKey)}
+            onExpire={handleQuotaExpire}
+          />
+        ) : null
+      }
+      sendBlocked={Boolean(quotaNotice)}
+      quotes={pendingQuotes}
+      onRemoveQuote={(index) =>
+        setPendingQuotes((prev) => prev.filter((_, i) => i !== index))
+      }
+      editChips={pendingEditChips}
+      onRemoveEditChip={handleRemoveEditChip}
+      chatId={activeChatId}
+      onSend={handleSend}
+      onStop={handleStop}
+      disabled={isStreamingOrSubmitted}
+      currentModelId={currentModelId}
+      onModelChange={setModelId}
+      reasoningLevel={reasoningLevel}
+      onReasoningChange={setReasoningLevel}
+    />
+  );
+
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--surface)]">
       <Sidebar
@@ -739,6 +789,11 @@ export function ChatShell() {
         onTogglePinSession={(s) => handleTogglePin(s.id, Boolean(s.isPinned))}
         onArchiveSession={(s) => handleArchive(s.id, Boolean(s.isArchived))}
         onDeleteSession={(s) => setDeletingTarget({ id: s.id, title: s.title })}
+        onShareSession={(s) => {
+          setOwnedChatId(s.id);
+          setFetchedSessionMeta(s);
+          setIsShareModalOpen(true);
+        }}
       />
 
       <main
@@ -748,112 +803,98 @@ export function ChatShell() {
             : "relative flex flex-col min-w-0 flex-1 grid-rows-[auto_1fr_auto]"
         }
       >
-        <ChatTopbar
-          title={currentTitle}
-          isLoading={isLoadingMessages}
-          hasActiveChat={Boolean(activeChatId)}
-          isPinned={Boolean(activeSession?.isPinned)}
-          isArchived={Boolean(activeSession?.isArchived)}
-          isShared={Boolean(activeSession?.shareToken)}
-          isFilesOpen={showFilesPanel}
-          isDuplicating={isDuplicating}
-          onToggleSidebar={handleToggleSidebar}
-          onShare={() => {
-            if (activeChatId) {
-              setIsShareModalOpen(true);
-            } else {
-              toast(t("shareModal.startChatFirst"));
+        {isProjectHome ? (
+          <ProjectHomeView
+            projectId={currentProjectId!}
+            composer={(projectName) =>
+              renderComposer(`+ Obrolan baru di ${projectName}`)
             }
-          }}
-          onRename={() => {
-            if (activeChatId) {
-              setRenamingTarget({
-                id: activeChatId,
-                title: activeSession?.title || "New chat",
-              });
-            }
-          }}
-          onTogglePin={() => {
-            if (activeChatId) {
-              handleTogglePin(activeChatId, Boolean(activeSession?.isPinned));
-            }
-          }}
-          onDuplicate={handleDuplicateActiveChat}
-          onViewFiles={toggleFilesPanel}
-          onArchive={() => {
-            if (activeChatId) {
-              handleArchive(activeChatId, Boolean(activeSession?.isArchived));
-            }
-          }}
-          onDelete={() => {
-            if (activeChatId) {
-              setDeletingTarget({
-                id: activeChatId,
-                title: activeSession?.title || "New chat",
-              });
-            }
-          }}
-        />
-
-        {/* Nothing to navigate on home (no chat yet) */}
-        {activeChatId ? (
-          <ChatTimeline
-            chatId={activeChatId}
-            messages={domainMessages}
-            scrollContainerRef={scrollContainerRef}
-            onLoadOlder={handleLoadOlder}
-            hasOlderMessages={Boolean(olderCursor)}
-            isLoadingOlder={isLoadingOlder}
           />
-        ) : null}
-
-        <div ref={scrollContainerRef} data-ask-selectable="true" className="flex-1 overflow-y-auto overflow-x-hidden">
-          {isLoadingMessages ? (
-            <ChatMessagesSkeleton />
-          ) : domainMessages.length === 0 && !isThinking ? (
-            <Welcome onSelectPrompt={handleSend} />
-          ) : (
-            <MessageList
-              messages={domainMessages}
-              chatId={activeChatId ?? undefined}
-              isThinking={isThinking}
-              streamingId={streamingId}
-              onRegenerate={handleRegenerate}
-              onEditSubmit={handleEditSubmit}
-              onLoadOlder={handleLoadOlder}
-              hasOlderMessages={Boolean(olderCursor)}
-              isLoadingOlder={isLoadingOlder}
+        ) : (
+          <>
+            <ChatTopbar
+              title={currentTitle}
+              projectId={currentProjectId}
+              isLoading={isLoadingMessages}
+              hasActiveChat={Boolean(activeChatId)}
+              isPinned={Boolean(activeSession?.isPinned)}
+              isArchived={Boolean(activeSession?.isArchived)}
+              isShared={Boolean(activeSession?.shareToken)}
+              isFilesOpen={showFilesPanel}
+              isDuplicating={isDuplicating}
+              onToggleSidebar={handleToggleSidebar}
+              onShare={() => {
+                if (activeChatId) {
+                  setIsShareModalOpen(true);
+                } else {
+                  toast(t("shareModal.startChatFirst"));
+                }
+              }}
+              onRename={() => {
+                if (activeChatId) {
+                  setRenamingTarget({
+                    id: activeChatId,
+                    title: activeSession?.title || "New chat",
+                  });
+                }
+              }}
+              onTogglePin={() => {
+                if (activeChatId) {
+                  handleTogglePin(activeChatId, Boolean(activeSession?.isPinned));
+                }
+              }}
+              onDuplicate={handleDuplicateActiveChat}
+              onViewFiles={toggleFilesPanel}
+              onArchive={() => {
+                if (activeChatId) {
+                  handleArchive(activeChatId, Boolean(activeSession?.isArchived));
+                }
+              }}
+              onDelete={() => {
+                if (activeChatId) {
+                  setDeletingTarget({
+                    id: activeChatId,
+                    title: activeSession?.title || "New chat",
+                  });
+                }
+              }}
             />
-          )}
-        </div>
 
-        <Composer
-          notice={
-            quotaNotice && quotaKey !== dismissedQuotaKey ? (
-              <QuotaBanner
-                key={quotaKey}
-                notice={quotaNotice}
-                onDismiss={() => setDismissedQuotaKey(quotaKey)}
-                onExpire={handleQuotaExpire}
+            {/* Nothing to navigate on home (no chat yet) */}
+            {activeChatId ? (
+              <ChatTimeline
+                chatId={activeChatId}
+                messages={domainMessages}
+                scrollContainerRef={scrollContainerRef}
+                onLoadOlder={handleLoadOlder}
+                hasOlderMessages={Boolean(olderCursor)}
+                isLoadingOlder={isLoadingOlder}
               />
-            ) : null
-          }
-          sendBlocked={Boolean(quotaNotice)}
-          quotes={pendingQuotes}
-          onRemoveQuote={(index) =>
-            setPendingQuotes((prev) => prev.filter((_, i) => i !== index))
-          }
-          editChips={pendingEditChips}
-          onRemoveEditChip={handleRemoveEditChip}
-          chatId={activeChatId}
-          onSend={handleSend}
-          onStop={handleStop}
-          disabled={isStreamingOrSubmitted}
-          currentModelId={currentModelId}
-          onModelChange={setModelId}
-          reasoningLevel={reasoningLevel}
-          onReasoningChange={setReasoningLevel}
-        />
+            ) : null}
+
+            <div ref={scrollContainerRef} data-ask-selectable="true" className="flex-1 overflow-y-auto overflow-x-hidden">
+              {isLoadingMessages ? (
+                <ChatMessagesSkeleton />
+              ) : domainMessages.length === 0 && !isThinking ? (
+                <Welcome onSelectPrompt={handleSend} />
+              ) : (
+                <MessageList
+                  messages={domainMessages}
+                  chatId={activeChatId ?? undefined}
+                  isThinking={isThinking}
+                  streamingId={streamingId}
+                  onRegenerate={handleRegenerate}
+                  onEditSubmit={handleEditSubmit}
+                  onLoadOlder={handleLoadOlder}
+                  hasOlderMessages={Boolean(olderCursor)}
+                  isLoadingOlder={isLoadingOlder}
+                />
+              )}
+            </div>
+
+            {renderComposer()}
+          </>
+        )}
       </main>
 
       <SelectionAskButton

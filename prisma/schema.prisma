@@ -57,6 +57,8 @@ model User {
   role        String    @default("user") @db.VarChar(16)
   status      String    @default("active") @db.VarChar(16)
   planId      BigInt?   @map("plan_id") 
+  chatPinHash  String?   @map("chat_pin_hash") @db.VarChar(255)
+  passwordHash String?   @map("password_hash") @db.VarChar(255)
   lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -74,6 +76,8 @@ model User {
   manualUpdatedTrans PaymentTransaction[] @relation("ManualTransactionUpdater")
   userNotes        UserNote[]
   homeSuggestions  UserHomeSuggestion[]
+  projects         Project[]
+  projectFiles     ProjectFile[]
 
   @@index([planId], map: "idx_users_plan")
   @@index([role, status], map: "idx_users_role_status")
@@ -288,6 +292,9 @@ model ChatSession {
   userId         BigInt    @map("user_id") 
   title          String    @default("New chat") @db.VarChar(200)
   catalogModelId BigInt?   @map("catalog_model_id") 
+  projectId      BigInt?   @map("project_id")
+  isLocked       Boolean   @default(false) @map("is_locked")
+  pinCodeHash    String?   @map("pin_code_hash") @db.VarChar(128)
   isPinned       Boolean   @default(false) @map("is_pinned")
   isArchived     Boolean   @default(false) @map("is_archived")
   shareToken     String?   @unique(map: "uq_chat_sessions_share_token") @map("share_token") @db.Char(36)
@@ -301,6 +308,9 @@ model ChatSession {
   messages     ChatMessage[]
   files        SessionFile[]
   notes        UserNote[]
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull, map: "fk_chat_sessions_project")
+
+  @@index([projectId, isPinned(sort: Desc), lastMessageAt(sort: Desc)], map: "idx_chat_sessions_project")
 
   @@index([userId, isPinned(sort: Desc), lastMessageAt(sort: Desc), id(sort: Desc)], map: "idx_chat_sessions_sidebar")
   @@index([userId, isArchived, lastMessageAt(sort: Desc), id(sort: Desc)], map: "idx_chat_sessions_archived")
@@ -517,4 +527,48 @@ model UserHomeSuggestion {
 
   @@unique([userId, locale], map: "uq_user_home_suggestions_user_locale")
   @@map("user_home_suggestions")
+}
+
+// ───────────── Project Workspaces ─────────────
+model Project {
+  id                  BigInt        @id @default(autoincrement())
+  /// UUIDv7 standard with hyphens: /project/[uuid]
+  publicId            String        @unique(map: "uq_projects_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  userId              BigInt        @map("user_id")
+  name                String        @db.VarChar(120)
+  description         String?       @db.Text
+  customInstructions  String?       @map("custom_instructions") @db.Text
+  isPinned            Boolean       @default(false) @map("is_pinned")
+  isArchived          Boolean       @default(false) @map("is_archived")
+  shareToken          String?       @unique(map: "uq_projects_share_token") @map("share_token") @db.Char(36)
+  sharedAt            DateTime?     @map("shared_at") @db.Timestamptz(3)
+  shareAccess         String        @default("anyone") @map("share_access") @db.VarChar(16)
+  invitedEmails       Json?         @map("invited_emails")
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_projects_user")
+  chatSessions        ChatSession[]
+  projectFiles        ProjectFile[]
+
+  @@index([userId, isPinned(sort: Desc), updatedAt(sort: Desc)], map: "idx_projects_sidebar")
+  @@map("projects")
+}
+
+model ProjectFile {
+  id                  BigInt        @id @default(autoincrement())
+  publicId            String        @unique(map: "uq_project_files_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
+  projectId           BigInt        @map("project_id")
+  userId              BigInt        @map("user_id")
+  filename            String        @db.VarChar(255)
+  storageKey          String        @db.VarChar(512)
+  mimeType            String        @db.VarChar(128)
+  sizeBytes           BigInt        @map("size_bytes")
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  project             Project       @relation(fields: [projectId], references: [id], onDelete: Cascade, map: "fk_project_files_project")
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_project_files_user")
+
+  @@index([projectId, createdAt(sort: Desc)], map: "idx_project_files_project")
+  @@map("project_files")
 }

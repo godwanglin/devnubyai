@@ -9,6 +9,7 @@ import {
 const createChatSchema = z.object({
   title: z.string().trim().max(200).optional(),
   model: z.string().trim().max(128).optional(),
+  projectId: z.string().trim().optional(),
 });
 
 export async function GET(request: Request) {
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     const session = await createChatSession(user.id, {
       title: parsed.data.title,
       modelPublicId: parsed.data.model,
+      projectId: parsed.data.projectId,
     });
 
     return jsonSuccess(session, { status: 201, requestId });

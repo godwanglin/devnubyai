@@ -58,6 +58,8 @@ export interface Session {
   isPinned?: boolean;
   isArchived?: boolean;
   shareToken?: string | null;
+  projectId?: string | null;
+  isLocked?: boolean;
   messageCount?: number;
   updatedAt: string;
   group: "today" | "yesterday" | "week" | "earlier";

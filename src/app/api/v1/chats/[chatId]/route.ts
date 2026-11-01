@@ -12,6 +12,8 @@ const updateChatSchema = z.object({
   isPinned: z.boolean().optional(),
   isArchived: z.boolean().optional(),
   model: z.string().trim().max(128).optional(),
+  projectId: z.string().trim().nullable().optional(),
+  isLocked: z.boolean().optional(),
 });
 
 type RouteContext = { params: Promise<{ chatId: string }> };
@@ -32,6 +34,8 @@ export async function GET(request: Request, context: RouteContext) {
         isArchived: session.isArchived,
         shareToken: session.shareToken,
         catalogModelId: session.catalogModelPublicId,
+        projectId: session.projectId,
+        isLocked: session.isLocked,
         lastMessageAt: session.lastMessageAt.toISOString(),
         createdAt: session.createdAt.toISOString(),
         updatedAt: session.updatedAt.toISOString(),
@@ -67,6 +71,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       isPinned: parsed.data.isPinned,
       isArchived: parsed.data.isArchived,
       modelPublicId: parsed.data.model,
+      projectId: parsed.data.projectId,
+      isLocked: parsed.data.isLocked,
     });
 
     return jsonSuccess(updated, { requestId });

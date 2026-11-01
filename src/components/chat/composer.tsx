@@ -73,6 +73,8 @@ interface ComposerProps {
   notice?: React.ReactNode;
   /** Blocks sending (e.g. quota reached) without switching to the stop button like `disabled` */
   sendBlocked?: boolean;
+  /** Custom placeholder for input */
+  placeholder?: string;
 }
 
 export function Composer({
@@ -90,6 +92,7 @@ export function Composer({
   onRemoveEditChip,
   notice,
   sendBlocked,
+  placeholder,
 }: ComposerProps) {
   const { t, locale } = useI18n();
   const { toast } = useToast();
@@ -633,7 +636,7 @@ export function Composer({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           rows={1}
-          placeholder={t("composer.inputPlaceholder")}
+          placeholder={placeholder || t("composer.inputPlaceholder")}
           className="w-full max-h-[240px] px-4 pt-3.5 pb-2 bg-transparent resize-none outline-none text-[15px] leading-relaxed text-[var(--ink)] placeholder:text-[var(--placeholder)]"
         />
 

@@ -16,6 +16,8 @@ export interface ApiSessionItem {
   isArchived?: boolean;
   shareToken?: string | null;
   catalogModelId: string | null;
+  projectId?: string | null;
+  isLocked?: boolean;
   lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
@@ -57,6 +59,8 @@ export function mapApiSessionToDomain(item: ApiSessionItem): Session {
     isPinned: Boolean(item.isPinned),
     isArchived: Boolean(item.isArchived),
     shareToken: item.shareToken ?? null,
+    projectId: item.projectId ?? null,
+    isLocked: Boolean(item.isLocked),
     messageCount: item.messageCount ?? 0,
     updatedAt: item.lastMessageAt || item.updatedAt,
     group: classifyDateGroup(item.lastMessageAt || item.createdAt),

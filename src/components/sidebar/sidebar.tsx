@@ -4,68 +4,35 @@ import React, { useState, useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  PanelLeftClose,
   Plus,
   Search,
   Pin,
 } from "lucide-react";
 import { SidebarAccountCard, AccountSkeleton } from "./sidebar-account";
-import { DevnubyWordmark } from "@/components/brand/devnuby-logo";
-import { Tooltip } from "@/components/ui/tooltip";
+import { SidebarSessionsSkeleton } from "./sidebar-skeleton";
+import { SidebarHeader } from "./sidebar-header";
 import { PanelResizeHandle } from "@/components/ui/panel-resize-handle";
 import { CollapsibleGroup } from "./collapsible-group";
 import { SessionItem } from "./session-item";
+import { ProjectGroup } from "./project-group";
+import { SidebarModals } from "./sidebar-modals";
+import { useProjects, dispatchProjectsUpdated } from "@/hooks/use-projects";
+import { useToast } from "@/providers/toast-provider";
+import type { ProjectDto } from "@/lib/projects/types";
 import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
-import { getLocalStorage, setLocalStorage } from "@/lib/storage";
 import { cn } from "@/lib/cn";
-import type { Session, SessionGroupKey, UserProfile } from "@/types";
+import type { Session, SessionGroupKey } from "@/types";
+import {
+  EMPTY_COLLAPSED,
+  subscribeCollapsedGroups,
+  readCollapsedGroups,
+  updateCollapsedGroup,
+  ensureGroupExpanded,
+} from "./sidebar-groups-storage";
 
-const COLLAPSED_GROUPS_KEY = "devnuby-collapsed-groups";
-const EMPTY_COLLAPSED: Partial<Record<SessionGroupKey, boolean>> = {};
-let cachedCollapsedRaw: string | null = null;
-let cachedCollapsedObj: Partial<Record<SessionGroupKey, boolean>> = EMPTY_COLLAPSED;
-const groupListeners = new Set<() => void>();
-
-function subscribeCollapsedGroups(listener: () => void) {
-  groupListeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => {
-    groupListeners.delete(listener);
-    window.removeEventListener("storage", listener);
-  };
-}
-
-function readCollapsedGroups(): Partial<Record<SessionGroupKey, boolean>> {
-  if (typeof window === "undefined") return EMPTY_COLLAPSED;
-  try {
-    const raw = window.localStorage.getItem(COLLAPSED_GROUPS_KEY);
-    if (raw === cachedCollapsedRaw) return cachedCollapsedObj;
-    cachedCollapsedRaw = raw;
-    cachedCollapsedObj = raw ? JSON.parse(raw) : EMPTY_COLLAPSED;
-    return cachedCollapsedObj;
-  } catch {
-    return EMPTY_COLLAPSED;
-  }
-}
-
-function updateCollapsedGroup(key: SessionGroupKey, collapsed: boolean) {
-  const current = getLocalStorage<Partial<Record<SessionGroupKey, boolean>>>(
-    COLLAPSED_GROUPS_KEY,
-    {}
-  );
-  const next = { ...current, [key]: collapsed };
-  setLocalStorage(COLLAPSED_GROUPS_KEY, next);
-  groupListeners.forEach((l) => l());
-}
-
-export function ensureGroupExpanded(key: SessionGroupKey) {
-  const current = readCollapsedGroups();
-  if (current[key]) {
-    updateCollapsedGroup(key, false);
-  }
-}
+export { ensureGroupExpanded };
 
 export interface SidebarProps {
   sessions: Session[];
@@ -78,6 +45,7 @@ export interface SidebarProps {
   onTogglePinSession: (session: Session) => void;
   onArchiveSession: (session: Session) => void;
   onDeleteSession: (session: Session) => void;
+  onShareSession?: (session: Session) => void;
 }
 
 export function Sidebar({
@@ -91,12 +59,34 @@ export function Sidebar({
   onTogglePinSession,
   onArchiveSession,
   onDeleteSession,
+  onShareSession,
 }: SidebarProps) {
   const { t, locale, setLocale } = useI18n();
   const { user, loading, stale, logout } = useAccount();
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
   const [query, setQuery] = useState("");
+
+  const {
+    projects,
+    isLoading: isLoadingProjects,
+    createProject,
+    renameProject,
+    togglePinProject,
+    deleteProject,
+  } = useProjects();
+
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+  const [projectToRename, setProjectToRename] = useState<ProjectDto | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<ProjectDto | null>(null);
+  const [projectToShare, setProjectToShare] = useState<ProjectDto | null>(null);
+  const [pendingChatToMoveAfterCreate, setPendingChatToMoveAfterCreate] = useState<string | null>(null);
+  const [chatToLock, setChatToLock] = useState<string | null>(null);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pinModalMode, setPinModalMode] = useState<"create" | "verify">("create");
+  const [pendingTargetChatId, setPendingTargetChatId] = useState<string | null>(null);
+  const [pendingTargetLockAction, setPendingTargetLockAction] = useState<boolean>(true);
 
   const {
     panelRef: sidebarPanelRef,
@@ -130,9 +120,112 @@ export function Sidebar({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => s.title.toLowerCase().includes(q));
+    // Only standalone sessions (not attached to any project) appear in main date history
+    const standalone = sessions.filter((s) => !s.projectId);
+    if (!q) return standalone;
+    return standalone.filter((s) => s.title.toLowerCase().includes(q));
   }, [sessions, query]);
+
+  async function handleCreateProjectSubmit(name: string) {
+    const created = await createProject(name);
+    if (created) {
+      if (pendingChatToMoveAfterCreate) {
+        await handleMoveChatToProject(pendingChatToMoveAfterCreate, created.id);
+        setPendingChatToMoveAfterCreate(null);
+      }
+      onCloseMobile();
+      router.push(`/project/${created.id}`);
+      return true;
+    }
+    return false;
+  }
+
+  async function handleConfirmRenameProject(newName: string) {
+    if (!projectToRename) return;
+    const ok = await renameProject(projectToRename.id, newName);
+    if (ok) setProjectToRename(null);
+  }
+
+  async function handleConfirmDeleteProject(cascade: boolean) {
+    if (!projectToDelete) return;
+    const ok = await deleteProject(projectToDelete.id, cascade);
+    if (ok) {
+      if (pathname.startsWith(`/project/${projectToDelete.id}`)) {
+        router.push("/");
+      }
+      setProjectToDelete(null);
+    }
+  }
+
+  async function handleMoveChatToProject(chatId: string, targetProjectId: string | null) {
+    try {
+      const res = await fetch(`/api/v1/chats/${chatId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: targetProjectId }),
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error("Failed to move chat");
+      dispatchProjectsUpdated();
+      window.dispatchEvent(new CustomEvent("devnuby:sessions-updated"));
+      toast(targetProjectId ? "Dipindahkan ke proyek" : "Dikeluarkan dari proyek");
+    } catch {
+      toast("Gagal memindahkan percakapan");
+    }
+  }
+
+  async function handleInitiateLockChat(chatId: string, nextLocked: boolean) {
+    if (nextLocked) {
+      setPendingTargetChatId(chatId);
+      setPendingTargetLockAction(true);
+      setChatToLock(chatId);
+    } else {
+      setPendingTargetChatId(chatId);
+      setPendingTargetLockAction(false);
+      setPinModalMode("verify");
+      setIsPinModalOpen(true);
+    }
+  }
+
+  async function handleConfirmLockChat() {
+    setChatToLock(null);
+    try {
+      const res = await fetch("/api/v1/user/pin", { credentials: "same-origin" });
+      const json = await res.json().catch(() => ({}));
+      const hasPin = Boolean(json.data?.hasPin);
+      setPinModalMode(hasPin ? "verify" : "create");
+      setIsPinModalOpen(true);
+    } catch {
+      setPinModalMode("create");
+      setIsPinModalOpen(true);
+    }
+  }
+
+  async function handlePinSuccess() {
+    if (!pendingTargetChatId) return;
+    const nextLocked = pendingTargetLockAction;
+    try {
+      const res = await fetch(`/api/v1/chats/${pendingTargetChatId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isLocked: nextLocked }),
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error("Failed to lock chat");
+      dispatchProjectsUpdated();
+      window.dispatchEvent(new CustomEvent("devnuby:sessions-updated"));
+      toast(nextLocked ? "Obrolan dikunci" : "Kunci obrolan dibuka");
+    } catch {
+      toast("Gagal mengubah status kunci");
+    } finally {
+      setPendingTargetChatId(null);
+    }
+  }
+
+  function handleCreateNewProjectForChat(chatId: string) {
+    setPendingChatToMoveAfterCreate(chatId);
+    setIsCreateProjectOpen(true);
+  }
 
   const groups = useMemo(() => {
     const byRecent = (a: Session, b: Session) =>
@@ -226,21 +319,7 @@ export function Sidebar({
         )}
 
         {/* Top brand + collapse button */}
-        <div className="flex items-center justify-between gap-3 h-14 px-3.5 border-b border-[var(--border)] shrink-0">
-          <Link href="/" className="flex items-center min-w-0" aria-label={t("brand.name")}>
-            <DevnubyWordmark className="h-8 w-auto" />
-          </Link>
-          <Tooltip content={t("nav.hideSidebar")} side="bottom" align="end">
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="grid place-items-center w-8 h-8 rounded-[8px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-              aria-label={t("nav.hideSidebar")}
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        </div>
+        <SidebarHeader onToggleCollapse={onToggleCollapse} />
 
         {/* Action + Search + List */}
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3.5 min-h-0">
@@ -265,6 +344,46 @@ export function Sidebar({
           </div>
 
           <nav className="space-y-3">
+            {/* Project Workspaces Group (Fase 2) */}
+            <ProjectGroup
+              projects={projects}
+              isLoading={isLoadingProjects}
+              onNavigate={onCloseMobile}
+              onCreateProject={() => {
+                setPendingChatToMoveAfterCreate(null);
+                setIsCreateProjectOpen(true);
+              }}
+              onRenameProject={(p) => setProjectToRename(p)}
+              onTogglePinProject={(p) => togglePinProject(p.id, !p.isPinned)}
+              onDeleteProject={(p) => setProjectToDelete(p)}
+              onShareProject={(p) => setProjectToShare(p)}
+              onRenameChat={(chatId, currentTitle) => {
+                const s = sessions.find((x) => x.id === chatId);
+                if (s) onRenameSession(s);
+                else onRenameSession({ id: chatId, title: currentTitle } as Session);
+              }}
+              onTogglePinChat={(chatId) => {
+                const s = sessions.find((x) => x.id === chatId);
+                if (s) onTogglePinSession(s);
+              }}
+              onShareChat={(chatId) => {
+                const s = sessions.find((x) => x.id === chatId);
+                if (s && onShareSession) onShareSession(s);
+              }}
+              onArchiveChat={(chatId) => {
+                const s = sessions.find((x) => x.id === chatId);
+                if (s) onArchiveSession(s);
+              }}
+              onDeleteChat={(chatId, title) => {
+                const s = sessions.find((x) => x.id === chatId);
+                if (s) onDeleteSession(s);
+                else onDeleteSession({ id: chatId, title } as Session);
+              }}
+              onMoveChatToProject={handleMoveChatToProject}
+              onCreateNewProjectForChat={handleCreateNewProjectForChat}
+              onLockChat={handleInitiateLockChat}
+            />
+
             {isLoadingSessions && sessions.length === 0 ? (
               <SidebarSessionsSkeleton />
             ) : (
@@ -283,6 +402,7 @@ export function Sidebar({
                           <SessionItem
                             key={s.id}
                             session={s}
+                            projects={projects}
                             active={
                               pathname === `/c/${s.id}` ||
                               (s.slug ? pathname === `/c/${s.slug}` : false)
@@ -292,6 +412,9 @@ export function Sidebar({
                             onTogglePin={handlePinFromSidebar}
                             onArchive={onArchiveSession}
                             onDelete={onDeleteSession}
+                            onLock={(session) => handleInitiateLockChat(session.id, !session.isLocked)}
+                            onMoveToProject={handleMoveChatToProject}
+                            onCreateNewProjectForChat={handleCreateNewProjectForChat}
                           />
                         ))}
                       </CollapsibleGroup>
@@ -332,30 +455,31 @@ export function Sidebar({
           )}
         </div>
       </aside>
+
+      {/* Sidebar Modals */}
+      <SidebarModals
+        isCreateProjectOpen={isCreateProjectOpen}
+        onCloseCreateProject={() => {
+          setIsCreateProjectOpen(false);
+          setPendingChatToMoveAfterCreate(null);
+        }}
+        onCreateProjectSubmit={handleCreateProjectSubmit}
+        projectToRename={projectToRename}
+        onCloseRenameProject={() => setProjectToRename(null)}
+        onConfirmRenameProject={handleConfirmRenameProject}
+        projectToDelete={projectToDelete}
+        onCloseDeleteProject={() => setProjectToDelete(null)}
+        onConfirmDeleteProject={handleConfirmDeleteProject}
+        projectToShare={projectToShare}
+        onCloseShareProject={() => setProjectToShare(null)}
+        chatToLock={chatToLock}
+        onCloseConfirmLockChat={() => setChatToLock(null)}
+        onConfirmLockChat={handleConfirmLockChat}
+        isPinModalOpen={isPinModalOpen}
+        pinModalMode={pinModalMode}
+        onClosePinModal={() => setIsPinModalOpen(false)}
+        onPinSuccess={handlePinSuccess}
+      />
     </>
-  );
-}
-
-
-/** Skeleton shown when chat sessions are being initially fetched from the server. */
-function SidebarSessionsSkeleton() {
-  return (
-    <div className="space-y-4 animate-pulse px-1" aria-busy="true">
-      <div>
-        <div className="h-2.5 w-12 rounded bg-[var(--hover)] mb-2" />
-        <div className="space-y-1.5">
-          <div className="h-7 w-full rounded-[6px] bg-[var(--hover)]" />
-          <div className="h-7 w-[85%] rounded-[6px] bg-[var(--hover)]" />
-          <div className="h-7 w-[70%] rounded-[6px] bg-[var(--hover)]" />
-        </div>
-      </div>
-      <div>
-        <div className="h-2.5 w-16 rounded bg-[var(--hover)] mb-2" />
-        <div className="space-y-1.5">
-          <div className="h-7 w-[90%] rounded-[6px] bg-[var(--hover)]" />
-          <div className="h-7 w-[75%] rounded-[6px] bg-[var(--hover)]" />
-        </div>
-      </div>
-    </div>
   );
 }

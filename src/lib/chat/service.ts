@@ -15,6 +15,8 @@ export interface SessionWithMeta {
   isArchived: boolean;
   shareToken: string | null;
   catalogModelId: string | null;
+  projectId?: string | null;
+  isLocked?: boolean;
   lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
@@ -56,11 +58,13 @@ function toSessionDto(
     title: string;
     isPinned: boolean;
     isArchived: boolean;
+    isLocked?: boolean;
     shareToken: string | null;
     lastMessageAt: Date;
     createdAt: Date;
     updatedAt: Date;
     catalogModel?: { publicId: string } | null;
+    project?: { publicId: string } | null;
     _count?: { messages: number };
   }
 ): SessionWithMeta {
@@ -69,8 +73,10 @@ function toSessionDto(
     title: session.title,
     isPinned: session.isPinned,
     isArchived: session.isArchived,
+    isLocked: Boolean(session.isLocked),
     shareToken: session.shareToken,
     catalogModelId: session.catalogModel?.publicId ?? null,
+    projectId: session.project?.publicId ?? null,
     lastMessageAt: session.lastMessageAt.toISOString(),
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString(),
@@ -190,6 +196,7 @@ export async function listUserChatSessions(
     take: limit + 1,
     include: {
       catalogModel: { select: { publicId: true } },
+      project: { select: { publicId: true } },
     },
   });
 
@@ -210,9 +217,18 @@ export async function listUserChatSessions(
  */
 export async function createChatSession(
   userId: bigint,
-  data: { title?: string; modelPublicId?: string }
+  data: { title?: string; modelPublicId?: string; projectId?: string }
 ): Promise<SessionWithMeta> {
   let catalogModelId: bigint | null = null;
+  let projectInternalId: bigint | null = null;
+
+  if (data.projectId) {
+    const proj = await db.project.findFirst({
+      where: { publicId: data.projectId, userId },
+      select: { id: true },
+    });
+    if (proj) projectInternalId = proj.id;
+  }
 
   if (data.modelPublicId) {
     const model = await db.catalogModel.findUnique({
@@ -230,10 +246,12 @@ export async function createChatSession(
       userId,
       title: data.title?.trim() || "New chat",
       catalogModelId,
+      projectId: projectInternalId,
       lastMessageAt: new Date(),
     },
     include: {
       catalogModel: { select: { publicId: true } },
+      project: { select: { publicId: true } },
     },
   });
 
@@ -259,10 +277,16 @@ export async function getChatSession(
   createdAt: Date;
   updatedAt: Date;
   lastMessageAt: Date;
+  projectId: string | null;
+  projectInternalId: bigint | null;
+  isLocked: boolean;
 }> {
   const session = await db.chatSession.findFirst({
     where: { publicId: sessionPublicId, userId },
-    include: { catalogModel: { select: { id: true, publicId: true } } },
+    include: {
+      catalogModel: { select: { id: true, publicId: true } },
+      project: { select: { id: true, publicId: true } },
+    },
   });
 
   if (!session) {
@@ -275,10 +299,13 @@ export async function getChatSession(
     title: session.title,
     isPinned: session.isPinned,
     isArchived: session.isArchived,
+    isLocked: session.isLocked,
     shareToken: session.shareToken,
     sharedAt: session.sharedAt,
     catalogModelId: session.catalogModelId,
     catalogModelPublicId: session.catalogModel?.publicId ?? null,
+    projectId: session.project?.publicId ?? null,
+    projectInternalId: session.projectId,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     lastMessageAt: session.lastMessageAt,
@@ -291,7 +318,14 @@ export async function getChatSession(
 export async function updateChatSession(
   userId: bigint,
   sessionPublicId: string,
-  data: { title?: string; isPinned?: boolean; isArchived?: boolean; modelPublicId?: string }
+  data: {
+    title?: string;
+    isPinned?: boolean;
+    isArchived?: boolean;
+    modelPublicId?: string;
+    projectId?: string | null;
+    isLocked?: boolean;
+  }
 ): Promise<SessionWithMeta> {
   const existing = await getChatSession(userId, sessionPublicId);
 
@@ -305,6 +339,22 @@ export async function updateChatSession(
       if (model) catalogModelId = model.id;
     } else {
       catalogModelId = undefined;
+    }
+  }
+
+  let projectInternalId: bigint | null | undefined = undefined;
+  if (data.projectId !== undefined) {
+    if (data.projectId === null) {
+      projectInternalId = null;
+    } else {
+      const proj = await db.project.findFirst({
+        where: { publicId: data.projectId, userId },
+        select: { id: true },
+      });
+      if (!proj) {
+        throw ApiError.notFound("Proyek tujuan tidak ditemukan");
+      }
+      projectInternalId = proj.id;
     }
   }
 
@@ -322,9 +372,12 @@ export async function updateChatSession(
       ...(nextPinned !== undefined ? { isPinned: nextPinned } : {}),
       ...(data.isArchived !== undefined ? { isArchived: data.isArchived } : {}),
       ...(catalogModelId !== undefined ? { catalogModelId } : {}),
+      ...(projectInternalId !== undefined ? { projectId: projectInternalId } : {}),
+      ...(data.isLocked !== undefined ? { isLocked: data.isLocked } : {}),
     },
     include: {
       catalogModel: { select: { publicId: true } },
+      project: { select: { publicId: true } },
     },
   });
 
@@ -363,6 +416,8 @@ export interface ListChatMessagesResult {
     isArchived: boolean;
     shareToken: string | null;
     catalogModelId: string | null;
+  projectId?: string | null;
+  isLocked?: boolean;
     lastMessageAt: string;
     createdAt: string;
     updatedAt: string;
