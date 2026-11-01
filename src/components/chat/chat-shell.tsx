@@ -795,14 +795,17 @@ export function ChatShell() {
           }}
         />
 
-        <ChatTimeline
-          chatId={activeChatId}
-          messages={domainMessages}
-          scrollContainerRef={scrollContainerRef}
-          onLoadOlder={handleLoadOlder}
-          hasOlderMessages={Boolean(olderCursor)}
-          isLoadingOlder={isLoadingOlder}
-        />
+        {/* Nothing to navigate on home (no chat yet) */}
+        {activeChatId ? (
+          <ChatTimeline
+            chatId={activeChatId}
+            messages={domainMessages}
+            scrollContainerRef={scrollContainerRef}
+            onLoadOlder={handleLoadOlder}
+            hasOlderMessages={Boolean(olderCursor)}
+            isLoadingOlder={isLoadingOlder}
+          />
+        ) : null}
 
         <div ref={scrollContainerRef} data-ask-selectable="true" className="flex-1 overflow-y-auto overflow-x-hidden">
           {isLoadingMessages ? (
