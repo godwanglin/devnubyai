@@ -102,7 +102,7 @@ export function PreferencesTab() {
   const handleThemeChange = (newTheme: Theme) => {
     setTheme(newTheme);
     if (newTheme === "system") {
-      toast("Tema diatur ke Sistem");
+      toast(t("settings.themeSystem"));
     } else if (newTheme === "light") {
       toast(t("toast.lightTheme"));
     } else {
@@ -137,15 +137,15 @@ export function PreferencesTab() {
 
   return (
     <div className="w-full">
-      {/* SECTION 1: Tampilan */}
+      {/* SECTION 1: Tampilan / Appearance */}
       <div>
         <h3 className="text-sm font-semibold text-[var(--ink)] mb-1">
           {t("settings.appearanceTab")}
         </h3>
 
-        {/* 1. Tema */}
+        {/* 1. Tema / Theme */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
-          <span className="text-sm font-medium text-[var(--ink)]">Tema</span>
+          <span className="text-sm font-medium text-[var(--ink)]">{t("settings.theme")}</span>
           <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--hover)] border border-[var(--border)]/40">
             <button
               type="button"
@@ -156,8 +156,8 @@ export function PreferencesTab() {
                   ? "bg-[var(--surface-active)] text-[var(--ink)] shadow-xs"
                   : "text-[var(--muted)] hover:text-[var(--ink)]"
               )}
-              title="Sistem"
-              aria-label="Sistem"
+              title={t("settings.themeSystem")}
+              aria-label={t("settings.themeSystem")}
             >
               <Monitor className="w-4 h-4" />
             </button>
@@ -170,8 +170,8 @@ export function PreferencesTab() {
                   ? "bg-[var(--surface-active)] text-[var(--ink)] shadow-xs"
                   : "text-[var(--muted)] hover:text-[var(--ink)]"
               )}
-              title="Terang"
-              aria-label="Terang"
+              title={t("settings.themeLight")}
+              aria-label={t("settings.themeLight")}
             >
               <Sun className="w-4 h-4" />
             </button>
@@ -184,24 +184,24 @@ export function PreferencesTab() {
                   ? "bg-[var(--surface-active)] text-[var(--ink)] shadow-xs"
                   : "text-[var(--muted)] hover:text-[var(--ink)]"
               )}
-              title="Gelap"
-              aria-label="Gelap"
+              title={t("settings.themeDark")}
+              aria-label={t("settings.themeDark")}
             >
               <Moon className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* 2. Font antarmuka */}
+        {/* 2. Font antarmuka / Interface font */}
         <PreferenceSelectRow
-          label="Font antarmuka"
+          label={t("settings.uiFont")}
           value={uiFont}
           options={[
             { value: "jakarta", label: "Plus Jakarta Sans" },
             { value: "inter", label: "Inter" },
             { value: "outfit", label: "Outfit" },
             { value: "roboto", label: "Roboto" },
-            { value: "system", label: "Sistem (Default)" },
+            { value: "system", label: t("settings.fontSystem") },
           ]}
           onChange={(val) =>
             handlePrefChange(
@@ -209,17 +209,17 @@ export function PreferencesTab() {
               val,
               "fontUi",
               setUiFont,
-              `Font antarmuka diubah: ${val}`
+              `${t("settings.uiFont")}: ${val}`
             )
           }
         />
 
-        {/* 3. Font respons */}
+        {/* 3. Font respons / Response font */}
         <PreferenceSelectRow
-          label="Font respons"
+          label={t("settings.responseFont")}
           value={responseFont}
           options={[
-            { value: "match", label: "Samakan dengan antarmuka" },
+            { value: "match", label: t("settings.fontMatch") },
             { value: "lora", label: "Lora (Serif)" },
             { value: "merriweather", label: "Merriweather (Serif)" },
             { value: "jetbrains", label: "JetBrains Mono" },
@@ -231,19 +231,19 @@ export function PreferencesTab() {
               val,
               "fontResponse",
               setResponseFont,
-              `Font respons diubah: ${val}`
+              `${t("settings.responseFont")}: ${val}`
             )
           }
         />
 
-        {/* 4. Ukuran teks percakapan */}
+        {/* 4. Ukuran teks percakapan / Chat text size */}
         <PreferenceSelectRow
-          label="Ukuran teks percakapan"
+          label={t("settings.chatSize")}
           value={chatSize}
           options={[
-            { value: "small", label: "Kecil (14px)" },
-            { value: "medium", label: "Sedang (15.5px)" },
-            { value: "large", label: "Besar (17px)" },
+            { value: "small", label: t("settings.sizeSmall") },
+            { value: "medium", label: t("settings.sizeMedium") },
+            { value: "large", label: t("settings.sizeLarge") },
           ]}
           onChange={(val) =>
             handlePrefChange(
@@ -251,19 +251,19 @@ export function PreferencesTab() {
               val,
               "chatSize",
               setChatSize,
-              `Ukuran teks diubah: ${val}`
+              `${t("settings.chatSize")}: ${val}`
             )
           }
         />
 
-        {/* 5. Lebar transkrip */}
+        {/* 5. Lebar transkrip / Transcript width */}
         <PreferenceSelectRow
-          label="Lebar transkrip"
+          label={t("settings.transcriptWidth")}
           value={transcriptWidth}
           options={[
-            { value: "narrow", label: "Sempit (768px)" },
-            { value: "standard", label: "Standar (900px)" },
-            { value: "full", label: "Penuh (1200px)" },
+            { value: "narrow", label: t("settings.widthNarrow") },
+            { value: "standard", label: t("settings.widthStandard") },
+            { value: "full", label: t("settings.widthFull") },
           ]}
           onChange={(val) =>
             handlePrefChange(
@@ -271,19 +271,19 @@ export function PreferencesTab() {
               val,
               "transcriptWidth",
               setTranscriptWidth,
-              `Lebar transkrip diubah: ${val}`
+              `${t("settings.transcriptWidth")}: ${val}`
             )
           }
         />
 
-        {/* 6. Gerakan */}
+        {/* 6. Gerakan / Motion */}
         <PreferenceSelectRow
-          label="Gerakan"
+          label={t("settings.motion")}
           value={motion}
           options={[
-            { value: "system", label: "Sistem" },
-            { value: "reduce", label: "Kurangi gerakan" },
-            { value: "enable", label: "Aktif" },
+            { value: "system", label: t("settings.motionSystem") },
+            { value: "reduce", label: t("settings.motionReduce") },
+            { value: "enable", label: t("settings.motionEnable") },
           ]}
           onChange={(val) =>
             handlePrefChange(
@@ -291,21 +291,21 @@ export function PreferencesTab() {
               val,
               "motion",
               setMotion,
-              `Gerakan diatur: ${val}`
+              `${t("settings.motion")}: ${val}`
             )
           }
         />
       </div>
 
-      {/* SECTION 2: Suara */}
+      {/* SECTION 2: Suara / Voice */}
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-[var(--ink)] mb-1">
-          Suara
+          {t("settings.voiceSection")}
         </h3>
 
-        {/* 1. Bahasa */}
+        {/* 1. Bahasa / Language */}
         <PreferenceSelectRow
-          label="Bahasa"
+          label={t("settings.language")}
           value={locale}
           options={[
             { value: "id", label: "Indonesia" },
@@ -314,29 +314,29 @@ export function PreferencesTab() {
           onChange={handleLocaleChange}
         />
 
-        {/* 2. Gaya */}
+        {/* 2. Gaya / Style */}
         <PreferenceSelectRow
-          label="Gaya"
+          label={t("settings.voiceStyle")}
           value={voiceStyle}
           options={[
-            { value: "select", label: "Pilih" },
-            { value: "natural", label: "Alami" },
-            { value: "formal", label: "Formal" },
-            { value: "casual", label: "Santai" },
+            { value: "select", label: t("settings.styleSelect") },
+            { value: "natural", label: t("settings.styleNatural") },
+            { value: "formal", label: t("settings.styleFormal") },
+            { value: "casual", label: t("settings.styleCasual") },
           ]}
           onChange={(val) =>
             handlePrefChange("devnuby_pref_voice_style", val, "voiceStyle", setVoiceStyle)
           }
         />
 
-        {/* 3. Kecepatan */}
+        {/* 3. Kecepatan / Speed */}
         <PreferenceSelectRow
-          label="Kecepatan"
+          label={t("settings.voiceSpeed")}
           value={voiceSpeed}
           options={[
-            { value: "slow", label: "Lambat (0.8x)" },
-            { value: "normal", label: "Normal (1.0x)" },
-            { value: "fast", label: "Cepat (1.2x)" },
+            { value: "slow", label: t("settings.speedSlow") },
+            { value: "normal", label: t("settings.speedNormal") },
+            { value: "fast", label: t("settings.speedFast") },
           ]}
           onChange={(val) =>
             handlePrefChange("devnuby_pref_voice_speed", val, "voiceSpeed", setVoiceSpeed)

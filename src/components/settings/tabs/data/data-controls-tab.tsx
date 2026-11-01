@@ -152,22 +152,22 @@ export function DataControlsTab({
           {t("settings.dataControlsTab")}
         </h2>
         <p className="text-xs text-[var(--muted)] mt-1 mb-5 leading-relaxed">
-          Kelola riwayat obrolan, tautan yang dibagikan, data lokasi, dan ekspor data akun Anda.
+          {t("settings.dataControlsDesc")}
         </p>
       </div>
 
-      {/* SECTION 1: Preferensi */}
+      {/* SECTION 1: Preferensi / Preferences */}
       <div>
         <h3 className="text-sm font-semibold text-[var(--ink)] mb-1">
-          Preferensi
+          {t("settings.dataSectionPrefs")}
         </h3>
 
         {/* 1. Lokasi */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
           <div className="min-w-0 flex-1 pr-2">
-            <p className="text-sm font-medium text-[var(--ink)]">Metadata lokasi</p>
+            <p className="text-sm font-medium text-[var(--ink)]">{t("settings.locationMeta")}</p>
             <p className="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">
-              Izinkan Devnuby menggunakan metadata lokasi perkiraan (kota/wilayah) untuk memberikan konteks lokal, rekomendasi, dan cuaca.
+              {t("settings.locationMetaDesc")}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -182,7 +182,7 @@ export function DataControlsTab({
                 "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50",
                 locationEnabled ? "bg-[#2563eb]" : "bg-[var(--border)]"
               )}
-              aria-label="Metadata lokasi"
+              aria-label={t("settings.locationMeta")}
             >
               <span
                 className={cn(
@@ -195,18 +195,18 @@ export function DataControlsTab({
         </div>
       </div>
 
-      {/* SECTION 2: Data Anda */}
+      {/* SECTION 2: Data Anda / Your Data */}
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-[var(--ink)] mb-1">
-          Data Anda
+          {t("settings.dataSectionYourData")}
         </h3>
 
         {/* 1. Ekspor data */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
           <div className="min-w-0 flex-1 pr-2">
-            <p className="text-sm font-medium text-[var(--ink)]">Ekspor data</p>
+            <p className="text-sm font-medium text-[var(--ink)]">{t("settings.exportData")}</p>
             <p className="text-xs text-[var(--muted)] mt-0.5">
-              Unduh riwayat percakapan Anda dalam format JSON (batch throttled)
+              {t("settings.exportDataDesc")}
             </p>
           </div>
           <button
@@ -214,16 +214,16 @@ export function DataControlsTab({
             onClick={() => setShowExportModal(true)}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-[var(--surface-hover)] hover:bg-[var(--surface-active)] text-[var(--ink)] border border-[var(--border)]/50 transition-colors cursor-pointer shrink-0"
           >
-            Ekspor data
+            {t("settings.exportDataBtn")}
           </button>
         </div>
 
         {/* 2. Tautan yang dibagikan */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
           <div className="min-w-0 flex-1 pr-2">
-            <p className="text-sm font-medium text-[var(--ink)]">Tautan yang dibagikan</p>
+            <p className="text-sm font-medium text-[var(--ink)]">{t("settings.sharedLinks")}</p>
             <p className="text-xs text-[var(--muted)] mt-0.5">
-              Kelola tautan publik yang dapat diakses siapa pun
+              {t("settings.sharedLinksDesc")}
             </p>
           </div>
           <button
@@ -231,16 +231,16 @@ export function DataControlsTab({
             onClick={() => setShowSharedLinksModal(true)}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-[var(--surface-hover)] hover:bg-[var(--surface-active)] text-[var(--ink)] border border-[var(--border)]/50 transition-colors cursor-pointer shrink-0"
           >
-            Kelola
+            {t("settings.manage")}
           </button>
         </div>
 
         {/* 3. Obrolan yang diarsipkan */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
           <div className="min-w-0 flex-1 pr-2">
-            <p className="text-sm font-medium text-[var(--ink)]">Obrolan yang diarsipkan</p>
+            <p className="text-sm font-medium text-[var(--ink)]">{t("settings.archivedChats")}</p>
             <p className="text-xs text-[var(--muted)] mt-0.5">
-              Lihat dan pulihkan percakapan yang disimpan di arsip
+              {t("settings.archivedChatsDesc")}
             </p>
           </div>
           <button
@@ -248,16 +248,16 @@ export function DataControlsTab({
             onClick={() => handleSubViewChange("archived")}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-[var(--surface-hover)] hover:bg-[var(--surface-active)] text-[var(--ink)] border border-[var(--border)]/50 transition-colors cursor-pointer shrink-0"
           >
-            Kelola
+            {t("settings.manage")}
           </button>
         </div>
 
         {/* 4. Arsipkan semua obrolan */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
           <div className="min-w-0 flex-1 pr-2">
-            <p className="text-sm font-medium text-[var(--ink)]">Arsipkan semua obrolan</p>
+            <p className="text-sm font-medium text-[var(--ink)]">{t("settings.archiveAll")}</p>
             <p className="text-xs text-[var(--muted)] mt-0.5">
-              Pindahkan semua obrolan aktif dari bilah samping ke arsip
+              {t("settings.archiveAllDesc")}
             </p>
           </div>
           <button
@@ -265,16 +265,16 @@ export function DataControlsTab({
             onClick={() => setShowArchiveAllConfirm(true)}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-[var(--surface-hover)] hover:bg-[var(--surface-active)] text-[var(--ink)] border border-[var(--border)]/50 transition-colors cursor-pointer shrink-0"
           >
-            Arsipkan semua
+            {t("settings.archiveAllBtn")}
           </button>
         </div>
 
         {/* 5. Hapus semua obrolan */}
         <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
           <div className="min-w-0 flex-1 pr-2">
-            <p className="text-sm font-medium text-[var(--ink)]">Hapus semua obrolan</p>
+            <p className="text-sm font-medium text-[var(--ink)]">{t("settings.deleteAll")}</p>
             <p className="text-xs text-[var(--muted)] mt-0.5">
-              Hapus seluruh riwayat percakapan dan pesan secara permanen
+              {t("settings.deleteAllDesc")}
             </p>
           </div>
           <button
@@ -282,7 +282,7 @@ export function DataControlsTab({
             onClick={() => setShowDeleteAllConfirm(true)}
             className="px-3 py-1 text-xs font-medium rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-colors cursor-pointer shrink-0"
           >
-            Hapus semua
+            {t("settings.deleteAllBtn")}
           </button>
         </div>
       </div>

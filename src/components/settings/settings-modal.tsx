@@ -271,13 +271,13 @@ export function SettingsModal() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari"
+                placeholder={t("settings.search")}
                 className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-[var(--surface-hover)] border border-[var(--border)]/50 text-[var(--ink)] placeholder-[var(--muted)] outline-none focus:border-[var(--accent)] transition-colors"
               />
             </div>
 
             <div className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider px-2 mb-1.5">
-              Preferensi
+              {t("settings.preferencesTab")}
             </div>
 
             <div className="space-y-1 flex-1">
@@ -302,7 +302,7 @@ export function SettingsModal() {
 
               {filteredTabs.length === 0 && (
                 <p className="text-xs text-[var(--muted)] px-3 py-4 text-center">
-                  Tidak ada hasil
+                  {t("settings.noResults")}
                 </p>
               )}
             </div>
