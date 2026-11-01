@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, Check } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
-import { cn } from "@/lib/cn";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { applyPlanDiscount, validatePlanDiscount, type PlanDiscountType } from "@/lib/plans/pricing";
+import { PlanAllowedModelsPicker, type ModelItem } from "./plan-allowed-models-picker";
 
 export interface AdminPlan {
   id: string;
@@ -31,14 +32,6 @@ export interface AdminPlan {
   sortOrder: number;
   userCount: number;
   allowedModelIds: string[];
-}
-
-interface ModelItem {
-  id: string;
-  publicId: string;
-  displayName: string;
-  category: string;
-  provider: { name: string };
 }
 
 interface PlanModalProps {
@@ -105,20 +98,6 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
     void fetchModels();
   }, []);
 
-  function toggleModel(id: string) {
-    setSelectedModelIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
-  }
-
-  function selectAllModels() {
-    setSelectedModelIds(allModels.map((m) => m.id));
-  }
-
-  function clearAllModels() {
-    setSelectedModelIds([]);
-  }
-
   const monthlyDiscount = useMemo(
     () => parseDiscount(monthlyDiscType, monthlyDiscValue),
     [monthlyDiscType, monthlyDiscValue]
@@ -181,22 +160,13 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-xl">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
-          <h3 className="text-base font-semibold text-[var(--ink)]">
-            {plan ? t("admin.plans.editTitle") : t("admin.plans.createTitle")}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[6px] p-1.5 text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto p-6 space-y-4">
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={plan ? t("admin.plans.editTitle") : t("admin.plans.createTitle")}
+      maxWidth="xl"
+    >
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col max-h-[75vh] overflow-y-auto pr-1 space-y-4">
           {error && (
             <div className="rounded-[8px] border border-red-200 bg-red-50 p-3 text-xs text-red-700">
               {error}
@@ -481,75 +451,32 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
             </div>
           </div>
 
-          <div className="border-t border-[var(--border)] pt-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                Allowed Catalog Models ({selectedModelIds.length}/{allModels.length})
-              </h4>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={selectAllModels}
-                  className="text-xs text-[var(--primary)] hover:underline"
-                >
-                  Select All
-                </button>
-                <span className="text-xs text-[var(--muted)]">•</span>
-                <button
-                  type="button"
-                  onClick={clearAllModels}
-                  className="text-xs text-[var(--muted)] hover:underline"
-                >
-                  Clear All
-                </button>
-              </div>
-            </div>
+          <PlanAllowedModelsPicker
+            allModels={allModels}
+            selectedModelIds={selectedModelIds}
+            onChange={setSelectedModelIds}
+          />
 
-            <div className="mt-3 grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-[8px] border border-[var(--border)] p-3">
-              {allModels.map((m) => {
-                const selected = selectedModelIds.includes(m.id);
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => toggleModel(m.id)}
-                    className={cn(
-                      "flex items-center justify-between rounded-[6px] border p-2 text-left text-xs transition-colors",
-                      selected
-                        ? "border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--primary)]"
-                        : "border-[var(--border)] bg-[var(--surface)] text-[var(--muted)] hover:border-[var(--muted)]"
-                    )}
-                  >
-                    <div>
-                      <div className="font-medium text-[var(--ink)]">{m.displayName}</div>
-                      <div className="text-[10px] text-[var(--muted)] font-mono">{m.publicId}</div>
-                    </div>
-                    {selected && <Check className="h-4 w-4 shrink-0 text-[var(--primary)]" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 border-t border-[var(--border)] pt-4">
-            <button
+          <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-4">
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={onClose}
               disabled={saving}
-              className="h-9 rounded-[8px] border border-[var(--border)] px-4 text-sm font-medium text-[var(--muted)] hover:bg-[var(--hover)]"
             >
-              Cancel
-            </button>
-            <button
+              {t("common.cancel")}
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
+              size="sm"
               disabled={saving}
-              className="h-9 rounded-[8px] bg-[var(--primary)] px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Save Plan"}
-            </button>
+              {saving ? t("common.saving") : t("common.save")}
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
-  );
+      </Modal>
+    );
 }

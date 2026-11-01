@@ -58,7 +58,7 @@ export function DataTablePagination({
           <span className="text-[11.5px] font-medium text-[var(--muted)] whitespace-nowrap">
             {t("admin.pagination.rowsPerPage")}
           </span>
-          <div className="w-[74px]">
+          <div className="w-[78px]">
             <CustomSelect
               options={selectOptions}
               value={String(pageSize)}

@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Pencil, Trash2, RefreshCw, Users, Layers3 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
+import { useToast } from "@/providers/toast-provider";
 import { dispatchModelsInvalidated } from "@/providers/account-provider";
 import { cn } from "@/lib/cn";
 import { PlanModal, type AdminPlan } from "@/components/admin/plan-modal";
+import { ConfirmModal } from "@/components/modals/confirm-modal";
+import { Button } from "@/components/ui/button";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 function formatNumber(value: number | null) {
@@ -55,11 +58,13 @@ function PriceLine({
 
 export function PlansTab() {
   const { t } = useI18n();
+  const { toast } = useToast();
   const [plans, setPlans] = useState<AdminPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalPlan, setModalPlan] = useState<AdminPlan | null | undefined>(undefined);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminPlan | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Pagination state (default 10)
   const [page, setPage] = useState(1);
@@ -97,19 +102,21 @@ export function PlansTab() {
     [sortedPlans, page, pageSize]
   );
 
-  async function handleDelete(plan: AdminPlan) {
-    if (!window.confirm(`${t("admin.plans.deleteConfirm")} ${plan.name}?`)) return;
-    setDeletingId(plan.id);
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const response = await fetch(`/api/v1/admin/plans/${plan.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/v1/admin/plans/${deleteTarget.id}`, { method: "DELETE" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error?.message ?? "Failed to delete plan");
-      setPlans((current) => current.filter((item) => item.id !== plan.id));
+      setPlans((current) => current.filter((item) => item.id !== deleteTarget.id));
+      toast(t("admin.plans.deleteSuccess"));
       dispatchModelsInvalidated();
+      setDeleteTarget(null);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to delete plan");
+      toast(err instanceof Error ? err.message : "Failed to delete plan");
     } finally {
-      setDeletingId(null);
+      setIsDeleting(false);
     }
   }
 
@@ -121,36 +128,36 @@ export function PlansTab() {
           <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.plans.description")}</p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => void loadPlans()}
             disabled={loading}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-[var(--border)] px-3 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--hover)] disabled:opacity-50"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
             {t("admin.plans.refresh")}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => setModalPlan(null)}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-[var(--primary)] px-3 text-sm font-medium text-white transition-colors hover:opacity-90"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 mr-1.5" />
             {t("admin.plans.add")}
-          </button>
+          </Button>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-[8px] border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-[12px] border border-[var(--border)] bg-[var(--panel)]">
-        <table className="w-full min-w-[950px] text-left text-sm">
-          <thead className="border-b border-[var(--border)] bg-[var(--hover)]/50 text-xs uppercase tracking-wide text-[var(--muted)]">
-            <tr>
+      <div className="overflow-hidden rounded-[12px] border border-[var(--border)] bg-[var(--panel)] shadow-xs">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border)] bg-[var(--surface)] text-xs uppercase tracking-wider text-[var(--muted)]">
               <th className="px-4 py-3">{t("admin.plans.plan")}</th>
               <th className="px-4 py-3">{t("admin.plans.price")}</th>
               <th className="px-4 py-3">{t("admin.plans.quotas")}</th>
@@ -161,55 +168,112 @@ export function PlansTab() {
           </thead>
           <tbody className="divide-y divide-[var(--border)]">
             {loading && plans.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-[var(--muted)]">{t("admin.plans.loading")}</td></tr>
-            ) : sortedPlans.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-[var(--muted)]">{t("admin.plans.empty")}</td></tr>
-            ) : displayedPlans.map((plan) => (
-              <tr key={plan.id} className="transition-colors hover:bg-[var(--hover)]/40">
-                <td className="px-4 py-4">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-[8px] bg-[var(--primary)]/10 p-2 text-[var(--primary)]"><Layers3 className="h-4 w-4" /></div>
-                    <div>
-                      <div className="flex items-center gap-2 font-semibold text-[var(--ink)]">
-                        {plan.name}
-                        {plan.badge && <span className="rounded-full bg-[var(--primary)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--primary)]">{plan.badge}</span>}
-                      </div>
-                      <div className="mt-0.5 font-mono text-xs text-[var(--muted)]">{plan.slug}</div>
-                      {plan.description && <div className="mt-1 max-w-[260px] text-xs text-[var(--muted)]">{plan.description}</div>}
-                    </div>
-                  </div>
+              <tr>
+                <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted)]">
+                  {t("admin.plans.loading")}
                 </td>
-                <td className="px-4 py-4 align-top space-y-2">
-                  <PriceLine
-                    currency={plan.currency}
-                    base={plan.priceMonthly}
-                    effective={plan.effectivePriceMonthly}
-                    discountType={plan.discountMonthlyType}
-                    discountValue={plan.discountMonthlyValue}
-                    suffix="/mo"
-                  />
-                  <PriceLine
-                    currency={plan.currency}
-                    base={plan.priceYearly}
-                    effective={plan.effectivePriceYearly}
-                    discountType={plan.discountYearlyType}
-                    discountValue={plan.discountYearlyValue}
-                    suffix="/yr"
-                  />
-                </td>
-                <td className="px-4 py-4 align-top text-xs text-[var(--muted)]">
-                  <div><b className="font-medium text-[var(--ink)]">{formatNumber(plan.monthlyTokenLimit)}</b> / mo</div>
-                  <div className="mt-1"><b className="font-medium text-[var(--ink)]">{formatNumber(plan.weeklyTokenLimit)}</b> / wk</div>
-                  <div className="mt-1"><b className="font-medium text-[var(--ink)]">{formatNumber(plan.fiveHourTokenLimit)}</b> / 5h</div>
-                </td>
-                <td className="px-4 py-4 align-top text-xs text-[var(--muted)]">
-                  <div className="inline-flex items-center gap-1.5"><Layers3 className="h-3.5 w-3.5" />{plan.allowedModelIds.length} {t("admin.plans.models")}</div>
-                  <div className="mt-1 inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />{plan.userCount} {t("admin.plans.users")}</div>
-                </td>
-                <td className="px-4 py-4 align-top"><span className={cn("rounded-full px-2 py-1 text-xs font-medium", plan.isActive ? "bg-emerald-500/10 text-emerald-700" : "bg-[var(--hover)] text-[var(--muted)]")}>{plan.isActive ? t("admin.plans.active") : t("admin.plans.inactive")}</span></td>
-                <td className="px-4 py-4 align-top"><div className="flex justify-end gap-1"><button type="button" onClick={() => setModalPlan(plan)} className="rounded-[7px] p-2 text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]" title={t("admin.plans.edit")}><Pencil className="h-4 w-4" /></button><button type="button" onClick={() => void handleDelete(plan)} disabled={deletingId === plan.id} className="rounded-[7px] p-2 text-[var(--muted)] hover:bg-red-50 hover:text-red-600 disabled:opacity-50" title={t("admin.plans.delete")}><Trash2 className="h-4 w-4" /></button></div></td>
               </tr>
-            ))}
+            ) : displayedPlans.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-12 text-center text-[var(--muted)]">
+                  {t("admin.plans.empty")}
+                </td>
+              </tr>
+            ) : (
+              displayedPlans.map((plan) => (
+                <tr key={plan.id} className="hover:bg-[var(--hover)] transition-colors">
+                  <td className="px-4 py-4 align-top">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-[var(--ink)]">{plan.name}</span>
+                      {plan.badge && (
+                        <span className="rounded-full bg-[var(--primary)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--primary)]">
+                          {plan.badge}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-[var(--muted)] font-mono">{plan.slug}</div>
+                    {plan.description && (
+                      <div className="mt-1 line-clamp-2 text-xs text-[var(--muted)]">
+                        {plan.description}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 align-top space-y-1.5">
+                    <PriceLine
+                      currency={plan.currency}
+                      base={plan.priceMonthly}
+                      effective={plan.effectivePriceMonthly}
+                      discountType={plan.discountMonthlyType}
+                      discountValue={plan.discountMonthlyValue}
+                      suffix="/ mo"
+                    />
+                    <PriceLine
+                      currency={plan.currency}
+                      base={plan.priceYearly}
+                      effective={plan.effectivePriceYearly}
+                      discountType={plan.discountYearlyType}
+                      discountValue={plan.discountYearlyValue}
+                      suffix="/ yr"
+                    />
+                  </td>
+                  <td className="px-4 py-4 align-top text-xs text-[var(--muted)]">
+                    <div>
+                      <b className="font-medium text-[var(--ink)]">{formatNumber(plan.monthlyTokenLimit)}</b> / mo
+                    </div>
+                    <div className="mt-1">
+                      <b className="font-medium text-[var(--ink)]">{formatNumber(plan.weeklyTokenLimit)}</b> / wk
+                    </div>
+                    <div className="mt-1">
+                      <b className="font-medium text-[var(--ink)]">{formatNumber(plan.fiveHourTokenLimit)}</b> / 5h
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 align-top text-xs text-[var(--muted)]">
+                    <div className="inline-flex items-center gap-1.5">
+                      <Layers3 className="h-3.5 w-3.5" />
+                      {plan.allowedModelIds.length} {t("admin.plans.models")}
+                    </div>
+                    <div className="mt-1 inline-flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      {plan.userCount} {t("admin.plans.users")}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-1 text-xs font-medium",
+                        plan.isActive
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                          : "bg-[var(--hover)] text-[var(--muted)]"
+                      )}
+                    >
+                      {plan.isActive ? t("admin.plans.active") : t("admin.plans.inactive")}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 align-top">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setModalPlan(plan)}
+                        className="h-8 w-8 p-0"
+                        title={t("admin.plans.edit")}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteTarget(plan)}
+                        className="h-8 w-8 p-0 text-[var(--muted)] hover:text-red-500 hover:bg-red-500/10"
+                        title={t("admin.plans.delete")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
         <DataTablePagination
@@ -242,6 +306,22 @@ export function PlansTab() {
           }}
         />
       )}
+
+      <ConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        title={t("admin.plans.deleteConfirmTitle")}
+        description={
+          deleteTarget
+            ? `${t("admin.plans.deleteConfirm")} ${deleteTarget.name}?`
+            : undefined
+        }
+        confirmLabel={t("admin.plans.delete")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 }

@@ -1,4 +1,13 @@
 {
+  "common": {
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "confirm": "Confirm"
+  },
   "brand": {
     "name": "Devnuby",
     "tagline": "AI Conversational Workspace"
@@ -531,6 +540,8 @@
       "edit": "Edit",
       "delete": "Delete",
       "deleteConfirm": "Are you sure you want to delete plan",
+      "deleteConfirmTitle": "Delete Subscription Plan",
+      "deleteSuccess": "Subscription plan deleted successfully",
       "createTitle": "Create New Plan",
       "editTitle": "Edit Plan",
       "discount": "Discount",

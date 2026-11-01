@@ -28,7 +28,8 @@ export interface CustomSelectProps<T extends string = string> {
 }
 
 interface Coords {
-  top: number;
+  top?: number;
+  bottom?: number;
   left: number;
   width: number;
   maxHeight: number;
@@ -98,15 +99,9 @@ export function CustomSelect<T extends string = string>({
     const openUpward = spaceBelow < 180 && spaceAbove > spaceBelow;
 
     const availableHeight = openUpward ? spaceAbove : spaceBelow;
-    const maxHeight = Math.min(260, Math.max(140, availableHeight));
+    const maxHeight = Math.min(260, Math.max(80, availableHeight));
 
-    let top = openUpward
-      ? rect.top - maxHeight - gap
-      : rect.bottom + gap;
-
-    top = Math.max(pad, Math.min(top, vh - maxHeight - pad));
-
-    const minWidth = variant === "inline" ? 180 : rect.width;
+    const minWidth = variant === "inline" ? 180 : Math.max(rect.width, 76);
     const targetWidth = Math.max(minWidth, rect.width);
     const finalWidth = Math.min(targetWidth, vw - pad * 2);
 
@@ -116,13 +111,23 @@ export function CustomSelect<T extends string = string>({
     }
     left = Math.max(pad, Math.min(left, vw - finalWidth - pad));
 
-    setCoords({
-      top,
-      left,
-      width: finalWidth,
-      maxHeight,
-      openUpward,
-    });
+    if (openUpward) {
+      setCoords({
+        bottom: Math.max(pad, vh - rect.top + gap),
+        left,
+        width: finalWidth,
+        maxHeight,
+        openUpward: true,
+      });
+    } else {
+      setCoords({
+        top: Math.max(pad, rect.bottom + gap),
+        left,
+        width: finalWidth,
+        maxHeight,
+        openUpward: false,
+      });
+    }
   }, [variant, align]);
 
   function handleToggleOpen() {
@@ -255,10 +260,19 @@ export function CustomSelect<T extends string = string>({
             data-state={closing ? "closing" : "open"}
             style={{
               position: "fixed",
-              top: `${coords.top}px`,
+              ...(coords.openUpward
+                ? { bottom: `${coords.bottom}px` }
+                : { top: `${coords.top}px` }),
               left: `${coords.left}px`,
               width: `${coords.width}px`,
               maxHeight: `${coords.maxHeight}px`,
+              transformOrigin: coords.openUpward
+                ? align === "right"
+                  ? "bottom right"
+                  : "bottom left"
+                : align === "right"
+                ? "top right"
+                : "top left",
               zIndex,
             }}
             className="popover-panel glass flex flex-col rounded-[12px] shadow-2xl overflow-hidden"

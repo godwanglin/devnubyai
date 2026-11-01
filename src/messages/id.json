@@ -1,4 +1,13 @@
 {
+  "common": {
+    "save": "Simpan",
+    "saving": "Menyimpan...",
+    "cancel": "Batal",
+    "delete": "Hapus",
+    "edit": "Ubah",
+    "close": "Tutup",
+    "confirm": "Konfirmasi"
+  },
   "brand": {
     "name": "Devnuby",
     "tagline": "Ruang kerja percakapan AI"
@@ -531,6 +540,8 @@
       "edit": "Ubah",
       "delete": "Hapus",
       "deleteConfirm": "Apakah Anda yakin ingin menghapus paket",
+      "deleteConfirmTitle": "Hapus Paket Langganan",
+      "deleteSuccess": "Paket langganan berhasil dihapus",
       "createTitle": "Buat Paket Baru",
       "editTitle": "Ubah Paket",
       "discount": "Diskon",
