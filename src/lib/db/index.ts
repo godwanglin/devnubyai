@@ -1,6 +1,7 @@
 import { PrismaClient } from "@/generated/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { getDbPoolConfig } from "./pool-config";
 
 // Bump when the Prisma schema changes so dev HMR swaps in a client with the new models
 const PRISMA_SCHEMA_VERSION = "20261101_pool_v2";
@@ -19,11 +20,13 @@ function createPrismaClient(): PrismaClient {
     );
   }
 
+  const poolConfig = getDbPoolConfig();
+
   const pool = new Pool({
     connectionString: databaseUrl,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 20000,
+    max: poolConfig.max,
+    idleTimeoutMillis: poolConfig.idleTimeoutSeconds * 1000,
+    connectionTimeoutMillis: poolConfig.connectionTimeoutSeconds * 1000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
   });
@@ -38,6 +41,27 @@ function createPrismaClient(): PrismaClient {
         ? ["query", "error", "warn"]
         : ["error"],
   });
+}
+
+/**
+ * Hot-swaps the DB connection pool and Prisma instance with updated pool configuration.
+ */
+export function reconfigureDbPool(): PrismaClient {
+  const stalePrisma = globalForPrisma.prisma;
+  const stalePool = globalForPrisma.pgPool;
+
+  globalForPrisma.prisma = undefined;
+  globalForPrisma.pgPool = undefined;
+
+  const nextPrisma = createPrismaClient();
+  globalForPrisma.prisma = nextPrisma;
+
+  setTimeout(() => {
+    stalePrisma?.$disconnect().catch(() => {});
+    stalePool?.end().catch(() => {});
+  }, 5000).unref?.();
+
+  return nextPrisma;
 }
 
 // Replace the cached singleton on HMR when the schema version changes. No `instanceof`

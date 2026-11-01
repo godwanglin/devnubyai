@@ -817,6 +817,23 @@
       "emptyTelemetry": "No routing telemetry records found.",
       "pagination": "Page {page} of {totalPages} ({total} entries)",
       "close": "Close"
+    },
+    "dbPool": {
+      "title": "Database Connection Pool",
+      "description": "Configure concurrent connection limits and timeouts for remote PostgreSQL database.",
+      "max": "Max Pool Connections",
+      "maxHint": "Simultaneous connection limit. 20-50 is optimal for 4-core 8GB RAM VPS (Postgres server max: {serverMax}).",
+      "connectionTimeout": "Connection Timeout (seconds)",
+      "connectionTimeoutHint": "Queue timeout before request aborts. 15-30 seconds recommended for remote VPS.",
+      "idleTimeout": "Idle Timeout (seconds)",
+      "idleTimeoutHint": "Unused connections are closed after this duration.",
+      "activeConnections": "Current Active Connections",
+      "serverMaxConnections": "PostgreSQL Server Max",
+      "save": "Save Configuration",
+      "saving": "Saving...",
+      "saved": "Database pool configuration saved successfully",
+      "saveFailed": "Failed to save database pool configuration",
+      "loadFailed": "Failed to load database pool configuration"
     }
   },
   "plans": {

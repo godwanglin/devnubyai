@@ -7,6 +7,7 @@ import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-se
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { MAX_TOOL_ROUNDS_LIMIT, type ChatSettings } from "@/lib/chat/settings-shared";
+import { DatabasePoolConfigCard } from "./database-pool-config-card";
 
 /** Sentinel for "no explicit model" (CustomSelect values are non-empty strings) */
 const AUTO_MODEL = "__auto__";
@@ -184,6 +185,8 @@ export function SettingsTab() {
           </div>
         </form>
       )}
+
+      <DatabasePoolConfigCard />
     </div>
   );
 }

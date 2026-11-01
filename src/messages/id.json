@@ -817,6 +817,23 @@
       "emptyTelemetry": "Belum ada catatan telemetri routing.",
       "pagination": "Halaman {page} dari {totalPages} ({total} entri)",
       "close": "Tutup"
+    },
+    "dbPool": {
+      "title": "Database Connection Pool",
+      "description": "Atur batas koneksi paralel dan timeout ke database PostgreSQL remote.",
+      "max": "Maksimal Koneksi Pool",
+      "maxHint": "Jumlah jalur koneksi simultan. Nilai 20-50 optimal untuk VPS 4 Core 8 GB RAM (server Postgres max: {serverMax}).",
+      "connectionTimeout": "Connection Timeout (detik)",
+      "connectionTimeoutHint": "Waktu tunggu antrean sebelum request dibatalkan. Disarankan 15-30 detik untuk remote VPS.",
+      "idleTimeout": "Idle Timeout (detik)",
+      "idleTimeoutHint": "Koneksi tidak terpakai ditutup setelah durasi ini.",
+      "activeConnections": "Koneksi Aktif Saat Ini",
+      "serverMaxConnections": "Batas Server PostgreSQL",
+      "save": "Simpan Konfigurasi",
+      "saving": "Menyimpan...",
+      "saved": "Konfigurasi database pool berhasil disimpan",
+      "saveFailed": "Gagal menyimpan konfigurasi pool",
+      "loadFailed": "Gagal memuat konfigurasi database pool"
     }
   },
   "plans": {
