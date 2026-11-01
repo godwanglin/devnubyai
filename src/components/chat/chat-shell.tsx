@@ -277,7 +277,9 @@ export function ChatShell() {
     // Stable id prevents useChat from resetting messages when we navigate from home to /c/[id].
     id: "no-stream",
     transport: chatTransport,
-    resume: Boolean(activeChatId),
+    // No automatic `resume`: flipping it on mid-send (home -> /c/[id]) made the SDK fire a
+    // body-less resumeStream that 204s and forces status back to "ready", hiding the loader.
+    // Reattaching after a reload is done explicitly via useChatHistory -> handleStreamingReply.
     throttle: 30,
     onError: (err) => {
       // console.error("ChatShell useChat error:", err);
