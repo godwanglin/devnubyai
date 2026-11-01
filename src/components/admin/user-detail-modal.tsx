@@ -17,33 +17,13 @@ import {
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
+import { parseDeviceUa } from "@/lib/auth/device";
 import type { AdminUserDetailDto } from "@/lib/users/types";
 
 interface UserDetailModalProps {
   userId: string;
   onClose: () => void;
   onRefreshParent: () => void;
-}
-
-function parseDeviceUa(ua: string | null): { device: string; browser: string } {
-  if (!ua) return { device: "Perangkat Lain", browser: "Browser" };
-
-  let device = "Desktop";
-  if (/Android/i.test(ua)) device = "Android";
-  else if (/iPhone/i.test(ua)) device = "iPhone";
-  else if (/iPad/i.test(ua)) device = "iPad";
-  else if (/Macintosh|Mac OS/i.test(ua)) device = "macOS";
-  else if (/Windows/i.test(ua)) device = "Windows";
-  else if (/Linux/i.test(ua)) device = "Linux";
-
-  let browser = "Browser";
-  if (/WindowsPowerShell|curl/i.test(ua)) browser = "CLI / Script";
-  else if (/Edg/i.test(ua)) browser = "Edge";
-  else if (/Chrome/i.test(ua)) browser = "Chrome";
-  else if (/Safari/i.test(ua)) browser = "Safari";
-  else if (/Firefox/i.test(ua)) browser = "Firefox";
-
-  return { device, browser };
 }
 
 export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetailModalProps) {

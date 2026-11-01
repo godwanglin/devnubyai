@@ -2,34 +2,37 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, User, Palette, Globe, Cpu, Archive, Gauge } from "lucide-react";
+import { ArrowLeft, User, Sliders, Gauge, Shield, Archive } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
 import { ProfileTab } from "./tabs/profile-tab";
-import { AppearanceTab } from "./tabs/appearance-tab";
-import { LanguageTab } from "./tabs/language-tab";
-import { ModelsTab } from "./tabs/models-tab";
+import { PreferencesTab } from "./tabs/preferences-tab";
 import { UsageTab } from "./tabs/usage-tab";
+import { SecurityTab } from "./tabs/security-tab";
 import { ArchivedChatsTab } from "./tabs/archived-chats-tab";
 
-type TabId = "profile" | "usage" | "appearance" | "language" | "models" | "archived";
-const TAB_IDS: TabId[] = ["profile", "usage", "appearance", "language", "models", "archived"];
+type TabId = "profile" | "preferences" | "usage" | "security" | "archived";
+const TAB_IDS: TabId[] = ["profile", "preferences", "usage", "security", "archived"];
+
+function normalizeTab(raw: string | null): TabId {
+  if (!raw) return "profile";
+  if (raw === "appearance" || raw === "language") return "preferences";
+  if (TAB_IDS.includes(raw as TabId)) return raw as TabId;
+  return "profile";
+}
 
 export function SettingsView() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
-  const requestedTab = searchParams.get("tab") as TabId | null;
-  const [tab, setTab] = useState<TabId>(
-    requestedTab && TAB_IDS.includes(requestedTab) ? requestedTab : "profile"
-  );
+  const requestedTab = normalizeTab(searchParams.get("tab"));
+  const [tab, setTab] = useState<TabId>(requestedTab);
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: "profile", label: t("settings.profileTab"), icon: <User className="w-4 h-4" /> },
+    { id: "preferences", label: t("settings.preferencesTab"), icon: <Sliders className="w-4 h-4" /> },
     { id: "usage", label: t("settings.usageTab"), icon: <Gauge className="w-4 h-4" /> },
-    { id: "appearance", label: t("settings.appearanceTab"), icon: <Palette className="w-4 h-4" /> },
-    { id: "language", label: t("settings.languageTab"), icon: <Globe className="w-4 h-4" /> },
-    { id: "models", label: t("settings.modelsTab"), icon: <Cpu className="w-4 h-4" /> },
+    { id: "security", label: t("settings.securityTab"), icon: <Shield className="w-4 h-4" /> },
     { id: "archived", label: t("settings.archivedTab"), icon: <Archive className="w-4 h-4" /> },
   ];
 
@@ -48,9 +51,9 @@ export function SettingsView() {
         <div className="w-8 sm:w-16" />
       </header>
 
-      {/* Mobile Horizontal Tabs Bar (Sticky under header) */}
-      <div className="md:hidden border-b border-[var(--border)] bg-[var(--panel)] sticky top-0 z-20 overflow-x-auto scrollbar-none px-2">
-        <div className="flex items-center gap-1 min-w-max py-1.5">
+      {/* Mobile Horizontal Tabs Bar (Sticky under header with hidden scrollbar) */}
+      <div className="md:hidden border-b border-[var(--border)] bg-[var(--panel)] sticky top-0 z-20 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-2">
+        <div className="flex items-center gap-1.5 min-w-max py-2">
           {tabs.map((tb) => (
             <button
               key={tb.id}
@@ -93,10 +96,9 @@ export function SettingsView() {
 
         <main className="glass rounded-[12px] p-5 sm:p-6 bg-[var(--panel)] border border-[var(--glass-border)] min-w-0">
           {tab === "profile" && <ProfileTab />}
+          {tab === "preferences" && <PreferencesTab />}
           {tab === "usage" && <UsageTab />}
-          {tab === "appearance" && <AppearanceTab />}
-          {tab === "language" && <LanguageTab />}
-          {tab === "models" && <ModelsTab />}
+          {tab === "security" && <SecurityTab />}
           {tab === "archived" && <ArchivedChatsTab />}
         </main>
       </div>

@@ -142,14 +142,23 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
 }
 
 /**
- * Guard that requires an authenticated user.
+ * Guard that requires an authenticated user session context.
  * Throws ApiError.unauthorized() if unauthenticated.
  */
-export async function requireUser(): Promise<SessionUser> {
+export async function requireSession(): Promise<SessionContext> {
   const ctx = await getSession();
   if (!ctx) {
     throw ApiError.unauthorized("Authentication required");
   }
+  return ctx;
+}
+
+/**
+ * Guard that requires an authenticated user.
+ * Throws ApiError.unauthorized() if unauthenticated.
+ */
+export async function requireUser(): Promise<SessionUser> {
+  const ctx = await requireSession();
   return ctx.user;
 }
 
