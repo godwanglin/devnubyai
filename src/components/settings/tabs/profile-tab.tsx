@@ -37,7 +37,7 @@ export function ProfileTab() {
           {t("settings.profileTab")}
         </h2>
         <p className="text-xs text-[var(--muted)] mt-0.5">
-          Informasi profil dan akun Devnuby kamu.
+          Informasi akun Devnuby Anda.
         </p>
       </div>
 

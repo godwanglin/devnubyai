@@ -66,7 +66,7 @@ export function ChatTopbar({
   onArchive,
   onDelete,
 }: ChatTopbarProps) {
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const { t } = useI18n();
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -132,7 +132,7 @@ export function ChatTopbar({
             className="grid place-items-center w-8 h-8 rounded-[8px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
             aria-label={t("topbar.toggleTheme")}
           >
-            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {resolvedTheme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
         </Tooltip>
 

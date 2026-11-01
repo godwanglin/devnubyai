@@ -22,6 +22,9 @@ export interface CustomSelectProps<T extends string = string> {
   disabled?: boolean;
   className?: string;
   size?: "sm" | "md";
+  variant?: "default" | "inline";
+  align?: "left" | "right";
+  zIndex?: number;
 }
 
 interface Coords {
@@ -41,6 +44,9 @@ export function CustomSelect<T extends string = string>({
   disabled = false,
   className,
   size = "sm",
+  variant = "default",
+  align = "left",
+  zIndex = 10001,
 }: CustomSelectProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -74,14 +80,24 @@ export function CustomSelect<T extends string = string>({
 
     top = Math.max(pad, Math.min(top, vh - maxHeight - pad));
 
+    const minWidth = variant === "inline" ? 180 : rect.width;
+    const targetWidth = Math.max(minWidth, rect.width);
+    const finalWidth = Math.min(targetWidth, vw - pad * 2);
+
+    let left = rect.left;
+    if (align === "right" || variant === "inline") {
+      left = rect.right - finalWidth;
+    }
+    left = Math.max(pad, Math.min(left, vw - finalWidth - pad));
+
     setCoords({
       top,
-      left: rect.left,
-      width: Math.min(rect.width, vw - pad * 2),
+      left,
+      width: finalWidth,
       maxHeight,
       openUpward,
     });
-  }, []);
+  }, [variant, align]);
 
   function handleToggleOpen() {
     setOpen((prev) => {
@@ -159,7 +175,10 @@ export function CustomSelect<T extends string = string>({
   }, [options, query, searchable]);
 
   return (
-    <div ref={containerRef} className={cn("relative w-full", className)}>
+    <div
+      ref={containerRef}
+      className={cn(variant === "inline" ? "relative inline-block" : "relative w-full", className)}
+    >
       {/* Trigger Button */}
       <button
         ref={triggerRef}
@@ -167,15 +186,19 @@ export function CustomSelect<T extends string = string>({
         disabled={disabled}
         onClick={handleToggleOpen}
         className={cn(
-          "w-full flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border)] bg-[var(--bg)] text-left text-[var(--ink)] hover:border-[var(--accent)] transition-colors focus:border-[var(--accent)] outline-none disabled:opacity-50 cursor-pointer",
-          size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
+          variant === "inline"
+            ? "inline-flex items-center gap-1.5 text-sm text-[var(--muted)] hover:text-[var(--ink)] transition-colors cursor-pointer outline-none bg-transparent p-0 select-none group"
+            : cn(
+                "w-full flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border)] bg-[var(--bg)] text-left text-[var(--ink)] hover:border-[var(--accent)] transition-colors focus:border-[var(--accent)] outline-none disabled:opacity-50 cursor-pointer",
+                size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
+              )
         )}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
           {selected?.icon && <span className="shrink-0">{selected.icon}</span>}
           {selected ? (
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-medium text-[var(--ink)] truncate">
+              <span className={cn("truncate", variant === "inline" ? "font-normal" : "font-medium text-[var(--ink)]")}>
                 {selected.label}
               </span>
               {selected.sublabel && (
@@ -190,13 +213,13 @@ export function CustomSelect<T extends string = string>({
           )}
         </div>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-[var(--muted)] shrink-0 transition-transform duration-200 ${
+          className={`w-3.5 h-3.5 text-[var(--muted)] group-hover:text-[var(--ink)] shrink-0 transition-all duration-200 ${
             open ? "rotate-180" : ""
           }`}
         />
       </button>
 
-      {/* Dropdown Menu via Portal with glass token and z-[300] */}
+      {/* Dropdown Menu via Portal with glass token and z-[10001] */}
       {open &&
         coords &&
         typeof document !== "undefined" &&
@@ -209,9 +232,9 @@ export function CustomSelect<T extends string = string>({
               left: `${coords.left}px`,
               width: `${coords.width}px`,
               maxHeight: `${coords.maxHeight}px`,
-              zIndex: 300,
+              zIndex,
             }}
-            className="flex flex-col rounded-[12px] border border-[var(--glass-border)] bg-[var(--panel)]/90 backdrop-blur-md shadow-2xl overflow-hidden popover-panel"
+            className="flex flex-col rounded-[12px] border border-[var(--border)] bg-[var(--panel-elevated)] backdrop-blur-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
           >
             {searchable && (
               <div className="p-2 border-b border-[var(--border)] bg-[var(--panel)]/70 backdrop-blur-xs shrink-0">
@@ -229,7 +252,7 @@ export function CustomSelect<T extends string = string>({
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-1 space-y-0.5">
+            <div className="flex-1 overflow-y-auto p-1 space-y-0.5 [scrollbar-width:thin]">
               {filtered.length === 0 ? (
                 <div className="py-4 text-center text-xs text-[var(--placeholder)]">
                   Tidak ada pilihan
@@ -246,7 +269,7 @@ export function CustomSelect<T extends string = string>({
                         handleClose();
                       }}
                       className={cn(
-                        "w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[6px] text-left text-xs transition-colors cursor-pointer",
+                        "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[8px] text-left text-xs transition-colors cursor-pointer",
                         isSelected
                           ? "bg-[var(--accent-soft)] text-[var(--accent)] font-semibold"
                           : "text-[var(--ink)] hover:bg-[var(--hover)]"

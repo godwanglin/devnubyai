@@ -23,7 +23,7 @@ export interface SharedChatViewProps {
 }
 
 export function SharedChatView({ sharedChat }: SharedChatViewProps) {
-  const { theme, toggleTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const { t } = useI18n();
   const [previewFile, setPreviewFile] = useState<SessionFileItem | null>(null);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
@@ -87,7 +87,7 @@ export function SharedChatView({ sharedChat }: SharedChatViewProps) {
                 className="grid place-items-center w-8 h-8 rounded-[8px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
                 aria-label={t("topbar.toggleTheme")}
               >
-                {theme === "dark" ? (
+                {resolvedTheme === "dark" ? (
                   <Sun className="w-4 h-4" />
                 ) : (
                   <Moon className="w-4 h-4" />

@@ -384,9 +384,10 @@
   },
   "settings": {
     "title": "Settings",
-    "profileTab": "Profile",
+    "profileTab": "Account",
     "preferencesTab": "Preferences",
     "securityTab": "Privacy & Security",
+    "dataControlsTab": "Data controls",
     "appearanceTab": "Appearance",
     "languageTab": "Language",
     "modelsTab": "Models & API",

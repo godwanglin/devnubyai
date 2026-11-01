@@ -143,5 +143,5 @@ export interface UserQuota {
 }
 
 export type Locale = "id" | "en";
-export type Theme = "light" | "dark";
+export type Theme = "light" | "dark" | "system";
 export type ReasoningLevel = "0" | "1" | "2" | "3" | "4";

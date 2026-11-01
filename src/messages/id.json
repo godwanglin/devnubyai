@@ -384,9 +384,10 @@
   },
   "settings": {
     "title": "Pengaturan",
-    "profileTab": "Profil",
+    "profileTab": "Akun",
     "preferencesTab": "Preferensi",
     "securityTab": "Privasi & Keamanan",
+    "dataControlsTab": "Kontrol data",
     "appearanceTab": "Tampilan",
     "languageTab": "Bahasa",
     "modelsTab": "Model & API",

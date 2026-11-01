@@ -1,179 +1,285 @@
 "use client";
 
-import React from "react";
-import { Sun, Moon, Globe, Check } from "lucide-react";
+import React, { useState } from "react";
+import { Monitor, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/providers/theme-provider";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
+import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/cn";
-import type { Locale } from "@/types";
+import type { Locale, Theme } from "@/types";
+
+interface PreferenceRowProps {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (val: string) => void;
+}
+
+function PreferenceSelectRow({ label, value, options, onChange }: PreferenceRowProps) {
+  return (
+    <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
+      <span className="text-sm font-medium text-[var(--ink)]">{label}</span>
+      <CustomSelect
+        variant="inline"
+        value={value}
+        options={options}
+        onChange={onChange}
+      />
+    </div>
+  );
+}
 
 export function PreferencesTab() {
   const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
   const { toast } = useToast();
 
-  const languageOptions: { id: Locale; label: string; desc: string; badge: string }[] = [
-    {
-      id: "id",
-      label: "Bahasa Indonesia",
-      desc: "Bahasa antarmuka utama Devnuby",
-      badge: "ID",
-    },
-    {
-      id: "en",
-      label: "English",
-      desc: "English interface localization",
-      badge: "EN",
-    },
-  ];
+  // Preferences states with localStorage persistence
+  const [uiFont, setUiFont] = useState(() => {
+    if (typeof window === "undefined") return "anthropic";
+    try {
+      return localStorage.getItem("devnuby_pref_ui_font") || "anthropic";
+    } catch {
+      return "anthropic";
+    }
+  });
+  const [responseFont, setResponseFont] = useState(() => {
+    if (typeof window === "undefined") return "match";
+    try {
+      return localStorage.getItem("devnuby_pref_resp_font") || "match";
+    } catch {
+      return "match";
+    }
+  });
+  const [chatSize, setChatSize] = useState(() => {
+    if (typeof window === "undefined") return "medium";
+    try {
+      return localStorage.getItem("devnuby_pref_chat_size") || "medium";
+    } catch {
+      return "medium";
+    }
+  });
+  const [transcriptWidth, setTranscriptWidth] = useState(() => {
+    if (typeof window === "undefined") return "narrow";
+    try {
+      return localStorage.getItem("devnuby_pref_transcript_width") || "narrow";
+    } catch {
+      return "narrow";
+    }
+  });
+  const [motion, setMotion] = useState(() => {
+    if (typeof window === "undefined") return "system";
+    try {
+      return localStorage.getItem("devnuby_pref_motion") || "system";
+    } catch {
+      return "system";
+    }
+  });
+  const [voiceStyle, setVoiceStyle] = useState(() => {
+    if (typeof window === "undefined") return "select";
+    try {
+      return localStorage.getItem("devnuby_pref_voice_style") || "select";
+    } catch {
+      return "select";
+    }
+  });
+  const [voiceSpeed, setVoiceSpeed] = useState(() => {
+    if (typeof window === "undefined") return "normal";
+    try {
+      return localStorage.getItem("devnuby_pref_voice_speed") || "normal";
+    } catch {
+      return "normal";
+    }
+  });
+
+  const handleThemeChange = (newTheme: Theme) => {
+    setTheme(newTheme);
+    if (newTheme === "system") {
+      toast("Tema diatur ke Sistem");
+    } else if (newTheme === "light") {
+      toast(t("toast.lightTheme"));
+    } else {
+      toast(t("toast.darkTheme"));
+    }
+  };
+
+  const handlePrefChange = (key: string, val: string, setter: (v: string) => void) => {
+    setter(val);
+    try {
+      localStorage.setItem(key, val);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleLocaleChange = (newLocale: string) => {
+    const loc = newLocale as Locale;
+    setLocale(loc);
+    toast(loc === "id" ? "Bahasa diubah: Bahasa Indonesia" : "Language switched to English");
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full">
+      {/* SECTION 1: Tampilan */}
       <div>
-        <h2 className="text-lg font-semibold text-[var(--ink)]">
-          {t("settings.preferencesTab")}
-        </h2>
-        <p className="text-xs text-[var(--muted)] mt-0.5">
-          Atur tampilan visual dan bahasa antarmuka aplikasi sesuai kenyamananmu.
-        </p>
+        <h3 className="text-sm font-semibold text-[var(--ink)] mb-1">
+          {t("settings.appearanceTab")}
+        </h3>
+
+        {/* 1. Tema */}
+        <div className="py-3 flex items-center justify-between gap-4 border-b border-[var(--border)]/35">
+          <span className="text-sm font-medium text-[var(--ink)]">Tema</span>
+          <div className="inline-flex items-center p-0.5 rounded-lg bg-[var(--hover)] border border-[var(--border)]/40">
+            <button
+              type="button"
+              onClick={() => handleThemeChange("system")}
+              className={cn(
+                "w-7 h-7 rounded-md grid place-items-center transition-colors cursor-pointer",
+                theme === "system"
+                  ? "bg-[var(--surface-active)] text-[var(--ink)] shadow-xs"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              )}
+              title="Sistem"
+              aria-label="Sistem"
+            >
+              <Monitor className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleThemeChange("light")}
+              className={cn(
+                "w-7 h-7 rounded-md grid place-items-center transition-colors cursor-pointer",
+                theme === "light"
+                  ? "bg-[var(--surface-active)] text-[var(--ink)] shadow-xs"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              )}
+              title="Terang"
+              aria-label="Terang"
+            >
+              <Sun className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleThemeChange("dark")}
+              className={cn(
+                "w-7 h-7 rounded-md grid place-items-center transition-colors cursor-pointer",
+                theme === "dark"
+                  ? "bg-[var(--surface-active)] text-[var(--ink)] shadow-xs"
+                  : "text-[var(--muted)] hover:text-[var(--ink)]"
+              )}
+              title="Gelap"
+              aria-label="Gelap"
+            >
+              <Moon className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Font antarmuka */}
+        <PreferenceSelectRow
+          label="Font antarmuka"
+          value={uiFont}
+          options={[
+            { value: "anthropic", label: "Anthropic Sans" },
+            { value: "inter", label: "Inter" },
+            { value: "geist", label: "Geist" },
+            { value: "system", label: "Sistem (Default)" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_ui_font", val, setUiFont)}
+        />
+
+        {/* 3. Font respons */}
+        <PreferenceSelectRow
+          label="Font respons"
+          value={responseFont}
+          options={[
+            { value: "match", label: "Samakan dengan antarmuka" },
+            { value: "serif", label: "Serif" },
+            { value: "mono", label: "Monospace" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_resp_font", val, setResponseFont)}
+        />
+
+        {/* 4. Ukuran teks percakapan */}
+        <PreferenceSelectRow
+          label="Ukuran teks percakapan"
+          value={chatSize}
+          options={[
+            { value: "small", label: "Kecil" },
+            { value: "medium", label: "Sedang" },
+            { value: "large", label: "Besar" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_chat_size", val, setChatSize)}
+        />
+
+        {/* 5. Lebar transkrip */}
+        <PreferenceSelectRow
+          label="Lebar transkrip"
+          value={transcriptWidth}
+          options={[
+            { value: "narrow", label: "Sempit" },
+            { value: "standard", label: "Standar" },
+            { value: "full", label: "Penuh" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_transcript_width", val, setTranscriptWidth)}
+        />
+
+        {/* 6. Gerakan */}
+        <PreferenceSelectRow
+          label="Gerakan"
+          value={motion}
+          options={[
+            { value: "system", label: "Sistem" },
+            { value: "reduce", label: "Kurangi gerakan" },
+            { value: "enable", label: "Aktif" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_motion", val, setMotion)}
+        />
       </div>
 
-      {/* Tema Tampilan */}
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--ink)] flex items-center gap-2">
-            <span>{t("settings.appearanceTab")}</span>
-          </h3>
-          <p className="text-xs text-[var(--muted)] mt-0.5">
-            Pilih mode tema tampilan terang atau gelap murni (Pure Dark).
-          </p>
-        </div>
+      {/* SECTION 2: Suara */}
+      <div className="mt-8">
+        <h3 className="text-sm font-semibold text-[var(--ink)] mb-1">
+          Suara
+        </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
-          <button
-            type="button"
-            onClick={() => {
-              setTheme("light");
-              toast(t("toast.lightTheme"));
-            }}
-            className={cn(
-              "flex items-center gap-3.5 p-3.5 rounded-[12px] border text-left transition-all cursor-pointer relative",
-              theme === "light"
-                ? "border-[var(--accent)] bg-[var(--accent-soft)]/20 shadow-sm ring-1 ring-[var(--accent)]"
-                : "border-[var(--border)] hover:bg-[var(--hover)] bg-[var(--panel-elevated)]"
-            )}
-          >
-            <div
-              className={cn(
-                "w-10 h-10 rounded-[10px] grid place-items-center shrink-0 transition-colors",
-                theme === "light"
-                  ? "bg-[var(--accent)] text-[var(--accent-text)]"
-                  : "bg-[var(--hover)] text-[var(--muted)]"
-              )}
-            >
-              <Sun className="w-5 h-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-[var(--ink)]">Mode Terang</p>
-              <p className="text-xs text-[var(--muted)]">Tampilan bersih dengan kontras lembut</p>
-            </div>
-            {theme === "light" && (
-              <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--accent-text)] grid place-items-center shrink-0">
-                <Check className="w-3.5 h-3.5" />
-              </span>
-            )}
-          </button>
+        {/* 1. Bahasa */}
+        <PreferenceSelectRow
+          label="Bahasa"
+          value={locale}
+          options={[
+            { value: "id", label: "Indonesia" },
+            { value: "en", label: "English" },
+          ]}
+          onChange={handleLocaleChange}
+        />
 
-          <button
-            type="button"
-            onClick={() => {
-              setTheme("dark");
-              toast(t("toast.darkTheme"));
-            }}
-            className={cn(
-              "flex items-center gap-3.5 p-3.5 rounded-[12px] border text-left transition-all cursor-pointer relative",
-              theme === "dark"
-                ? "border-[var(--accent)] bg-[var(--accent-soft)]/20 shadow-sm ring-1 ring-[var(--accent)]"
-                : "border-[var(--border)] hover:bg-[var(--hover)] bg-[var(--panel-elevated)]"
-            )}
-          >
-            <div
-              className={cn(
-                "w-10 h-10 rounded-[10px] grid place-items-center shrink-0 transition-colors",
-                theme === "dark"
-                  ? "bg-[var(--accent)] text-[var(--accent-text)]"
-                  : "bg-[var(--hover)] text-[var(--muted)]"
-              )}
-            >
-              <Moon className="w-5 h-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-[var(--ink)]">Pure Dark</p>
-              <p className="text-xs text-[var(--muted)]">Mode gelap OLED hemat daya</p>
-            </div>
-            {theme === "dark" && (
-              <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--accent-text)] grid place-items-center shrink-0">
-                <Check className="w-3.5 h-3.5" />
-              </span>
-            )}
-          </button>
-        </div>
-      </section>
+        {/* 2. Gaya */}
+        <PreferenceSelectRow
+          label="Gaya"
+          value={voiceStyle}
+          options={[
+            { value: "select", label: "Pilih" },
+            { value: "natural", label: "Alami" },
+            { value: "formal", label: "Formal" },
+            { value: "casual", label: "Santai" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_voice_style", val, setVoiceStyle)}
+        />
 
-      {/* Bahasa Antarmuka */}
-      <section className="space-y-3 pt-4 border-t border-[var(--border)]">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--ink)] flex items-center gap-2">
-            <Globe className="w-4 h-4 text-[var(--muted)]" />
-            <span>{t("settings.languageTab")}</span>
-          </h3>
-          <p className="text-xs text-[var(--muted)] mt-0.5">
-            Pilih bahasa untuk semua menu dan teks antarmuka Devnuby.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
-          {languageOptions.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => {
-                setLocale(opt.id);
-                toast(opt.id === "id" ? "Bahasa diubah: Bahasa Indonesia" : "Language switched to English");
-              }}
-              className={cn(
-                "flex items-center justify-between p-3.5 rounded-[12px] border text-left transition-all cursor-pointer",
-                locale === opt.id
-                  ? "border-[var(--accent)] bg-[var(--accent-soft)]/20 shadow-sm ring-1 ring-[var(--accent)]"
-                  : "border-[var(--border)] hover:bg-[var(--hover)] bg-[var(--panel-elevated)]"
-              )}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <span
-                  className={cn(
-                    "w-8 h-8 rounded-[8px] grid place-items-center font-bold text-xs shrink-0",
-                    locale === opt.id
-                      ? "bg-[var(--accent)] text-[var(--accent-text)]"
-                      : "bg-[var(--hover)] text-[var(--muted)]"
-                  )}
-                >
-                  {opt.badge}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[var(--ink)] truncate">{opt.label}</p>
-                  <p className="text-xs text-[var(--muted)] truncate">{opt.desc}</p>
-                </div>
-              </div>
-              {locale === opt.id && (
-                <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--accent-text)] grid place-items-center shrink-0 ml-2">
-                  <Check className="w-3.5 h-3.5" />
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </section>
+        {/* 3. Kecepatan */}
+        <PreferenceSelectRow
+          label="Kecepatan"
+          value={voiceSpeed}
+          options={[
+            { value: "slow", label: "Lambat (0.8x)" },
+            { value: "normal", label: "Normal" },
+            { value: "fast", label: "Cepat (1.2x)" },
+          ]}
+          onChange={(val) => handlePrefChange("devnuby_pref_voice_speed", val, setVoiceSpeed)}
+        />
+      </div>
     </div>
   );
 }

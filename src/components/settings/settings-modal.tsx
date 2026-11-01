@@ -2,17 +2,17 @@
 
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { User, Sliders, Gauge, Shield, Archive, X } from "lucide-react";
+import { User, Sliders, Gauge, Shield, Database, Search, X } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
 import { ProfileTab } from "./tabs/profile-tab";
 import { PreferencesTab } from "./tabs/preferences-tab";
 import { UsageTab } from "./tabs/usage-tab";
 import { SecurityTab } from "./tabs/security-tab";
-import { ArchivedChatsTab } from "./tabs/archived-chats-tab";
+import { DataControlsTab } from "./tabs/data/data-controls-tab";
 
-export type SettingsTabId = "profile" | "preferences" | "usage" | "security" | "archived";
-const TAB_IDS: SettingsTabId[] = ["profile", "preferences", "usage", "security", "archived"];
+export type SettingsTabId = "profile" | "preferences" | "usage" | "security" | "data" | "archived";
+const TAB_IDS: SettingsTabId[] = ["profile", "preferences", "usage", "security", "data", "archived"];
 
 interface ParsedSettingsHash {
   isOpen: boolean;
@@ -25,7 +25,7 @@ function parseHashSettings(hash: string): ParsedSettingsHash {
     return { isOpen: false, tab: "profile" };
   }
 
-  // Format: #/settings or #/settings/profile or #/settings/security/sessions
+  // Format: #/settings or #/settings/profile or #/settings/data/archived
   const clean = hash.replace(/^#\/settings\/?/, "");
   const parts = clean.split(/[?#]/)[0]?.split("/").filter(Boolean) || [];
   const primary = parts[0]?.toLowerCase();
@@ -33,8 +33,15 @@ function parseHashSettings(hash: string): ParsedSettingsHash {
 
   let tab: SettingsTabId = "profile";
 
-  if (primary === "preferences" || primary === "appearance" || primary === "language") {
+  if (primary === "account") {
+    tab = "profile";
+  } else if (primary === "preferences" || primary === "appearance" || primary === "language") {
     tab = "preferences";
+  } else if (primary === "data") {
+    tab = "data";
+  } else if (primary === "archived") {
+    tab = "data";
+    return { isOpen: true, tab: "data", subView: "archived" };
   } else if (primary && TAB_IDS.includes(primary as SettingsTabId)) {
     tab = primary as SettingsTabId;
   } else {
@@ -60,6 +67,7 @@ export function SettingsModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTabId>("profile");
   const [activeSubView, setActiveSubView] = useState<string | undefined>(undefined);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const isMounted = useSyncExternalStore(
     emptySubscribe,
@@ -77,7 +85,8 @@ export function SettingsModal() {
   const selectTab = useCallback((tb: SettingsTabId) => {
     setActiveTab(tb);
     setActiveSubView(undefined);
-    const newHash = `#/settings/${tb}`;
+    const targetPath = tb === "profile" ? "account" : tb;
+    const newHash = `#/settings/${targetPath}`;
     window.history.replaceState(
       null,
       "",
@@ -88,6 +97,16 @@ export function SettingsModal() {
   const handleSecuritySubViewChange = useCallback((sub: "main" | "sessions" | "history") => {
     setActiveSubView(sub === "main" ? undefined : sub);
     const targetHash = sub === "main" ? "#/settings/security" : `#/settings/security/${sub}`;
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search + targetHash
+    );
+  }, []);
+
+  const handleDataSubViewChange = useCallback((sub: "main" | "archived") => {
+    setActiveSubView(sub === "main" ? undefined : sub);
+    const targetHash = sub === "main" ? "#/settings/data" : `#/settings/data/${sub}`;
     window.history.replaceState(
       null,
       "",
@@ -178,13 +197,20 @@ export function SettingsModal() {
 
   if (!isMounted || !isOpen) return null;
 
-  const tabs: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
-    { id: "profile", label: t("settings.profileTab"), icon: <User className="w-4 h-4" /> },
-    { id: "preferences", label: t("settings.preferencesTab"), icon: <Sliders className="w-4 h-4" /> },
-    { id: "usage", label: t("settings.usageTab"), icon: <Gauge className="w-4 h-4" /> },
-    { id: "security", label: t("settings.securityTab"), icon: <Shield className="w-4 h-4" /> },
-    { id: "archived", label: t("settings.archivedTab"), icon: <Archive className="w-4 h-4" /> },
+  const tabs: { id: SettingsTabId; label: string; icon: React.ReactNode; keywords?: string }[] = [
+    { id: "profile", label: t("settings.profileTab"), icon: <User className="w-4 h-4" />, keywords: "akun profile email foto avatar paket" },
+    { id: "preferences", label: t("settings.preferencesTab"), icon: <Sliders className="w-4 h-4" />, keywords: "tampilan tema font bahasa suara kecepatan" },
+    { id: "usage", label: t("settings.usageTab"), icon: <Gauge className="w-4 h-4" />, keywords: "penggunaan kuota token limit pemakaian" },
+    { id: "security", label: t("settings.securityTab"), icon: <Shield className="w-4 h-4" />, keywords: "keamanan sandi password pin passkey sesi aktif" },
+    { id: "data", label: t("settings.dataControlsTab"), icon: <Database className="w-4 h-4" />, keywords: "data kontrol lokasi tautan arsip hapus ekspor" },
   ];
+
+  const filteredTabs = searchQuery.trim()
+    ? tabs.filter((tb) =>
+        tb.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (tb.keywords && tb.keywords.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : tabs;
 
   return createPortal(
     <div
@@ -237,23 +263,49 @@ export function SettingsModal() {
         {/* Layout Grid: Desktop Sidebar + Content Area */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-[260px_1fr] min-h-0 overflow-hidden">
           {/* Desktop Navigation */}
-          <nav className="hidden md:block p-4 sm:p-5 border-r border-[var(--border)] bg-[var(--panel-elevated)] space-y-1.5 overflow-y-auto">
-            {tabs.map((tb) => (
-              <button
-                key={tb.id}
-                type="button"
-                onClick={() => selectTab(tb.id)}
-                className={cn(
-                  "flex items-center gap-3 w-full px-3.5 py-2.5 rounded-[10px] text-sm font-medium transition-colors cursor-pointer text-left",
-                  activeTab === tb.id
-                    ? "bg-[var(--accent-soft)] text-[var(--accent)] font-semibold"
-                    : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                )}
-              >
-                {tb.icon}
-                <span>{tb.label}</span>
-              </button>
-            ))}
+          <nav className="hidden md:flex flex-col p-4 sm:p-5 border-r border-[var(--border)] bg-[var(--panel-elevated)] overflow-y-auto">
+            {/* Search Box (Claude style) */}
+            <div className="relative mb-3.5">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari"
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-[var(--surface-hover)] border border-[var(--border)]/50 text-[var(--ink)] placeholder-[var(--muted)] outline-none focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+
+            <div className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider px-2 mb-1.5">
+              Preferensi
+            </div>
+
+            <div className="space-y-1 flex-1">
+              {filteredTabs.map((tb) => (
+                <button
+                  key={tb.id}
+                  type="button"
+                  onClick={() => selectTab(tb.id)}
+                  className={cn(
+                    "flex items-center gap-2.5 w-full px-3 py-2 rounded-[8px] text-[13px] font-medium transition-colors cursor-pointer text-left",
+                    activeTab === tb.id
+                      ? "bg-[var(--hover)] text-[var(--ink)] font-semibold"
+                      : "text-[var(--muted)] hover:bg-[var(--hover)]/60 hover:text-[var(--ink)]"
+                  )}
+                >
+                  <span className={activeTab === tb.id ? "text-[var(--accent)]" : "text-[var(--muted)]"}>
+                    {tb.icon}
+                  </span>
+                  <span>{tb.label}</span>
+                </button>
+              ))}
+
+              {filteredTabs.length === 0 && (
+                <p className="text-xs text-[var(--muted)] px-3 py-4 text-center">
+                  Tidak ada hasil
+                </p>
+              )}
+            </div>
           </nav>
 
           {/* Tab Content Area */}
@@ -271,7 +323,18 @@ export function SettingsModal() {
                 onSubViewChange={handleSecuritySubViewChange}
               />
             )}
-            {activeTab === "archived" && <ArchivedChatsTab />}
+            {activeTab === "data" && (
+              <DataControlsTab
+                currentSubView={activeSubView === "archived" ? "archived" : "main"}
+                onSubViewChange={handleDataSubViewChange}
+              />
+            )}
+            {activeTab === "archived" && (
+              <DataControlsTab
+                currentSubView="archived"
+                onSubViewChange={handleDataSubViewChange}
+              />
+            )}
           </main>
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Search,
   Trash2,
+  ArrowLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,11 @@ function formatArchiveDate(isoString: string, locale: "id" | "en"): string {
   }).format(d);
 }
 
-export function ArchivedChatsTab() {
+export interface ArchivedChatsTabProps {
+  onBack?: () => void;
+}
+
+export function ArchivedChatsTab({ onBack }: ArchivedChatsTabProps = {}) {
   const { t, locale } = useI18n();
   const { toast } = useToast();
   const { user } = useAccount();
@@ -135,6 +140,18 @@ export function ArchivedChatsTab() {
 
   return (
     <div className="space-y-5">
+      {onBack && (
+        <div className="flex items-center gap-3 pb-3 border-b border-[var(--border)]">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Kembali ke Kontrol Data</span>
+          </button>
+        </div>
+      )}
       <div>
         <h2 className="text-lg font-semibold text-[var(--ink)]">
           {t("settings.archivedTab")}
