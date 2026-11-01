@@ -44,13 +44,11 @@ function createPrismaClient(): PrismaClient {
 // ("pool is closed"). The stale pool is closed later so in-flight queries can finish.
 if (globalForPrisma.prisma && globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION) {
   const stale = globalForPrisma.prisma;
-  const stalePool = globalForPrisma.pgPool;
   globalForPrisma.prisma = undefined;
   globalForPrisma.pgPool = undefined;
   setTimeout(() => {
     stale.$disconnect().catch(() => {});
-    stalePool?.end().catch(() => {});
-  }, 60_000).unref?.();
+  }, 5_000).unref?.();
 }
 
 export const db: PrismaClient = globalForPrisma.prisma ?? createPrismaClient();

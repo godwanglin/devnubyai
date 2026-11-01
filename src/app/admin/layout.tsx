@@ -9,7 +9,9 @@ export default async function AdminLayout({
 }) {
   try {
     await requireAdmin();
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[ADMIN_LAYOUT] requireAdmin failed:", err);
     redirect("/");
   }
 
