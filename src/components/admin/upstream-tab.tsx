@@ -4,6 +4,7 @@ import React from "react";
 import { useSearchParams } from "next/navigation";
 import { Copy, Eye, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -280,24 +281,28 @@ export function UpstreamTab() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void inspectModel(model)}
-                          title={t("admin.upstream.viewMetadata")}
-                        >
-                          <Eye className="h-3.5 w-3.5 mr-1" />
-                          {t("admin.upstream.viewMetadata")}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteTarget(model)}
-                          className="hover:text-rose-500 text-[var(--muted)]"
-                          title={t("admin.upstream.delete")}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <Tooltip content={t("admin.upstream.viewMetadata")}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void inspectModel(model)}
+                            className="h-8 w-8 p-0"
+                            title={t("admin.upstream.viewMetadata")}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content={t("admin.upstream.delete")}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteTarget(model)}
+                            className="h-8 w-8 p-0 hover:text-rose-500 text-[var(--muted)]"
+                            title={t("admin.upstream.delete")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </Tooltip>
                       </div>
                     </td>
                   </tr>
