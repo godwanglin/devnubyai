@@ -82,7 +82,7 @@ export function SidebarAccountCard({
           )}
 
           <Link
-            href="/settings"
+            href="#/settings"
             onClick={onCloseMobile}
             className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)]"
           >
@@ -164,7 +164,7 @@ export function SidebarQuota({ onNavigate }: { onNavigate: () => void }) {
 
   return (
     <Link
-      href="/settings?tab=usage"
+      href="#/settings/usage"
       onClick={onNavigate}
       className="block rounded-[8px] -mx-1 px-1 py-0.5 hover:bg-[var(--hover)] transition-colors"
     >

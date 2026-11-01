@@ -71,7 +71,7 @@ export function QuotaBanner({ notice, onDismiss, onExpire }: QuotaBannerProps) {
       </p>
       {notice.kind !== "rate_per_minute" ? (
         <Link
-          href="/settings"
+          href="#/settings/usage"
           className="shrink-0 px-1.5 py-0.5 rounded-[6px] font-medium text-[var(--primary)] hover:bg-[var(--hover)] transition-colors"
         >
           {t("quota.viewUsage")}
