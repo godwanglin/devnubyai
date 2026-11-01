@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { BARE_MASCOT_GROUND, DevnubyIcon, type MascotMood } from "@/components/brand/devnuby-logo";
 import type { TypewriterState } from "./typewriter-headline";
 import { cn } from "@/lib/cn";
-import "./perched-mascot.css";
 
 const TICK_MS = 80;
 const HOP_MIN_MS = 620;

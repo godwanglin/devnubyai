@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import "./card-crack.css";
 
 interface CrackLine {
   d: string;
