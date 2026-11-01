@@ -291,6 +291,7 @@ export function CustomSelect<T extends string = string>({
                     <button
                       key={opt.value}
                       type="button"
+                      data-highlighted={isSelected ? "true" : undefined}
                       onClick={() => {
                         onChange(opt.value);
                         handleClose();
@@ -298,7 +299,7 @@ export function CustomSelect<T extends string = string>({
                       className={cn(
                         "glass-hover w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[8px] text-left text-xs transition-colors cursor-pointer",
                         isSelected
-                          ? "bg-[var(--accent-soft)] text-[var(--accent)] font-semibold"
+                          ? "text-[var(--ink)] font-semibold"
                           : "text-[var(--ink)]"
                       )}
                     >
