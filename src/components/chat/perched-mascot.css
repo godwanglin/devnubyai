@@ -92,6 +92,125 @@
   100% { transform: translateY(0) scale(1, 1); }
 }
 
+/* ───── Punch (a quick-prompt card was clicked) ─────
+   windup 250ms → fly 450ms → impact → recoil 380ms */
+
+.dn-perch.is-flying {
+  transition:
+    transform 450ms cubic-bezier(0.55, 0, 0.25, 1),
+    opacity 300ms ease;
+}
+
+.dn-perch.is-recoiling {
+  transition:
+    transform 380ms cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 300ms ease;
+}
+
+.dn-perch-body.is-windup {
+  animation: dn-punch-windup 250ms ease-out both;
+}
+.dn-perch-body.is-windup.is-left {
+  animation-name: dn-punch-windup-left;
+}
+
+/* Grows while flying: it comes "toward" the card surface */
+.dn-perch-body.is-fly {
+  animation: dn-punch-fly 450ms cubic-bezier(0.55, 0, 0.25, 1) both;
+}
+.dn-perch-body.is-fly.is-left {
+  animation-name: dn-punch-fly-left;
+}
+
+.dn-perch-body.is-impact {
+  animation: dn-punch-impact 160ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.dn-perch-body.is-recoil {
+  animation: dn-punch-recoil 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes dn-punch-windup {
+  0% { transform: scale(1, 1) rotate(0deg) translateX(0); }
+  100% { transform: scale(1.14, 0.84) rotate(-10deg) translateX(-4px); }
+}
+@keyframes dn-punch-windup-left {
+  0% { transform: scale(1, 1) rotate(0deg) translateX(0); }
+  100% { transform: scale(1.14, 0.84) rotate(10deg) translateX(4px); }
+}
+
+@keyframes dn-punch-fly {
+  0% { transform: scale(0.9, 1.12) rotate(14deg); }
+  100% { transform: scale(1.35, 1.35) rotate(18deg); }
+}
+@keyframes dn-punch-fly-left {
+  0% { transform: scale(0.9, 1.12) rotate(-14deg); }
+  100% { transform: scale(1.35, 1.35) rotate(-18deg); }
+}
+
+/* Smacks flat against the card */
+@keyframes dn-punch-impact {
+  0% { transform: scale(1.35, 1.35) rotate(0deg); }
+  45% { transform: scale(1.6, 1.12) rotate(0deg); }
+  100% { transform: scale(1.4, 1.28) rotate(0deg); }
+}
+
+@keyframes dn-punch-recoil {
+  0% { transform: scale(1.4, 1.28) rotate(0deg); }
+  60% { transform: scale(0.94, 1.08) rotate(-6deg); }
+  100% { transform: scale(1, 1) rotate(0deg); }
+}
+
+/* The fist that pops out on impact (the mascot has no arms otherwise) */
+.dn-fist {
+  position: absolute;
+  left: 58%;
+  top: 48%;
+  width: 46%;
+  height: auto;
+  opacity: 0;
+  transform-origin: 0% 50%;
+  transform: translate(-30%, -50%) scale(0.2) rotate(0deg);
+  pointer-events: none;
+}
+.dn-fist.is-left {
+  left: auto;
+  right: 58%;
+  transform-origin: 100% 50%;
+  transform: translate(30%, -50%) scale(-0.2, 0.2);
+}
+.dn-fist.is-fly {
+  animation: dn-fist-cock 450ms ease-out both;
+}
+.dn-fist.is-fly.is-left {
+  animation-name: dn-fist-cock-left;
+}
+.dn-fist.is-impact {
+  animation: dn-fist-jab 340ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.dn-fist.is-impact.is-left {
+  animation-name: dn-fist-jab-left;
+}
+
+@keyframes dn-fist-cock {
+  0% { opacity: 0; transform: translate(-30%, -50%) scale(0.2); }
+  100% { opacity: 1; transform: translate(-70%, -40%) scale(0.85) rotate(-12deg); }
+}
+@keyframes dn-fist-cock-left {
+  0% { opacity: 0; transform: translate(30%, -50%) scale(-0.2, 0.2); }
+  100% { opacity: 1; transform: translate(70%, -40%) scale(-0.85, 0.85) rotate(12deg); }
+}
+@keyframes dn-fist-jab {
+  0% { opacity: 1; transform: translate(-70%, -40%) scale(0.85) rotate(-12deg); }
+  35% { opacity: 1; transform: translate(10%, -20%) scale(1.5) rotate(4deg); }
+  100% { opacity: 0; transform: translate(-20%, -30%) scale(1.1) rotate(0deg); }
+}
+@keyframes dn-fist-jab-left {
+  0% { opacity: 1; transform: translate(70%, -40%) scale(-0.85, 0.85) rotate(12deg); }
+  35% { opacity: 1; transform: translate(-10%, -20%) scale(-1.5, 1.5) rotate(-4deg); }
+  100% { opacity: 0; transform: translate(20%, -30%) scale(-1.1, 1.1) rotate(0deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dn-perch,
   .dn-perch.is-pushing {

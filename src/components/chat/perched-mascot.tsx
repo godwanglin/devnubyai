@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { BARE_MASCOT_GROUND, DevnubyIcon, type MascotMood } from "@/components/brand/devnuby-logo";
 import type { TypewriterState } from "./typewriter-headline";
@@ -59,7 +59,33 @@ const noopSubscribe = () => () => {};
 /** True on the client only (the portal target, document.body, doesn't exist during SSR) */
 const useIsClient = () => useSyncExternalStore(noopSubscribe, () => true, () => false);
 
+/** Where the punch landed, relative to the card's top-left corner, plus the card size */
+export interface PunchImpact {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PerchedMascotHandle {
+  /**
+   * Fly to quick-prompt card `index` and punch it (~1.75s). `onImpact` fires at the
+   * moment of the hit; the promise resolves when the whole animation is over (right
+   * away with reduced motion or when the card can't be found).
+   */
+  punch: (index: number, onImpact?: (impact: PunchImpact) => void) => Promise<void>;
+}
+
+type PunchPhase = "windup" | "fly" | "impact" | "recoil";
+
+const PUNCH_WINDUP_MS = 250;
+const PUNCH_FLY_MS = 450;
+const PUNCH_IMPACT_MS = 160;
+/** Resolve after the crack has spread: total stays under 2s */
+const PUNCH_TOTAL_MS = 1750;
+
 interface PerchedMascotProps {
+  ref?: React.Ref<PerchedMascotHandle>;
   /**
    * The container the mascot roams in. Landing spots are its descendants marked
    * `data-perch="headline" | "caret" | "label" | "card"`, plus the chat composer
@@ -80,10 +106,11 @@ interface PerchedMascotProps {
  * idling (round eyes) a different amount of time on each. Dropping onto the composer
  * is a fall that shakes the cards like a small earthquake. On some phrases it runs in
  * front of the typewriter caret and strains against it, slowing the typing down, and
- * only lets go once the phrase is fully typed. Pauses while hovered; with reduced
- * motion it just stands still.
+ * only lets go once the phrase is fully typed. When a card is clicked it flies over
+ * and punches it (see `PerchedMascotHandle.punch`). Pauses while hovered; with
+ * reduced motion it just stands still.
  */
-export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size = 44 }: PerchedMascotProps) {
+export function PerchedMascot({ ref, stageRef, typewriterRef, onPushingChange, size = 44 }: PerchedMascotProps) {
   const height = (size * 54) / 48;
   const isClient = useIsClient();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -98,11 +125,23 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
   // Follows scrolling instantly instead of easing after it
   const [isSnapping, setIsSnapping] = useState(false);
 
+  const [punch, setPunch] = useState<{ phase: PunchPhase; dir: "left" | "right" } | null>(null);
+
   const hoveredRef = useRef(false);
   const onPushingChangeRef = useRef(onPushingChange);
   useEffect(() => {
     onPushingChangeRef.current = onPushingChange;
   });
+
+  // The punch needs the state machine inside the effect below, which installs it here
+  const punchRef = useRef<PerchedMascotHandle["punch"] | null>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      punch: (index, onImpact) => punchRef.current?.(index, onImpact) ?? Promise.resolve(),
+    }),
+    []
+  );
 
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -117,7 +156,7 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
 
     let current: Spot | null = null;
     let perch: Perch | null = null;
-    let mode: "rest" | "hopping" | "pushing" = "rest";
+    let mode: "rest" | "hopping" | "pushing" | "punching" = "rest";
     let hopEndsAt = 0;
     let landedAt = Date.now();
     let nextHopAt = Date.now() + 1500;
@@ -355,7 +394,7 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
       const stageRect = stageRef.current?.getBoundingClientRect();
       const hidden = !stageRect || stageRect.width === 0;
       setIsHidden(hidden);
-      if (hidden) return;
+      if (hidden || mode === "punching") return;
 
       if (!current) {
         // The headline starts empty, so it first waits beside the caret
@@ -417,6 +456,86 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
       }
     }
 
+    /**
+     * Fly to a card and punch it: windup → fly → impact (card pressed in, stage jolts,
+     * other cards rattle) → recoil with a satisfied face. Takes over from whatever it
+     * was doing, including a push against the caret.
+     */
+    punchRef.current = (index, onImpact) =>
+      new Promise<void>((resolve) => {
+        const stage = stageRef.current;
+        const card = stage ? cards(stage)[index] : null;
+        if (!stage || !card || !current || reducedMotion || mode === "punching") {
+          resolve();
+          return;
+        }
+
+        mode = "punching";
+        setPushing(false);
+        setIsHopping(false);
+        setIsRelieved(false);
+
+        const r = card.getBoundingClientRect();
+        // Somewhere around the middle of the card, not dead center every time
+        const hitX = r.width * rand(0.32, 0.68);
+        const hitY = r.height * rand(0.38, 0.62);
+        const dir: "left" | "right" = r.left + hitX >= current.x + size / 2 ? "right" : "left";
+
+        setPunch({ phase: "windup", dir });
+        setMood("smug-dev");
+
+        later(() => {
+          setPunch({ phase: "fly", dir });
+          // Body centered on the hit point
+          place({ x: r.left + hitX - size / 2, y: r.top + hitY - height * 0.55 });
+        }, PUNCH_WINDUP_MS);
+
+        later(() => {
+          setPunch({ phase: "impact", dir });
+          onImpact?.({ x: hitX, y: hitY, width: r.width, height: r.height });
+          card.animate(
+            [
+              { transform: "scale(1) translateY(0)" },
+              { transform: "scale(0.965) translateY(2px)" },
+              { transform: "scale(0.985) translateY(1px)" },
+            ],
+            { duration: 260, easing: "cubic-bezier(0.2, 0.9, 0.3, 1)", fill: "forwards" }
+          );
+          stage.animate(
+            [
+              { transform: "translate(0, 0)" },
+              { transform: "translate(-3px, 2px)" },
+              { transform: "translate(3px, -2px)" },
+              { transform: "translate(-2px, 1px)" },
+              { transform: "translate(1px, 0)" },
+              { transform: "translate(0, 0)" },
+            ],
+            { duration: 280, easing: "ease-out" }
+          );
+          for (const other of cards(stage)) {
+            if (other === card) continue;
+            const a = rand(1, 2.2) * (Math.random() < 0.5 ? -1 : 1);
+            other.animate(
+              [
+                { transform: "translate(0, 0) rotate(0deg)" },
+                { transform: `translate(${a}px, ${-Math.abs(a) * 0.5}px) rotate(${a * 0.15}deg)` },
+                { transform: `translate(${-a * 0.6}px, 0) rotate(${-a * 0.1}deg)` },
+                { transform: "translate(0, 0) rotate(0deg)" },
+              ],
+              { duration: 360, delay: rand(0, 50), easing: "ease-out" }
+            );
+          }
+        }, PUNCH_WINDUP_MS + PUNCH_FLY_MS);
+
+        later(() => {
+          setPunch({ phase: "recoil", dir });
+          setMood("happy-chevrons");
+          if (current) place({ x: current.x + (dir === "right" ? -22 : 22), y: current.y - 30 });
+        }, PUNCH_WINDUP_MS + PUNCH_FLY_MS + PUNCH_IMPACT_MS);
+
+        later(resolve, PUNCH_TOTAL_MS);
+      });
+
     // Scrolling moves every spot: stick to the perch right away, without easing
     let snapTimer: ReturnType<typeof setTimeout> | null = null;
     function onScroll() {
@@ -434,6 +553,7 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
     return () => {
+      punchRef.current = null;
       clearInterval(interval);
       timers.forEach(clearTimeout);
       if (snapTimer) clearTimeout(snapTimer);
@@ -450,7 +570,13 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
   return createPortal(
     <div
       ref={rootRef}
-      className={cn("dn-perch", isPushing && "is-pushing", isSnapping && "is-snapping")}
+      className={cn(
+        "dn-perch",
+        isPushing && "is-pushing",
+        isSnapping && "is-snapping",
+        punch?.phase === "fly" && "is-flying",
+        punch?.phase === "recoil" && "is-recoiling"
+      )}
       style={
         {
           width: size,
@@ -470,12 +596,40 @@ export function PerchedMascot({ stageRef, typewriterRef, onPushingChange, size =
           className={cn(
             "dn-perch-body",
             isHopping && (hop.dir === "left" ? "is-hopping-left" : "is-hopping-right"),
-            !isHopping && isRelieved && "is-relieved"
+            !isHopping && isRelieved && "is-relieved",
+            punch && `is-${punch.phase}`,
+            punch?.dir === "left" && "is-left"
           )}
         >
-          <DevnubyIcon bare struggling={isPushing} mood={mood} className="block w-full h-auto" />
+          <DevnubyIcon
+            bare
+            // Gritted teeth while charging in and on the hit
+            struggling={isPushing || punch?.phase === "fly" || punch?.phase === "impact"}
+            mood={mood}
+            className="block w-full h-auto"
+          />
         </div>
       </div>
+      {punch ? (
+        <svg
+          viewBox="0 0 24 20"
+          aria-hidden="true"
+          className={cn("dn-fist", `is-${punch.phase}`, punch.dir === "left" && "is-left")}
+        >
+          <defs>
+            <linearGradient id="dn-fist-grad" x1="2" y1="2" x2="22" y2="18" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor="#ECFEFF" />
+              <stop offset="0.55" stopColor="#A5F3FC" />
+              <stop offset="1" stopColor="#818CF8" />
+            </linearGradient>
+          </defs>
+          {/* Rounded mitten fist: palm + knuckles + thumb */}
+          <rect x="2" y="3" width="17" height="14" rx="6" fill="url(#dn-fist-grad)" stroke="#4338CA" strokeWidth="1.2" />
+          <path d="M14.5 5.2V9.6M10.8 4.6V9.4M7.2 5.2V9.6" stroke="#4338CA" strokeWidth="1.1" strokeLinecap="round" opacity="0.7" />
+          <path d="M4 12.2C6.4 13.6 9.6 13.6 12 12.2" stroke="#4338CA" strokeWidth="1.2" strokeLinecap="round" />
+          <path d="M19.5 7.5L22.5 6M19.8 10.5L23 10.5M19.5 13.5L22.5 15" stroke="#FDE68A" strokeWidth="1.3" strokeLinecap="round" opacity={punch.phase === "impact" ? 1 : 0} />
+        </svg>
+      ) : null}
     </div>,
     document.body
   );

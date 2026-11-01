@@ -4,8 +4,15 @@ import React, { useRef, useState } from "react";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { useHomeSuggestions } from "@/hooks/use-home-suggestions";
-import { PerchedMascot } from "./perched-mascot";
+import { cn } from "@/lib/cn";
+import { PerchedMascot, type PerchedMascotHandle } from "./perched-mascot";
+import { CardCrack, generateCrack, type CrackShape } from "./card-crack";
 import { TypewriterHeadline, type TypewriterState } from "./typewriter-headline";
+
+/** Safety net: send even if the punch animation never reports back */
+const PUNCH_TIMEOUT_MS = 2200;
+/** If sending failed and home is still shown, clear the cracked card after this long */
+const CRACK_RESET_MS = 3000;
 
 interface WelcomeProps {
   onSelectPrompt: (prompt: string) => void;
@@ -16,14 +23,34 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
   const { suggestions, isPersonalized, isSettled } = useHomeSuggestions();
   const stageRef = useRef<HTMLDivElement>(null);
   const typewriterRef = useRef<TypewriterState | null>(null);
+  const mascotRef = useRef<PerchedMascotHandle>(null);
   // The mascot standing in front of the caret makes the typing slow and strained
   const [isMascotPushing, setIsMascotPushing] = useState(false);
+  // A clicked card is punched (and cracks) before its prompt is sent
+  const [punchedIndex, setPunchedIndex] = useState<number | null>(null);
+  const [crack, setCrack] = useState<{ index: number; shape: CrackShape } | null>(null);
+
+  async function handleSelectCard(index: number, prompt: string) {
+    if (punchedIndex !== null) return;
+    setPunchedIndex(index);
+    const punch =
+      mascotRef.current?.punch(index, (hit) =>
+        setCrack({ index, shape: generateCrack(hit.x, hit.y, hit.width, hit.height) })
+      ) ?? Promise.resolve();
+    await Promise.race([punch, new Promise((r) => setTimeout(r, PUNCH_TIMEOUT_MS))]);
+    onSelectPrompt(prompt);
+    setTimeout(() => {
+      setPunchedIndex(null);
+      setCrack(null);
+    }, CRACK_RESET_MS);
+  }
 
   return (
     <div className="min-h-full flex flex-col justify-center">
       {/* Stage the mascot roams in: it lands on elements marked data-perch */}
       <div ref={stageRef} className="relative w-full max-w-[768px] mx-auto px-4 sm:px-5 py-8 sm:py-12">
         <PerchedMascot
+          ref={mascotRef}
           stageRef={stageRef}
           typewriterRef={typewriterRef}
           onPushingChange={setIsMascotPushing}
@@ -48,21 +75,30 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
             <span data-perch="label">{t("welcome.quickPrompts")}</span>
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div
+            className={cn(
+              "grid grid-cols-1 sm:grid-cols-2 gap-2.5",
+              // No second click (or hover lift) while a card is being punched
+              punchedIndex !== null && "pointer-events-none"
+            )}
+          >
             {suggestions.prompts.map((item, i) => (
               <button
                 key={item.id}
                 type="button"
                 disabled={!isSettled}
                 data-perch={isSettled ? "card" : undefined}
-                onClick={() => onSelectPrompt(item.prompt)}
+                onClick={() => void handleSelectCard(i, item.prompt)}
                 style={{ animationDelay: `${i * 60}ms` }}
-                className={
+                className={cn(
+                  "relative flex flex-col gap-1 p-3.5 pr-9 rounded-[12px] border bg-[var(--panel)] text-left",
                   isSettled
-                    ? "group relative flex flex-col gap-1 p-3.5 pr-9 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] text-left hover:border-[var(--accent)] hover:-translate-y-0.5 transition-[border-color,transform] cursor-pointer animate-[rise-in_380ms_ease-out_both]"
-                    : "relative flex flex-col gap-1 p-3.5 pr-9 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] text-left opacity-0"
-                }
+                    ? "group border-[var(--border)] hover:border-[var(--accent)] hover:-translate-y-0.5 transition-[border-color,transform] cursor-pointer animate-[rise-in_380ms_ease-out_both]"
+                    : "border-[var(--border)] opacity-0",
+                  crack?.index === i && "overflow-hidden border-[var(--muted)]"
+                )}
               >
+                {crack?.index === i ? <CardCrack crack={crack.shape} /> : null}
                 <span className="text-sm font-medium text-[var(--ink)] leading-snug line-clamp-1">
                   {item.label}
                 </span>
