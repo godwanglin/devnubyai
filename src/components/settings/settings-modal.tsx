@@ -14,33 +14,42 @@ import { ArchivedChatsTab } from "./tabs/archived-chats-tab";
 export type SettingsTabId = "profile" | "preferences" | "usage" | "security" | "archived";
 const TAB_IDS: SettingsTabId[] = ["profile", "preferences", "usage", "security", "archived"];
 
-function parseHashSettings(hash: string): { isOpen: boolean; tab: SettingsTabId } {
+interface ParsedSettingsHash {
+  isOpen: boolean;
+  tab: SettingsTabId;
+  subView?: string;
+}
+
+function parseHashSettings(hash: string): ParsedSettingsHash {
   if (!hash || !hash.startsWith("#/settings")) {
     return { isOpen: false, tab: "profile" };
   }
 
-  // Format: #/settings or #/settings/profile or #/settings/security or #/settings?tab=usage
+  // Format: #/settings or #/settings/profile or #/settings/security/sessions
   const clean = hash.replace(/^#\/settings\/?/, "");
-  const segment = clean.split(/[?#/]/)[0]?.toLowerCase();
+  const parts = clean.split(/[?#]/)[0]?.split("/").filter(Boolean) || [];
+  const primary = parts[0]?.toLowerCase();
+  const subView = parts[1]?.toLowerCase();
 
-  if (segment === "preferences" || segment === "appearance" || segment === "language") {
-    return { isOpen: true, tab: "preferences" };
-  }
-  if (segment && TAB_IDS.includes(segment as SettingsTabId)) {
-    return { isOpen: true, tab: segment as SettingsTabId };
-  }
+  let tab: SettingsTabId = "profile";
 
-  // Query parameter fallback (e.g. #/settings?tab=usage)
-  const qIndex = clean.indexOf("?");
-  if (qIndex !== -1) {
-    const params = new URLSearchParams(clean.slice(qIndex));
-    const tabParam = params.get("tab") as SettingsTabId | null;
-    if (tabParam && TAB_IDS.includes(tabParam)) {
-      return { isOpen: true, tab: tabParam };
+  if (primary === "preferences" || primary === "appearance" || primary === "language") {
+    tab = "preferences";
+  } else if (primary && TAB_IDS.includes(primary as SettingsTabId)) {
+    tab = primary as SettingsTabId;
+  } else {
+    // Query parameter fallback (e.g. #/settings?tab=usage)
+    const qIndex = clean.indexOf("?");
+    if (qIndex !== -1) {
+      const params = new URLSearchParams(clean.slice(qIndex));
+      const tabParam = params.get("tab") as SettingsTabId | null;
+      if (tabParam && TAB_IDS.includes(tabParam)) {
+        tab = tabParam;
+      }
     }
   }
 
-  return { isOpen: true, tab: "profile" };
+  return { isOpen: true, tab, subView };
 }
 
 const emptySubscribe = () => () => {};
@@ -50,6 +59,7 @@ export function SettingsModal() {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTabId>("profile");
+  const [activeSubView, setActiveSubView] = useState<string | undefined>(undefined);
 
   const isMounted = useSyncExternalStore(
     emptySubscribe,
@@ -59,17 +69,29 @@ export function SettingsModal() {
 
   const closeModal = useCallback(() => {
     setIsOpen(false);
+    setActiveSubView(undefined);
     const cleanUrl = window.location.pathname + window.location.search;
     window.history.replaceState(null, "", cleanUrl);
   }, []);
 
   const selectTab = useCallback((tb: SettingsTabId) => {
     setActiveTab(tb);
+    setActiveSubView(undefined);
     const newHash = `#/settings/${tb}`;
     window.history.replaceState(
       null,
       "",
       window.location.pathname + window.location.search + newHash
+    );
+  }, []);
+
+  const handleSecuritySubViewChange = useCallback((sub: "main" | "sessions" | "history") => {
+    setActiveSubView(sub === "main" ? undefined : sub);
+    const targetHash = sub === "main" ? "#/settings/security" : `#/settings/security/${sub}`;
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search + targetHash
     );
   }, []);
 
@@ -80,6 +102,7 @@ export function SettingsModal() {
       setIsOpen(parsed.isOpen);
       if (parsed.isOpen) {
         setActiveTab(parsed.tab);
+        setActiveSubView(parsed.subView);
       }
     }
 
@@ -105,6 +128,7 @@ export function SettingsModal() {
         const tab = href.includes("tab=usage") ? "usage" : "profile";
         setIsOpen(true);
         setActiveTab(tab);
+        setActiveSubView(undefined);
         window.history.replaceState(
           null,
           "",
@@ -121,6 +145,7 @@ export function SettingsModal() {
         if (parsed.isOpen) {
           setIsOpen(true);
           setActiveTab(parsed.tab);
+          setActiveSubView(parsed.subView);
           window.history.replaceState(
             null,
             "",
@@ -236,7 +261,16 @@ export function SettingsModal() {
             {activeTab === "profile" && <ProfileTab />}
             {activeTab === "preferences" && <PreferencesTab />}
             {activeTab === "usage" && <UsageTab />}
-            {activeTab === "security" && <SecurityTab />}
+            {activeTab === "security" && (
+              <SecurityTab
+                currentSubView={
+                  activeSubView === "sessions" || activeSubView === "history"
+                    ? activeSubView
+                    : "main"
+                }
+                onSubViewChange={handleSecuritySubViewChange}
+              />
+            )}
             {activeTab === "archived" && <ArchivedChatsTab />}
           </main>
         </div>

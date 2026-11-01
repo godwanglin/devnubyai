@@ -9,11 +9,29 @@ import { PasswordModal } from "./security/password-modal";
 import { PinModal } from "./security/pin-modal";
 import { PasskeyModal } from "./security/passkey-modal";
 
-export function SecurityTab() {
+export interface SecurityTabProps {
+  currentSubView?: "main" | "sessions" | "history";
+  onSubViewChange?: (sub: "main" | "sessions" | "history") => void;
+}
+
+export function SecurityTab({
+  currentSubView,
+  onSubViewChange,
+}: SecurityTabProps) {
   const { t } = useI18n();
 
-  // Navigation: main list vs sub-tabs ("sessions" | "history")
-  const [subView, setSubView] = useState<"main" | "sessions" | "history">("main");
+  // Internal fallback state if no parent controller is provided
+  const [internalSubView, setInternalSubView] = useState<"main" | "sessions" | "history">("main");
+
+  const effectiveSubView = currentSubView ?? internalSubView;
+
+  const handleSubViewChange = (sub: "main" | "sessions" | "history") => {
+    if (onSubViewChange) {
+      onSubViewChange(sub);
+    } else {
+      setInternalSubView(sub);
+    }
+  };
 
   // Sessions state
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -85,7 +103,7 @@ export function SecurityTab() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      {subView === "main" && (
+      {effectiveSubView === "main" && (
         <div>
           <h2 className="text-lg font-semibold text-[var(--ink)]">
             {t("settings.securityTab")}
@@ -97,16 +115,16 @@ export function SecurityTab() {
       )}
 
       {/* Main List or Sub-View */}
-      {subView === "sessions" ? (
+      {effectiveSubView === "sessions" ? (
         <ActiveSessionsSubview
           sessions={sessions}
           loading={loadingSessions}
-          onBack={() => setSubView("main")}
+          onBack={() => handleSubViewChange("main")}
           onRefresh={loadSessions}
         />
-      ) : subView === "history" ? (
+      ) : effectiveSubView === "history" ? (
         <SecurityHistorySubview
-          onBack={() => setSubView("main")}
+          onBack={() => handleSubViewChange("main")}
         />
       ) : (
         <SecurityMainList
@@ -116,8 +134,8 @@ export function SecurityTab() {
           onOpenPasskeys={() => setShowPasskeysModal(true)}
           onOpenPassword={() => setShowPasswordModal(true)}
           onOpenPin={() => setShowPinModal(true)}
-          onNavigateToSessions={() => setSubView("sessions")}
-          onNavigateToHistory={() => setSubView("history")}
+          onNavigateToSessions={() => handleSubViewChange("sessions")}
+          onNavigateToHistory={() => handleSubViewChange("history")}
         />
       )}
 
