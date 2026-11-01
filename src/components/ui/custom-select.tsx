@@ -52,6 +52,32 @@ export function CustomSelect<T extends string = string>({
   const [query, setQuery] = useState("");
   const [coords, setCoords] = useState<Coords | null>(null);
 
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [visible, setVisible] = useState(open);
+  const [closing, setClosing] = useState(false);
+
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    if (open) {
+      setVisible(true);
+      setClosing(false);
+    } else if (visible) {
+      setClosing(true);
+    }
+  }
+
+  // Keep mounted during the 110ms exit animation
+  useEffect(() => {
+    if (closing) {
+      const timer = window.setTimeout(() => {
+        setVisible(false);
+        setClosing(false);
+        setCoords(null);
+      }, 110);
+      return () => window.clearTimeout(timer);
+    }
+  }, [closing]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -219,13 +245,14 @@ export function CustomSelect<T extends string = string>({
         />
       </button>
 
-      {/* Dropdown Menu via Portal with glass token and z-[10001] */}
-      {open &&
+      {/* Dropdown Menu via Portal with glass & popover-panel token */}
+      {visible &&
         coords &&
         typeof document !== "undefined" &&
         createPortal(
           <div
             ref={dropdownRef}
+            data-state={closing ? "closing" : "open"}
             style={{
               position: "fixed",
               top: `${coords.top}px`,
@@ -234,10 +261,10 @@ export function CustomSelect<T extends string = string>({
               maxHeight: `${coords.maxHeight}px`,
               zIndex,
             }}
-            className="flex flex-col rounded-[12px] border border-[var(--border)] bg-[var(--panel-elevated)] backdrop-blur-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            className="popover-panel glass flex flex-col rounded-[12px] shadow-2xl overflow-hidden"
           >
             {searchable && (
-              <div className="p-2 border-b border-[var(--border)] bg-[var(--panel)]/70 backdrop-blur-xs shrink-0">
+              <div className="p-2 border-b border-[var(--glass-border)] bg-[var(--panel)]/70 backdrop-blur-xs shrink-0">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--muted)] pointer-events-none" />
                   <input
@@ -246,7 +273,7 @@ export function CustomSelect<T extends string = string>({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Cari..."
-                    className="w-full pl-8 pr-3 py-1.5 rounded-[8px] border border-[var(--border)] bg-[var(--bg)]/80 text-xs text-[var(--ink)] placeholder:text-[var(--placeholder)] outline-none focus:border-[var(--accent)]"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-[8px] border border-[var(--glass-border)] bg-[var(--bg)]/80 text-xs text-[var(--ink)] placeholder:text-[var(--placeholder)] outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
@@ -269,10 +296,10 @@ export function CustomSelect<T extends string = string>({
                         handleClose();
                       }}
                       className={cn(
-                        "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[8px] text-left text-xs transition-colors cursor-pointer",
+                        "glass-hover w-full flex items-center justify-between gap-2 px-3 py-2 rounded-[8px] text-left text-xs transition-colors cursor-pointer",
                         isSelected
                           ? "bg-[var(--accent-soft)] text-[var(--accent)] font-semibold"
-                          : "text-[var(--ink)] hover:bg-[var(--hover)]"
+                          : "text-[var(--ink)]"
                       )}
                     >
                       <div className="flex items-center gap-2 min-w-0">
