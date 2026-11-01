@@ -163,9 +163,9 @@
     "copySuffix": "Salinan"
   },
   "welcome": {
-    "kicker": "Ruang kerja Devnuby",
     "title": "Mau kerjakan apa hari ini?",
-    "hint": "Tulis pertanyaan di bawah. Tekan Enter untuk mengirim, Shift+Enter untuk baris baru."
+    "hint": "Tulis pertanyaan di bawah. Tekan Enter untuk mengirim, Shift+Enter untuk baris baru.",
+    "quickPrompts": "Saran untukmu"
   },
   "visual": {
     "preview": "Pratinjau",
@@ -457,7 +457,10 @@
       "saving": "Menyimpan...",
       "saved": "Pengaturan tersimpan",
       "saveFailed": "Gagal menyimpan pengaturan",
-      "loadFailed": "Gagal memuat pengaturan"
+      "loadFailed": "Gagal memuat pengaturan",
+      "homeSuggestionsModel": "Model saran halaman home",
+      "homeSuggestionsModelAuto": "Otomatis (model aktif pertama)",
+      "homeSuggestionsModelHint": "Membuat headline dan quick prompt home yang dipersonalisasi untuk tiap user dari 50 judul chat terakhirnya, diperbarui paling cepat tiap 5 jam."
     },
     "placeholders": {
       "comingSoon": "Tab ini akan tersedia pada phase berikutnya.",

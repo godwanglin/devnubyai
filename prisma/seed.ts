@@ -121,6 +121,8 @@ async function main() {
     { key: "catalog.default_model", value: "openai/gpt-6-luna" },
     { key: "logs.routing_retention_days", value: 90 },
     { key: "chat.max_tool_rounds", value: 20 },
+    // "" = first active catalog model writes the personalized home suggestions
+    { key: "chat.home_suggestions_model", value: "" },
   ];
 
   for (const s of defaultSettings) {

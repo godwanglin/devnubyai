@@ -450,6 +450,8 @@ export function Composer({
       {notice ? <div className="max-w-[768px] mx-auto mb-2 pointer-events-auto">{notice}</div> : null}
 
       <form
+        // The home mascot can land on top of the composer
+        data-perch="composer"
         onSubmit={handleSubmit}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}

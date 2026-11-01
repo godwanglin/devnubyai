@@ -1,0 +1,64 @@
+{
+  "id": {
+    "headlines": [
+      "Mau kerjakan apa hari ini?",
+      "Ada bug yang perlu dilacak?",
+      "Mau bikin fitur baru apa?",
+      "Butuh bantuan review kode?",
+      "Mau rapikan arsitektur proyekmu?"
+    ],
+    "prompts": [
+      {
+        "id": "q1",
+        "label": "Contoh endpoint REST untuk API billing",
+        "prompt": "Buatkan contoh endpoint REST untuk API billing dengan pagination dan autentikasi bearer token."
+      },
+      {
+        "id": "q2",
+        "label": "Dokumentasi CLI berbahasa Indonesia",
+        "prompt": "Bantu saya menulis dokumentasi CLI dalam bahasa Indonesia yang singkat dan mudah dibaca."
+      },
+      {
+        "id": "q3",
+        "label": "Telusuri race condition pada worker queue",
+        "prompt": "Telusuri penyebab race condition pada worker queue dan usulkan perbaikannya."
+      },
+      {
+        "id": "q4",
+        "label": "Rencana migrasi database tanpa downtime",
+        "prompt": "Buat rencana migrasi database ke PostgreSQL tanpa downtime."
+      }
+    ]
+  },
+  "en": {
+    "headlines": [
+      "What would you like to build today?",
+      "Got a bug to track down?",
+      "What feature are we shipping next?",
+      "Need a second pair of eyes on your code?",
+      "Want to clean up your architecture?"
+    ],
+    "prompts": [
+      {
+        "id": "q1",
+        "label": "Sample REST endpoint for a billing API",
+        "prompt": "Write a sample REST endpoint for a billing API with pagination and bearer token authentication."
+      },
+      {
+        "id": "q2",
+        "label": "Write concise CLI documentation",
+        "prompt": "Help me write short, easy-to-read documentation for a CLI tool."
+      },
+      {
+        "id": "q3",
+        "label": "Track down a race condition in a worker queue",
+        "prompt": "Investigate the cause of a race condition in a worker queue and suggest a fix."
+      },
+      {
+        "id": "q4",
+        "label": "Zero-downtime database migration plan",
+        "prompt": "Create a plan to migrate a database to PostgreSQL with zero downtime."
+      }
+    ]
+  }
+}

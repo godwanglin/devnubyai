@@ -1,0 +1,106 @@
+/* Mascot roaming the home screen (used by perched-mascot.tsx).
+   Each hop sets --hop-ms (duration) and --hop-h (arc height) from its distance. */
+
+/* Layer 1: position. Travels only while airborne: starts after the crouch (14%),
+   arrives at touchdown (74%) */
+/* Fixed (viewport coordinates) so it can leave the scroll area and land on the composer */
+.dn-perch {
+  --hop-ms: 720ms;
+  --hop-h: 40px;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  will-change: transform;
+  transition:
+    transform calc(var(--hop-ms) * 0.6) cubic-bezier(0.45, 0, 0.55, 1) calc(var(--hop-ms) * 0.14),
+    opacity 300ms ease;
+}
+
+/* Glued to the caret while being pushed: follows each typed character */
+.dn-perch.is-pushing {
+  transition:
+    transform 140ms linear,
+    opacity 300ms ease;
+}
+
+/* Scrolling/resizing: stick to the perch without easing */
+.dn-perch.is-snapping {
+  transition: opacity 300ms ease;
+}
+
+/* Layer 2: vertical hop arc + landing bounce */
+.dn-perch-hop.is-hopping {
+  animation: dn-perch-arc var(--hop-ms) cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+/* Layer 3: squash & stretch, anchored at the feet */
+.dn-perch-body {
+  transform-origin: 50% 88%;
+}
+
+.dn-perch-body.is-hopping-right {
+  animation: dn-perch-stretch-right var(--hop-ms) cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+.dn-perch-body.is-hopping-left {
+  animation: dn-perch-stretch-left var(--hop-ms) cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+/* Relief after the push ends: a little happy bounce in place */
+.dn-perch-body.is-relieved {
+  animation: dn-perch-relief 620ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes dn-perch-arc {
+  0% { transform: translateY(0); }
+  14% { transform: translateY(3px); }                          /* crouch */
+  45% { transform: translateY(calc(var(--hop-h) * -1)); }      /* apex */
+  74% { transform: translateY(2px); }                          /* touchdown */
+  87% { transform: translateY(-6px); }                         /* rebound */
+  95% { transform: translateY(1px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes dn-perch-stretch-right {
+  0% { transform: scale(1, 1) rotate(0deg); }
+  14% { transform: scale(1.2, 0.8) rotate(-4deg); }
+  30% { transform: scale(0.88, 1.14) rotate(8deg); }
+  50% { transform: scale(0.92, 1.1) rotate(12deg); }
+  70% { transform: scale(0.9, 1.12) rotate(6deg); }
+  76% { transform: scale(1.22, 0.8) rotate(-3deg); }
+  87% { transform: scale(0.96, 1.05) rotate(2deg); }
+  100% { transform: scale(1, 1) rotate(0deg); }
+}
+
+@keyframes dn-perch-stretch-left {
+  0% { transform: scale(1, 1) rotate(0deg); }
+  14% { transform: scale(1.2, 0.8) rotate(4deg); }
+  30% { transform: scale(0.88, 1.14) rotate(-8deg); }
+  50% { transform: scale(0.92, 1.1) rotate(-12deg); }
+  70% { transform: scale(0.9, 1.12) rotate(-6deg); }
+  76% { transform: scale(1.22, 0.8) rotate(3deg); }
+  87% { transform: scale(0.96, 1.05) rotate(-2deg); }
+  100% { transform: scale(1, 1) rotate(0deg); }
+}
+
+@keyframes dn-perch-relief {
+  0% { transform: translateY(0) scale(1, 1); }
+  25% { transform: translateY(1px) scale(1.15, 0.86); }
+  55% { transform: translateY(-9px) scale(0.92, 1.1); }
+  80% { transform: translateY(0) scale(1.08, 0.93); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dn-perch,
+  .dn-perch.is-pushing {
+    transition: opacity 300ms ease;
+  }
+  .dn-perch-hop.is-hopping,
+  .dn-perch-body.is-hopping-right,
+  .dn-perch-body.is-hopping-left,
+  .dn-perch-body.is-relieved {
+    animation: none;
+  }
+}

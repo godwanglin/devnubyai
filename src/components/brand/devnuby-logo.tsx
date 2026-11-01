@@ -177,8 +177,15 @@ export function useMascotIdle(options?: UseMascotIdleOptions) {
   };
 }
 
+/**
+ * Viewbox that crops the 64×64 tile down to the mascot alone (antenna to drop shadow),
+ * used by the `bare` icon. The body's bottom edge (y≈51.8) sits at ~88% of its height.
+ */
+export const BARE_MASCOT_VIEWBOX = "8 4 48 54";
+export const BARE_MASCOT_GROUND = (51.8 - 4) / 54;
+
 /** Shared 64×64 squircle mascot tile (Mochi Git shape + layered smooth expressions) */
-function MascotTile({ p, blinkCursor }: { p: string; blinkCursor?: boolean }) {
+function MascotTile({ p, blinkCursor, bare }: { p: string; blinkCursor?: boolean; bare?: boolean }) {
   return (
     <>
       <defs>
@@ -211,9 +218,13 @@ function MascotTile({ p, blinkCursor }: { p: string; blinkCursor?: boolean }) {
         </filter>
       </defs>
 
-      <rect width="64" height="64" rx="18" fill={`url(#${p}-bg)`} />
-      <rect x="1" y="1" width="62" height="62" rx="17" stroke={C.border} strokeOpacity="0.22" strokeWidth="1.5" />
-      <circle cx="32" cy="34" r="27" fill={`url(#${p}-aura)`} />
+      {bare ? null : (
+        <>
+          <rect width="64" height="64" rx="18" fill={`url(#${p}-bg)`} />
+          <rect x="1" y="1" width="62" height="62" rx="17" stroke={C.border} strokeOpacity="0.22" strokeWidth="1.5" />
+          <circle cx="32" cy="34" r="27" fill={`url(#${p}-aura)`} />
+        </>
+      )}
 
       <g filter={`url(#${p}-shadow)`}>
         <g className="dn-mascot">
@@ -292,6 +303,15 @@ function MascotTile({ p, blinkCursor }: { p: string; blinkCursor?: boolean }) {
             <path d="M30.0 39.2C31.0 38.3 32.6 38.3 33.6 39.2" stroke="#FDA4AF" strokeWidth="1.6" strokeLinecap="round" />
           </g>
 
+          {/* Struggle Face (> 皿 <): straining against a push — squeezed eyes, gritted teeth, sweat drop */}
+          <g className="dn-face-struggle">
+            <path d="M20.4 30.6L25.6 33.4L20.6 36.4" stroke={C.ink} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M43.2 30.6L38.0 33.4L43.0 36.4" stroke={C.ink} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />
+            <rect x="27.6" y="37.0" width="8.4" height="4.4" rx="1.6" fill="#FFFFFF" stroke={C.ink} strokeWidth="2" />
+            <path d="M30.4 37.2V41.2M33.2 37.2V41.2" stroke={C.ink} strokeWidth="1.1" />
+            <path className="dn-sweat" d="M48.6 21.0C50.2 23.4 50.8 24.6 50.8 25.6C50.8 26.9 49.8 27.8 48.6 27.8C47.4 27.8 46.4 26.9 46.4 25.6C46.4 24.6 47.0 23.4 48.6 21.0Z" fill="#7DD3FC" stroke="#0EA5E9" strokeWidth="0.8" />
+          </g>
+
           {/* Terminal Prompt Underline Cursor */}
           <path d="M38.2 43.2H44.2" stroke={`url(#${p}-cursor)`} strokeWidth="3.2" strokeLinecap="round">
             {blinkCursor ? <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite" /> : null}
@@ -309,6 +329,10 @@ export interface DevnubyIconProps {
   cycleIntervalMs?: number;
   interactive?: boolean;
   blinkCursor?: boolean;
+  /** Mascot only, without the squircle tile (cropped viewBox, see BARE_MASCOT_VIEWBOX) */
+  bare?: boolean;
+  /** Straining pose: leans left into a push, squeezed eyes + gritted teeth, sweat drop */
+  struggling?: boolean;
   title?: string;
 }
 
@@ -320,6 +344,8 @@ export function DevnubyIcon({
   cycleIntervalMs,
   interactive = true,
   blinkCursor,
+  bare = false,
+  struggling = false,
   title = "DevNuby",
 }: DevnubyIconProps) {
   const p = `dn${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -328,7 +354,7 @@ export function DevnubyIcon({
 
   return (
     <svg
-      viewBox="0 0 64 64"
+      viewBox={bare ? BARE_MASCOT_VIEWBOX : "0 0 64 64"}
       fill="none"
       role="img"
       aria-label={title}
@@ -338,12 +364,14 @@ export function DevnubyIcon({
       onMouseLeave={interactive ? () => idle.setIsHovered(false) : undefined}
       className={cn(
         "dn-logo shrink-0 select-none",
+        bare && "overflow-visible",
         interactive && "dn-interactive",
-        idle.laughing && "is-laughing",
+        idle.laughing && !struggling && "is-laughing",
+        struggling && "is-struggling",
         className
       )}
     >
-      <MascotTile p={p} blinkCursor={blinkCursor} />
+      <MascotTile p={p} blinkCursor={blinkCursor} bare={bare} />
     </svg>
   );
 }

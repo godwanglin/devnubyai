@@ -194,6 +194,16 @@
     animation: typewriter-fade 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
+  /* Home headline straining while the mascot pushes back against the caret */
+  @keyframes type-strain {
+    from {
+      transform: translateX(-0.4px);
+    }
+    to {
+      transform: translateX(0.4px);
+    }
+  }
+
   /* Particles streaming toward the thumb on max reasoning. The lane spans the
      fill's full width, so translateX(100%) lands exactly at the thumb. */
   @keyframes reasoning-flow {

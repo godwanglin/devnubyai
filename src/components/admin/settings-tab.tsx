@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-select";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { MAX_TOOL_ROUNDS_LIMIT, type ChatSettings } from "@/lib/chat/settings-shared";
+
+/** Sentinel for "no explicit model" (CustomSelect values are non-empty strings) */
+const AUTO_MODEL = "__auto__";
 
 export function SettingsTab() {
   const { t } = useI18n();
@@ -14,7 +18,16 @@ export function SettingsTab() {
   const [saved, setSaved] = useState<ChatSettings | null>(null);
   const [maxToolRounds, setMaxToolRounds] = useState("");
   const [toolDebug, setToolDebug] = useState(false);
+  const [homeSuggestionsModel, setHomeSuggestionsModel] = useState("");
+  const [activeModels, setActiveModels] = useState<{ publicId: string; displayName: string }[]>([]);
   const [saving, setSaving] = useState(false);
+
+  function applySettings(settings: ChatSettings) {
+    setSaved(settings);
+    setMaxToolRounds(String(settings.maxToolRounds));
+    setToolDebug(Boolean(settings.toolDebug));
+    setHomeSuggestionsModel(settings.homeSuggestionsModel ?? "");
+  }
 
   useEffect(() => {
     let active = true;
@@ -23,21 +36,40 @@ export function SettingsTab() {
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.data?.settings) throw new Error(json?.error?.message);
         if (!active) return;
-        setSaved(json.data.settings);
-        setMaxToolRounds(String(json.data.settings.maxToolRounds));
-        setToolDebug(Boolean(json.data.settings.toolDebug));
+        applySettings(json.data.settings);
       })
       .catch((err) => toast(err instanceof Error && err.message ? err.message : t("admin.settings.loadFailed")));
+    fetch("/api/v1/admin/model-catalog?status=active", { credentials: "same-origin" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (active && Array.isArray(json?.data?.models)) setActiveModels(json.data.models);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
   }, [t, toast]);
 
+  const modelOptions = useMemo<CustomSelectOption[]>(() => {
+    const options: CustomSelectOption[] = [
+      { value: AUTO_MODEL, label: t("admin.settings.homeSuggestionsModelAuto") },
+      ...activeModels.map((m) => ({ value: m.publicId, label: m.displayName, sublabel: m.publicId })),
+    ];
+    // Keep a saved model visible even if it is no longer active
+    if (homeSuggestionsModel && !activeModels.some((m) => m.publicId === homeSuggestionsModel)) {
+      options.push({ value: homeSuggestionsModel, label: homeSuggestionsModel });
+    }
+    return options;
+  }, [activeModels, homeSuggestionsModel, t]);
+
   const parsedRounds = Number(maxToolRounds);
   const isValid =
     Number.isInteger(parsedRounds) && parsedRounds >= 1 && parsedRounds <= MAX_TOOL_ROUNDS_LIMIT;
   const isDirty =
-    saved !== null && (parsedRounds !== saved.maxToolRounds || toolDebug !== saved.toolDebug);
+    saved !== null &&
+    (parsedRounds !== saved.maxToolRounds ||
+      toolDebug !== saved.toolDebug ||
+      homeSuggestionsModel !== (saved.homeSuggestionsModel ?? ""));
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -48,13 +80,11 @@ export function SettingsTab() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ maxToolRounds: parsedRounds, toolDebug }),
+        body: JSON.stringify({ maxToolRounds: parsedRounds, toolDebug, homeSuggestionsModel }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.data?.settings) throw new Error(json?.error?.message);
-      setSaved(json.data.settings);
-      setMaxToolRounds(String(json.data.settings.maxToolRounds));
-      setToolDebug(Boolean(json.data.settings.toolDebug));
+      applySettings(json.data.settings);
       toast(t("admin.settings.saved"));
     } catch (err) {
       toast(err instanceof Error && err.message ? err.message : t("admin.settings.saveFailed"));
@@ -129,6 +159,22 @@ export function SettingsTab() {
                 }`}
               />
             </button>
+          </div>
+
+          <div className="pt-4 border-t border-[var(--border)]">
+            <label className="block text-xs font-medium text-[var(--muted)] mb-1">
+              {t("admin.settings.homeSuggestionsModel")}
+            </label>
+            <CustomSelect
+              options={modelOptions}
+              value={homeSuggestionsModel || AUTO_MODEL}
+              onChange={(val) => setHomeSuggestionsModel(val === AUTO_MODEL ? "" : val)}
+              searchable
+              size="md"
+            />
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
+              {t("admin.settings.homeSuggestionsModelHint")}
+            </p>
           </div>
 
           <div className="flex justify-end">

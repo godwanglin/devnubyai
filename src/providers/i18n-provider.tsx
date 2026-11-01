@@ -9,6 +9,8 @@ type Dictionary = typeof idDict;
 
 interface I18nContextType {
   locale: Locale;
+  /** False until the saved/browser locale has been read (first render always uses "id") */
+  isReady: boolean;
   setLocale: (loc: Locale) => void;
   t: (path: string, params?: Record<string, string | number>) => string;
 }
@@ -24,6 +26,7 @@ const STORAGE_KEY = "devnuby-locale";
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("id");
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     try {
@@ -35,6 +38,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
         setLocaleState(browser);
       }
     } catch {}
+    setIsReady(true);
   }, []);
 
   const setLocale = useCallback((newLocale: Locale) => {
@@ -68,7 +72,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [locale]
   );
 
-  const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
+  const value = useMemo(() => ({ locale, isReady, setLocale, t }), [locale, isReady, setLocale, t]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

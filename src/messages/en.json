@@ -163,9 +163,9 @@
     "copySuffix": "Copy"
   },
   "welcome": {
-    "kicker": "Devnuby Workspace",
     "title": "What would you like to build today?",
-    "hint": "Type your query below. Press Enter to send, Shift+Enter for a new line."
+    "hint": "Type your query below. Press Enter to send, Shift+Enter for a new line.",
+    "quickPrompts": "Suggested for you"
   },
   "visual": {
     "preview": "Preview",
@@ -457,7 +457,10 @@
       "saving": "Saving...",
       "saved": "Settings saved",
       "saveFailed": "Failed to save settings",
-      "loadFailed": "Failed to load settings"
+      "loadFailed": "Failed to load settings",
+      "homeSuggestionsModel": "Home suggestions model",
+      "homeSuggestionsModelAuto": "Automatic (first active model)",
+      "homeSuggestionsModelHint": "Writes each user's personalized home headlines and quick prompts from their 50 latest chat titles, refreshed at most every 5 hours."
     },
     "placeholders": {
       "comingSoon": "This tab will be available in the upcoming phase.",

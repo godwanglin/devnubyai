@@ -73,6 +73,7 @@ model User {
   transactions     PaymentTransaction[]
   manualUpdatedTrans PaymentTransaction[] @relation("ManualTransactionUpdater")
   userNotes        UserNote[]
+  homeSuggestions  UserHomeSuggestion[]
 
   @@index([planId], map: "idx_users_plan")
   @@index([role, status], map: "idx_users_role_status")
@@ -495,4 +496,25 @@ model UserNote {
   @@index([userId, updatedAt], map: "idx_user_notes_user_updated")
   @@index([sessionId], map: "idx_user_notes_session")
   @@map("user_notes")
+}
+
+// ───────────── Personalized home page (AI-generated, refreshed every 5h) ─────────────
+/// One row per user + UI locale: typewriter headlines and quick prompts generated
+/// from the user's recent chat titles. Stale rows are regenerated lazily on read.
+model UserHomeSuggestion {
+  id          BigInt   @id @default(autoincrement())
+  userId      BigInt   @map("user_id")
+  locale      String   @db.VarChar(8)
+  /// string[] (10 items)
+  headlines   Json
+  /// { id, label, prompt }[] (4 items)
+  prompts     Json
+  generatedAt DateTime @map("generated_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_user_home_suggestions_user")
+
+  @@unique([userId, locale], map: "uq_user_home_suggestions_user_locale")
+  @@map("user_home_suggestions")
 }
