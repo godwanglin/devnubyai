@@ -15,12 +15,14 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
+import { useToast } from "@/providers/toast-provider";
 import { cn } from "@/lib/cn";
 import type { AdminUserListItemDto } from "@/lib/users/types";
 import { UserEditModal } from "@/components/admin/user-edit-modal";
 import { CreateUserModal } from "@/components/admin/create-user-modal";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { ConfirmModal } from "@/components/modals/confirm-modal";
 
 interface PlanOption {
   id: string;
@@ -30,6 +32,7 @@ interface PlanOption {
 
 export function UsersTab() {
   const { t } = useI18n();
+  const { toast } = useToast();
 
   const [users, setUsers] = useState<AdminUserListItemDto[]>([]);
   const [plans, setPlans] = useState<PlanOption[]>([]);
@@ -50,6 +53,8 @@ export function UsersTab() {
   const [editingUser, setEditingUser] = useState<AdminUserListItemDto | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
+  const [deletingUser, setDeletingUser] = useState<AdminUserListItemDto | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [, startTransition] = useTransition();
 
@@ -142,38 +147,30 @@ export function UsersTab() {
     });
   }
 
-  async function handleDeleteUser(user: AdminUserListItemDto) {
-    if (!window.confirm(`${t("admin.users.deleteConfirm")} ${user.name} (${user.email})?`)) {
-      return;
-    }
+  async function handleConfirmDelete() {
+    if (!deletingUser) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/v1/admin/users/${user.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/v1/admin/users/${deletingUser.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || "Gagal menghapus pengguna");
+      toast(t("admin.users.deleteSuccess") || "Pengguna berhasil dihapus");
+      setDeletingUser(null);
       void loadUsers();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Gagal menghapus pengguna");
+      toast(err instanceof Error ? err.message : "Gagal menghapus pengguna");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
   function handleExportCsv() {
     if (users.length === 0) return;
-    const headers = ["ID", "PublicID", "Name", "Email", "Role", "Status", "StatusReason", "Plan", "LastLogin", "CreatedAt"];
-    const rows = users.map((u) => [
-      u.id,
-      u.publicId,
-      `"${u.name.replace(/"/g, '""')}"`,
-      u.email,
-      u.role,
-      u.status,
-      `"${(u.statusReason || "").replace(/"/g, '""')}"`,
-      u.planName || "Free",
-      u.lastLoginAt || "",
-      u.createdAt,
-    ]);
-
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const headers = "ID,PublicID,Name,Email,Role,Status,StatusReason,Plan,LastLogin,CreatedAt";
+    const rows = users.map((u) =>
+      [u.id, u.publicId, `"${u.name.replace(/"/g, '""')}"`, u.email, u.role, u.status, `"${(u.statusReason || "").replace(/"/g, '""')}"`, u.planName || "Free", u.lastLoginAt || "", u.createdAt].join(",")
+    );
+    const blob = new Blob([[headers, ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -438,7 +435,7 @@ export function UsersTab() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDeleteUser(u)}
+                          onClick={() => setDeletingUser(u)}
                           title={t("admin.users.deleteUser")}
                           className="rounded-[6px] p-1.5 text-rose-500/80 transition-colors hover:bg-rose-500/10 hover:text-rose-500"
                         >
@@ -458,10 +455,7 @@ export function UsersTab() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-[var(--muted)] px-1">
           <div>
-            {t("admin.users.pagination")
-              .replace("{from}", ((page - 1) * 15 + 1).toString())
-              .replace("{to}", Math.min(page * 15, total).toString())
-              .replace("{total}", total.toString())}
+            {t("admin.users.pagination").replace("{from}", ((page - 1) * 15 + 1).toString()).replace("{to}", Math.min(page * 15, total).toString()).replace("{total}", total.toString())}
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -473,9 +467,7 @@ export function UsersTab() {
               <ChevronLeft className="h-3.5 w-3.5" />
             </button>
             <span className="px-2">
-              {t("admin.users.pageOf")
-                .replace("{page}", page.toString())
-                .replace("{totalPages}", totalPages.toString())}
+              {t("admin.users.pageOf").replace("{page}", page.toString()).replace("{totalPages}", totalPages.toString())}
             </span>
             <button
               type="button"
@@ -518,6 +510,20 @@ export function UsersTab() {
           userId={detailUserId}
           onClose={() => setDetailUserId(null)}
           onRefreshParent={() => void loadUsers()}
+        />
+      )}
+
+      {deletingUser && (
+        <ConfirmModal
+          isOpen={Boolean(deletingUser)}
+          onClose={() => setDeletingUser(null)}
+          onConfirm={handleConfirmDelete}
+          title={t("admin.users.deleteUser")}
+          description={`${t("admin.users.deleteConfirm")} ${deletingUser.name} (${deletingUser.email})?`}
+          confirmLabel={t("admin.users.deleteUser")}
+          cancelLabel={t("admin.users.cancel")}
+          variant="danger"
+          loading={isDeleting}
         />
       )}
     </div>
