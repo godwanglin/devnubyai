@@ -2,146 +2,24 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import type { Prisma } from "@/generated/client";
 import { deleteKeyFromR2 } from "@/lib/storage/r2";
-import { formatDisplayFilename } from "@/lib/files/policy";
-import { extractQuotes, withQuotedContext } from "./quotes";
+import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 import { assertUserModelAccess } from "./model-access";
+import { toSessionDto, toMessageDto } from "./mappers";
+import type {
+  SessionWithMeta,
+  MessageAttachmentDto,
+  ChatMessageDto,
+  ListChatMessagesResult,
+} from "./service-types";
 
 export { duplicateChatSession } from "./duplicate";
-
-export interface SessionWithMeta {
-  id: string; // publicId
-  title: string;
-  isPinned: boolean;
-  isArchived: boolean;
-  shareToken: string | null;
-  catalogModelId: string | null;
-  projectId?: string | null;
-  isLocked?: boolean;
-  lastMessageAt: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount: number;
-}
-
-export interface MessageAttachmentDto {
-  id: string; // SessionFile publicId
-  filename: string;
-  displayName: string;
-  mimeType: string;
-  sizeBytes: number;
-  isImage: boolean;
-  url: string;
-}
-
-export interface ChatMessageDto {
-  id: string; // publicId
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  reasoning?: string | null;
-  parts?: unknown;
-  status: string;
-  errorCode?: string | null;
-  promptTokens?: number | null;
-  completionTokens?: number | null;
-  catalogModelId?: string | null;
-  attachments?: MessageAttachmentDto[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
- * Format a DB chat session into public DTO.
- */
-function toSessionDto(
-  session: {
-    publicId: string;
-    title: string;
-    isPinned: boolean;
-    isArchived: boolean;
-    isLocked?: boolean;
-    shareToken: string | null;
-    lastMessageAt: Date;
-    createdAt: Date;
-    updatedAt: Date;
-    catalogModel?: { publicId: string } | null;
-    project?: { publicId: string } | null;
-    _count?: { messages: number };
-  }
-): SessionWithMeta {
-  return {
-    id: session.publicId,
-    title: session.title,
-    isPinned: session.isPinned,
-    isArchived: session.isArchived,
-    isLocked: Boolean(session.isLocked),
-    shareToken: session.shareToken,
-    catalogModelId: session.catalogModel?.publicId ?? null,
-    projectId: session.project?.publicId ?? null,
-    lastMessageAt: session.lastMessageAt.toISOString(),
-    createdAt: session.createdAt.toISOString(),
-    updatedAt: session.updatedAt.toISOString(),
-    messageCount: session._count?.messages ?? 0,
-  };
-}
-
-/**
- * Format a DB chat message into public DTO.
- */
-export function toMessageDto(
-  message: {
-    publicId: string;
-    role: string;
-    content: string;
-    reasoning: string | null;
-    parts: unknown;
-    status: string;
-    errorCode: string | null;
-    promptTokens: number | null;
-    completionTokens: number | null;
-    catalogModel?: { publicId: string } | null;
-    files?: Array<{
-      publicId: string;
-      filename: string;
-      mimeType: string;
-      sizeBytes: bigint;
-    }>;
-    createdAt: Date;
-    updatedAt: Date;
-  },
-  sessionPublicId?: string
-): ChatMessageDto {
-  const attachments = message.files?.map((f) => {
-    const displayName = formatDisplayFilename(f.filename);
-    const fileUrl = sessionPublicId
-      ? `/api/v1/chats/${sessionPublicId}/files/${f.publicId}`
-      : "";
-    return {
-      id: f.publicId,
-      filename: f.filename,
-      displayName,
-      mimeType: f.mimeType,
-      sizeBytes: Number(f.sizeBytes),
-      isImage: f.mimeType.startsWith("image/"),
-      url: fileUrl,
-    };
-  });
-
-  return {
-    id: message.publicId,
-    role: message.role as ChatMessageDto["role"],
-    content: message.content,
-    reasoning: message.reasoning,
-    parts: message.parts,
-    status: message.status,
-    errorCode: message.errorCode,
-    promptTokens: message.promptTokens,
-    completionTokens: message.completionTokens,
-    catalogModelId: message.catalogModel?.publicId ?? null,
-    attachments: attachments && attachments.length > 0 ? attachments : undefined,
-    createdAt: message.createdAt.toISOString(),
-    updatedAt: message.updatedAt.toISOString(),
-  };
-}
+export { toMessageDto } from "./mappers";
+export type {
+  SessionWithMeta,
+  MessageAttachmentDto,
+  ChatMessageDto,
+  ListChatMessagesResult,
+};
 
 /**
  * List user chat sessions with cursor pagination (based on lastMessageAt / id DESC).
@@ -402,28 +280,14 @@ export async function deleteChatSession(
     where: { id: session.id },
   });
 
+  if (session.shareToken) {
+    await invalidateSharedChatCache(session.shareToken);
+  }
+
   // Best-effort cleanup of R2 storage objects outside DB transaction
   await Promise.allSettled(
     attachedFiles.map((f) => deleteKeyFromR2(f.storageKey))
   );
-}
-
-export interface ListChatMessagesResult {
-  session: {
-    id: string;
-    title: string;
-    isPinned: boolean;
-    isArchived: boolean;
-    shareToken: string | null;
-    catalogModelId: string | null;
-  projectId?: string | null;
-  isLocked?: boolean;
-    lastMessageAt: string;
-    createdAt: string;
-    updatedAt: string;
-  };
-  messages: ChatMessageDto[];
-  nextCursor: string | null;
 }
 
 /**
@@ -496,29 +360,4 @@ export async function listChatMessages(
   };
 }
 
-/**
- * Retrieve recent message history formatted for LLM gateway execution.
- */
-export async function getRecentMessagesForGateway(
-  sessionId: bigint,
-  takeCount = 20
-): Promise<Array<{ role: "system" | "user" | "assistant" | "tool"; content: string }>> {
-  const messages = await db.chatMessage.findMany({
-    where: {
-      sessionId,
-      status: { in: ["completed", "aborted"] },
-    },
-    orderBy: { id: "desc" },
-    take: takeCount,
-    select: {
-      role: true,
-      content: true,
-      parts: true,
-    },
-  });
-
-  return messages.reverse().map((m) => ({
-    role: m.role as "system" | "user" | "assistant" | "tool",
-    content: m.role === "user" ? withQuotedContext(m.content, extractQuotes(m.parts)) : m.content,
-  }));
-}
+export { getRecentMessagesForGateway } from "./gateway-history";

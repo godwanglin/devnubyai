@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
+import { invalidateUserSessionsCache, invalidateUserMeCache } from "@/lib/redis/cache-keys";
 import type { Plan } from "@/generated/client";
 
 export const SESSION_COOKIE_NAME = "devnuby_session";
@@ -198,6 +199,8 @@ export async function createSession(params: {
     },
   });
 
+  await invalidateUserSessionsCache(params.userId);
+
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE_NAME, rawToken, {
     httpOnly: true,
@@ -221,9 +224,19 @@ export async function destroySession(): Promise<void> {
     invalidateSessionTokenCache(token);
     const tokenHash = hashSessionToken(token);
     try {
+      const s = await db.authSession.findUnique({
+        where: { tokenHash },
+        select: { userId: true },
+      });
       await db.authSession.deleteMany({
         where: { tokenHash },
       });
+      if (s) {
+        await Promise.allSettled([
+          invalidateUserSessionsCache(s.userId),
+          invalidateUserMeCache(s.userId),
+        ]);
+      }
     } catch {
       // ignore
     }

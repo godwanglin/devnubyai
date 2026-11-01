@@ -1,6 +1,12 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { uuidv7 } from "@/lib/api/uuidv7";
+import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+  invalidateSharedChatCache,
+} from "@/lib/redis/cache-keys";
 import {
   formatDisplayFilename,
   getExtensionLabel,
@@ -114,6 +120,10 @@ export async function revokeChatShare(
       sharedAt: null,
     },
   });
+
+  if (existing.shareToken) {
+    await invalidateSharedChatCache(existing.shareToken);
+  }
 }
 
 /**
@@ -123,6 +133,11 @@ export async function getPublicSharedChat(shareToken: string): Promise<SharedCha
   const cleanToken = shareToken.trim();
   if (!cleanToken || cleanToken.length !== 36) {
     throw ApiError.notFound("Shared conversation not found");
+  }
+
+  const cached = await getCachedJson<SharedChatDto>(CACHE_KEYS.sharedChat(cleanToken));
+  if (cached) {
+    return cached;
   }
 
   const session = await db.chatSession.findUnique({
@@ -186,13 +201,17 @@ export async function getPublicSharedChat(shareToken: string): Promise<SharedCha
     };
   });
 
-  return {
-    id: session.publicId,
-    title: session.title,
-    sharedAt: session.sharedAt ? session.sharedAt.toISOString() : null,
-    updatedAt: session.updatedAt.toISOString(),
-    messages: formattedMessages,
-  };
+    const result: SharedChatDto = {
+      id: session.publicId,
+      title: session.title,
+      sharedAt: session.sharedAt ? session.sharedAt.toISOString() : null,
+      updatedAt: session.updatedAt.toISOString(),
+      messages: formattedMessages,
+    };
+
+    await setCachedJson(CACHE_KEYS.sharedChat(cleanToken), result, CACHE_TTL.SHARED_CHAT);
+
+    return result;
 }
 
 function rewriteSharedPartsUrls(

@@ -1,6 +1,12 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
+import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+  invalidateSystemPromptsCache,
+} from "@/lib/redis/cache-keys";
 import {
   renderPromptTemplate,
   type SystemPromptDto,
@@ -31,12 +37,21 @@ function toDto(row: {
 async function getActivePrompts() {
   const now = Date.now();
   if (activeCache && now < activeCache.expiresAt) return activeCache.prompts;
+
+  const redisCached = await getCachedJson<Array<{ content: string }>>(CACHE_KEYS.systemPromptsActive());
+  if (redisCached && Array.isArray(redisCached) && redisCached.length > 0) {
+    activeCache = { prompts: redisCached, expiresAt: now + CACHE_TTL_MS };
+    return redisCached;
+  }
+
   const prompts = await db.systemPrompt.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     select: { content: true },
   });
+
   activeCache = { prompts, expiresAt: now + CACHE_TTL_MS };
+  await setCachedJson(CACHE_KEYS.systemPromptsActive(), prompts, CACHE_TTL.SYSTEM_PROMPTS);
   return prompts;
 }
 
@@ -99,8 +114,16 @@ export async function buildSystemPrompt(ctx: PromptContext): Promise<string | nu
 // ───────────── Admin CRUD ─────────────
 
 export async function listSystemPrompts(): Promise<SystemPromptDto[]> {
+  const cached = await getCachedJson<SystemPromptDto[]>(CACHE_KEYS.systemPromptsAll());
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
+  }
+
   const rows = await db.systemPrompt.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
-  return rows.map(toDto);
+  const dtos = rows.map(toDto);
+
+  await setCachedJson(CACHE_KEYS.systemPromptsAll(), dtos, CACHE_TTL.SYSTEM_PROMPTS);
+  return dtos;
 }
 
 export async function createSystemPrompt(
@@ -122,6 +145,7 @@ export async function createSystemPrompt(
     return created;
   });
   activeCache = null;
+  await invalidateSystemPromptsCache();
   return toDto(row);
 }
 
@@ -148,6 +172,7 @@ export async function updateSystemPrompt(
     return updated;
   });
   activeCache = null;
+  await invalidateSystemPromptsCache();
   return toDto(row);
 }
 
@@ -168,4 +193,5 @@ export async function deleteSystemPrompt(publicId: string, actorUserId: bigint):
     );
   });
   activeCache = null;
+  await invalidateSystemPromptsCache();
 }

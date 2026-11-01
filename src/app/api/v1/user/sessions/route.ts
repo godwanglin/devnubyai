@@ -1,6 +1,20 @@
 import { db } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+  invalidateUserSessionsCache,
+} from "@/lib/redis/cache-keys";
+
+interface RawSessionItem {
+  id: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -8,22 +22,39 @@ export async function GET(request: Request) {
   try {
     const ctx = await requireSession();
 
-    const sessions = await db.authSession.findMany({
-      where: {
-        userId: ctx.user.id,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
+    let rawSessions = await getCachedJson<RawSessionItem[]>(
+      CACHE_KEYS.userSessions(ctx.user.id)
+    );
 
-    const mapped = sessions.map((s) => ({
-      id: s.id.toString(),
-      ipAddress: s.ipAddress,
-      userAgent: s.userAgent,
-      createdAt: s.createdAt.toISOString(),
-      expiresAt: s.expiresAt.toISOString(),
-      isCurrent: s.id === ctx.sessionId,
+    if (!rawSessions) {
+      const sessions = await db.authSession.findMany({
+        where: {
+          userId: ctx.user.id,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+
+      rawSessions = sessions.map((s) => ({
+        id: s.id.toString(),
+        ipAddress: s.ipAddress,
+        userAgent: s.userAgent,
+        createdAt: s.createdAt.toISOString(),
+        expiresAt: s.expiresAt.toISOString(),
+      }));
+
+      await setCachedJson(
+        CACHE_KEYS.userSessions(ctx.user.id),
+        rawSessions,
+        CACHE_TTL.USER_SESSIONS
+      );
+    }
+
+    const currentSessionIdStr = ctx.sessionId.toString();
+    const mapped = rawSessions.map((s) => ({
+      ...s,
+      isCurrent: s.id === currentSessionIdStr,
     }));
 
     return jsonSuccess({ sessions: mapped }, { requestId });
@@ -54,6 +85,8 @@ export async function DELETE(request: Request) {
         },
       });
 
+      await invalidateUserSessionsCache(ctx.user.id);
+
       return jsonSuccess({ revoked: true, count: 1 }, { requestId });
     }
 
@@ -64,6 +97,8 @@ export async function DELETE(request: Request) {
         id: { not: ctx.sessionId },
       },
     });
+
+    await invalidateUserSessionsCache(ctx.user.id);
 
     return jsonSuccess({ revoked: true, count: result.count }, { requestId });
   } catch (err) {

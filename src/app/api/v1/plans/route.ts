@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { applyPlanDiscount, isPlanDiscountType, type PlanDiscountType } from "@/lib/plans/pricing";
+import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
 
 export interface PublicPlanModel {
   id: string;
@@ -39,6 +41,11 @@ export async function GET(request: Request) {
   const requestId = getRequestId(request);
 
   try {
+    const cachedPlans = await getCachedJson<PublicPlanItem[]>(CACHE_KEYS.plansPublic());
+    if (cachedPlans && Array.isArray(cachedPlans) && cachedPlans.length > 0) {
+      return jsonSuccess({ plans: cachedPlans }, { requestId });
+    }
+
     const plans = await db.plan.findMany({
       where: {
         isActive: true,
@@ -108,6 +115,8 @@ export async function GET(request: Request) {
         models: activeModels,
       };
     });
+
+    await setCachedJson(CACHE_KEYS.plansPublic(), items, CACHE_TTL.PLANS);
 
     return jsonSuccess({ plans: items }, { requestId });
   } catch (err) {

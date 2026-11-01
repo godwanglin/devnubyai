@@ -21,9 +21,18 @@ function createRedisClient(): Redis | null {
     const client = new Redis(redisUrl, {
       maxRetriesPerRequest: 2,
       enableReadyCheck: true,
+      connectTimeout: 10000,
+      keepAlive: 10000,
       retryStrategy(times) {
         // Exponential backoff capped at 2 seconds
         return Math.min(times * 100, 2000);
+      },
+      reconnectOnError(err) {
+        const targetError = "READONLY";
+        if (err.message.includes(targetError)) {
+          return true;
+        }
+        return false;
       },
       lazyConnect: false,
     });

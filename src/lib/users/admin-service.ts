@@ -3,6 +3,11 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { hashPassword } from "@/lib/auth/password";
+import {
+  invalidateUserQuotaCache,
+  invalidateUserMeCache,
+  invalidateUserSessionsCache,
+} from "@/lib/redis/cache-keys";
 import type { Prisma } from "@/generated/client";
 import type {
   AdminUserListItemDto,
@@ -10,36 +15,13 @@ import type {
   ListUsersFilter,
 } from "./types";
 
-export const createAdminUserSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  email: z.string().trim().email().max(320),
-  password: z.string().min(6).optional().nullable(),
-  role: z.enum(["user", "admin"]).default("user"),
-  status: z.enum(["active", "deactivated", "suspended"]).default("active"),
-  statusReason: z.string().trim().max(500).optional().nullable(),
-  planId: z.string().optional().nullable(),
-});
-
-export const updateAdminUserSchema = z.object({
-  name: z.string().trim().min(1).max(120).optional(),
-  email: z.string().trim().email().max(320).optional(),
-  role: z.enum(["user", "admin"]).optional(),
-  status: z.enum(["active", "deactivated", "suspended"]).optional(),
-  statusReason: z.string().trim().max(500).optional().nullable(),
-  planId: z.string().optional().nullable(),
-  newPassword: z.string().min(6).optional().nullable(),
-  resetChatPin: z.boolean().optional(),
-});
-
-export type CreateAdminUserInput = z.infer<typeof createAdminUserSchema>;
-export type UpdateAdminUserInput = z.infer<typeof updateAdminUserSchema>;
-
-function parseUserId(idOrPublicId: string): { id?: bigint; publicId?: string } {
-  if (/^\d+$/.test(idOrPublicId)) {
-    return { id: BigInt(idOrPublicId) };
-  }
-  return { publicId: idOrPublicId };
-}
+export {
+  createAdminUserSchema,
+  updateAdminUserSchema,
+  type CreateAdminUserInput,
+  type UpdateAdminUserInput,
+} from "./admin-schemas";
+import { parseUserId, type CreateAdminUserInput, type UpdateAdminUserInput } from "./admin-schemas";
 
 export async function listAdminUsers(filter: ListUsersFilter = {}): Promise<{
   users: AdminUserListItemDto[];
@@ -444,6 +426,12 @@ export async function updateAdminUser(
     },
   });
 
+  await Promise.allSettled([
+    invalidateUserMeCache(updated.id),
+    invalidateUserQuotaCache(updated.id),
+    ...(deactivating ? [invalidateUserSessionsCache(updated.id)] : []),
+  ]);
+
   return {
     id: updated.id.toString(),
     publicId: updated.publicId,
@@ -472,72 +460,8 @@ export async function updateAdminUser(
   };
 }
 
-export async function revokeAdminUserSessions(
-  idOrPublicId: string,
-  actorUserId: bigint
-): Promise<{ revokedCount: number }> {
-  const where = parseUserId(idOrPublicId);
-  const user = await db.user.findFirst({ where, select: { id: true, email: true } });
-  if (!user) throw ApiError.notFound("User tidak ditemukan");
-
-  const result = await db.authSession.deleteMany({ where: { userId: user.id } });
-
-  await recordAdminAudit({
-    actorUserId,
-    action: "revoke_sessions",
-    entityType: "user",
-    entityId: user.id.toString(),
-    afterState: { revokedCount: result.count, userEmail: user.email },
-  });
-
-  return { revokedCount: result.count };
-}
-
-export async function resetAdminUserQuota(
-  idOrPublicId: string,
-  actorUserId: bigint
-): Promise<{ success: boolean }> {
-  const where = parseUserId(idOrPublicId);
-  const user = await db.user.findFirst({ where, select: { id: true, email: true } });
-  if (!user) throw ApiError.notFound("User tidak ditemukan");
-
-  await Promise.all([
-    db.userUsageWindow.deleteMany({ where: { userId: user.id } }),
-    db.userUsagePeriod.deleteMany({ where: { userId: user.id } }),
-  ]);
-
-  await recordAdminAudit({
-    actorUserId,
-    action: "reset_quota",
-    entityType: "user",
-    entityId: user.id.toString(),
-    afterState: { userEmail: user.email },
-  });
-
-  return { success: true };
-}
-
-export async function deleteAdminUser(
-  idOrPublicId: string,
-  actorUserId: bigint
-): Promise<{ success: boolean }> {
-  const where = parseUserId(idOrPublicId);
-  const user = await db.user.findFirst({ where, select: { id: true, email: true } });
-  if (!user) throw ApiError.notFound("User tidak ditemukan");
-
-  if (user.id === actorUserId) {
-    throw ApiError.badRequest("Anda tidak dapat menghapus akun Anda sendiri");
-  }
-
-  await db.user.delete({ where: { id: user.id } });
-
-  await recordAdminAudit({
-    actorUserId,
-    action: "delete",
-    entityType: "user",
-    entityId: user.id.toString(),
-    beforeState: { userEmail: user.email },
-  });
-
-  return { success: true };
-}
+export {
+  revokeAdminUserSessions,
+  resetAdminUserQuota,
+  deleteAdminUser,
+} from "./admin-actions";

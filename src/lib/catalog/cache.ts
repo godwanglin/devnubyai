@@ -5,6 +5,7 @@ import {
   invalidateCacheKey,
   invalidateCachePattern,
 } from "@/lib/redis/client";
+import { invalidatePlansCache } from "@/lib/redis/cache-keys";
 import { invalidateResolvedModelCache } from "@/lib/chat/generate";
 import type { ApiModelItem } from "@/app/api/v1/models/route";
 
@@ -168,5 +169,6 @@ export async function invalidateActiveCatalogCache(): Promise<void> {
   await Promise.allSettled([
     invalidateCacheKey(CATALOG_CACHE_KEY),
     invalidateCachePattern("catalog:models:*"),
+    invalidatePlansCache(),
   ]);
 }

@@ -1,6 +1,12 @@
 import { db } from "@/lib/db";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { resolveAssetUrl } from "@/lib/storage/assets";
+import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+  invalidatePaymentMethodsCache,
+} from "@/lib/redis/cache-keys";
 import type { PaymentMethodItem, PaymentMethodCategory, PaymentFlowType } from "./types";
 import type { PaymentMethodCreateInput, PaymentMethodUpdateInput } from "./schemas";
 
@@ -32,12 +38,25 @@ function toPaymentMethodItem(record: any): PaymentMethodItem {
 export async function listPaymentMethods(options?: {
   onlyActive?: boolean;
 }): Promise<PaymentMethodItem[]> {
+  if (options?.onlyActive) {
+    const cached = await getCachedJson<PaymentMethodItem[]>(CACHE_KEYS.paymentMethodsActive());
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
+  }
+
   const records = await db.paymentMethod.findMany({
     where: options?.onlyActive ? { isActive: true } : undefined,
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
 
-  return records.map(toPaymentMethodItem);
+  const items = records.map(toPaymentMethodItem);
+
+  if (options?.onlyActive) {
+    await setCachedJson(CACHE_KEYS.paymentMethodsActive(), items, CACHE_TTL.PAYMENT_METHODS);
+  }
+
+  return items;
 }
 
 export async function getPaymentMethodByPublicId(
@@ -89,6 +108,8 @@ export async function createPaymentMethod(
       afterState: { name: created.name, code: created.code, isActive: created.isActive },
     });
   }
+
+  await invalidatePaymentMethodsCache();
 
   return toPaymentMethodItem(created);
 }
@@ -145,6 +166,8 @@ export async function updatePaymentMethod(
     });
   }
 
+  await invalidatePaymentMethodsCache();
+
   return toPaymentMethodItem(updated);
 }
 
@@ -175,6 +198,8 @@ export async function togglePaymentMethod(
     });
   }
 
+  await invalidatePaymentMethodsCache();
+
   return toPaymentMethodItem(updated);
 }
 
@@ -202,6 +227,8 @@ export async function deletePaymentMethod(
       beforeState: { name: current.name, code: current.code },
     });
   }
+
+  await invalidatePaymentMethodsCache();
 
   return true;
 }

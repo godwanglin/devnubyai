@@ -3,7 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
 // Bump when the Prisma schema changes so dev HMR swaps in a client with the new models
-const PRISMA_SCHEMA_VERSION = "20261101_user_management";
+const PRISMA_SCHEMA_VERSION = "20261101_pool_v2";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -21,9 +21,11 @@ function createPrismaClient(): PrismaClient {
 
   const pool = new Pool({
     connectionString: databaseUrl,
-    max: 10,
+    max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 20000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   });
 
   globalForPrisma.pgPool = pool;

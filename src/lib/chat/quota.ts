@@ -1,5 +1,11 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
+import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import {
+  CACHE_KEYS,
+  CACHE_TTL,
+  invalidateUserQuotaCache,
+} from "@/lib/redis/cache-keys";
 import type { QuotaKind, QuotaNotice } from "./quota-shared";
 
 export interface QuotaCheckResult {
@@ -80,6 +86,11 @@ export async function getUserQuotaWindows(
   userId: bigint,
   plan: { monthlyTokenLimit: bigint | null; weeklyTokenLimit: bigint | null; fiveHourTokenLimit: bigint | null } | null
 ): Promise<UserQuotaWindows> {
+  const cached = await getCachedJson<UserQuotaWindows>(CACHE_KEYS.userQuota(userId));
+  if (cached) {
+    return cached;
+  }
+
   const now = new Date();
   const periodStart = getCurrentPeriodStart(now);
   const weekStart = getUtcWeekStart(now);
@@ -95,7 +106,7 @@ export async function getUserQuotaWindows(
     }),
   ]);
 
-  return {
+  const result: UserQuotaWindows = {
     fiveHour: windowStatus(
       usedTokens(fiveHour),
       positiveLimit(plan?.fiveHourTokenLimit),
@@ -113,6 +124,10 @@ export async function getUserQuotaWindows(
       completionTokens: monthly ? toSafeNumber(monthly.completionTokens) : 0,
     },
   };
+
+  await setCachedJson(CACHE_KEYS.userQuota(userId), result, CACHE_TTL.USER_QUOTA);
+
+  return result;
 }
 
 /** Verify monthly, weekly, five-hour, RPM, and daily request limits. */
@@ -256,5 +271,6 @@ export async function recordUserUsage(
       create: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString(), windowStart: fiveHourStart, windowEnd: fiveHourEnd, requestCount: 1, promptTokens: prompt, completionTokens: completion },
     }),
   ]);
+  await invalidateUserQuotaCache(userId);
   void total;
 }

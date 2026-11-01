@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { invalidateUserMeCache } from "@/lib/redis/cache-keys";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 
 const changePasswordSchema = z
@@ -63,6 +64,8 @@ export async function POST(request: Request) {
       where: { id: user.id },
       data: { passwordHash: hashed },
     });
+
+    await invalidateUserMeCache(user.id);
 
     return jsonSuccess({ success: true, message: "Password berhasil diperbarui" }, { requestId });
   } catch (err) {

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { hashPin, verifyPin } from "@/lib/auth/pin";
+import { invalidateUserMeCache } from "@/lib/redis/cache-keys";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4}$/, "PIN harus berupa 4 digit angka"),
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
       where: { id: user.id },
       data: { chatPinHash: hashed },
     });
+
+    await invalidateUserMeCache(user.id);
 
     return jsonSuccess({ success: true, hasPin: true }, { requestId });
   } catch (err) {
