@@ -1,34 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  Plus,
-  RefreshCw,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  HelpCircle,
-  Zap,
-  RotateCcw,
-  Sparkles,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/tooltip";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { GatewayModal } from "./gateway-modal";
 import { DeleteGatewayModal, SetPrimaryGatewayModal } from "./gateway-confirm-modals";
+import { GatewayTableRow, type TestResult } from "./gateway-table-row";
 import type { SanitizedGatewayDto } from "@/lib/gateways/admin-service";
-
-interface TestResult {
-  testing: boolean;
-  latencyMs?: number;
-  modelsFound?: number;
-  success?: boolean;
-  error?: string;
-}
 
 export function GatewaysTab() {
   const { t } = useI18n();
@@ -44,6 +25,10 @@ export function GatewaysTab() {
   const [deleteTarget, setDeleteTarget] = useState<SanitizedGatewayDto | null>(null);
   const [primaryTarget, setPrimaryTarget] = useState<SanitizedGatewayDto | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Pagination state (default 10)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Testing & Syncing indicators
   const [testStates, setTestStates] = useState<Record<string, TestResult>>({});
@@ -204,38 +189,7 @@ export function GatewaysTab() {
     }
   }
 
-  function renderHealthBadge(status: string) {
-    if (status === "healthy") {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-          <CheckCircle2 className="w-3 h-3" />
-          <span>healthy</span>
-        </span>
-      );
-    }
-    if (status === "degraded") {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
-          <AlertTriangle className="w-3 h-3" />
-          <span>degraded</span>
-        </span>
-      );
-    }
-    if (status === "down") {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/10 text-rose-500 border border-rose-500/20">
-          <XCircle className="w-3 h-3" />
-          <span>down</span>
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
-        <HelpCircle className="w-3 h-3" />
-        <span>unknown</span>
-      </span>
-    );
-  }
+  const displayedGateways = gateways.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="space-y-4">
@@ -289,169 +243,37 @@ export function GatewaysTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
-              {gateways.map((g) => {
-                const isCircuitOpen =
-                  g.circuitOpenUntil && new Date(g.circuitOpenUntil) > new Date();
-                const testState = testStates[g.id];
-                const isSyncing = syncStates[g.id];
-
-                return (
-                  <tr key={g.id} className="hover:bg-[var(--hover)] transition-colors">
-                    {/* Primary selection */}
-                    <td className="py-3 px-3 text-center">
-                      <input
-                        type="radio"
-                        name="primary_gateway"
-                        checked={g.isPrimary}
-                        onChange={() => {
-                          if (!g.isPrimary) setPrimaryTarget(g);
-                        }}
-                        className="cursor-pointer accent-[var(--accent)]"
-                        title={t("admin.gateways.setPrimary")}
-                      />
-                    </td>
-
-                    {/* Name + slug + wire format */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-[var(--ink)] text-sm">{g.name}</span>
-                        {g.isPrimary && (
-                          <span className="px-1.5 py-0.2 rounded-[4px] text-[10px] font-semibold bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/20">
-                            PRIMARY
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--muted)] font-mono">
-                        <span>{g.slug}</span>
-                        <span>•</span>
-                        <span className="px-1 rounded bg-[var(--surface)] border border-[var(--border)]">
-                          {g.wireApi}
-                        </span>
-                        <span>•</span>
-                        <span>prio: {g.priority}</span>
-                      </div>
-                    </td>
-
-                    {/* Base URL & masked API key */}
-                    <td className="py-3 px-4 font-mono">
-                      <div className="text-[12px] text-[var(--ink)] truncate max-w-[280px]" title={g.baseUrl}>
-                        {g.baseUrl}
-                      </div>
-                      <div className="text-[11px] text-[var(--muted)] flex items-center gap-2 mt-0.5">
-                        <span>key: {g.apiKeyLast4 ? `••••${g.apiKeyLast4}` : "none"}</span>
-                        <span>•</span>
-                        <span>{g.modelsPath}</span>
-                      </div>
-                    </td>
-
-                    {/* Health & Circuit */}
-                    <td className="py-3 px-3 text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        {renderHealthBadge(g.healthStatus)}
-                        {isCircuitOpen && (
-                          <div className="flex items-center gap-1">
-                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-red-500/10 text-red-500 border border-red-500/20 font-mono">
-                              Circuit Open
-                            </span>
-                            <Tooltip content={t("admin.gateways.resetCircuit")} side="top">
-                              <button
-                                type="button"
-                                onClick={() => handleResetCircuit(g)}
-                                className="p-1 rounded text-red-500 hover:bg-red-500/20 transition-colors cursor-pointer"
-                                aria-label="Reset circuit"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                              </button>
-                            </Tooltip>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Enabled / Disabled */}
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded-[4px] text-[11px] font-medium ${
-                          g.isEnabled
-                            ? "bg-emerald-500/10 text-emerald-500"
-                            : "bg-zinc-500/10 text-zinc-400"
-                        }`}
-                      >
-                        {g.isEnabled ? t("admin.gateways.enabled") : t("admin.gateways.disabled")}
-                      </span>
-                    </td>
-
-                    {/* Actions toolbar */}
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {testState?.latencyMs !== undefined && (
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                              testState.success
-                                ? "bg-emerald-500/10 text-emerald-500"
-                                : "bg-red-500/10 text-red-500"
-                            }`}
-                          >
-                            {testState.latencyMs}ms
-                          </span>
-                        )}
-
-                        <Tooltip content={t("admin.gateways.test")} side="top">
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            onClick={() => handleTest(g)}
-                            disabled={testState?.testing}
-                            aria-label={t("admin.gateways.test")}
-                          >
-                            <Zap className={`w-3.5 h-3.5 ${testState?.testing ? "animate-pulse text-[var(--accent)]" : ""}`} />
-                          </Button>
-                        </Tooltip>
-
-                        <Tooltip content={t("admin.gateways.sync")} side="top">
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            onClick={() => handleSync(g)}
-                            disabled={isSyncing}
-                            aria-label={t("admin.gateways.sync")}
-                          >
-                            <Sparkles className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-[var(--accent)]" : ""}`} />
-                          </Button>
-                        </Tooltip>
-
-                        <Tooltip content={t("admin.gateways.edit")} side="top">
-                          <Button
-                            variant="secondary"
-                            size="icon-sm"
-                            onClick={() => {
-                              setSelectedGateway(g);
-                              setModalOpen(true);
-                            }}
-                            aria-label={t("admin.gateways.edit")}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                        </Tooltip>
-
-                        <Tooltip content={t("admin.gateways.delete")} side="top">
-                          <Button
-                            variant="danger"
-                            size="icon-sm"
-                            onClick={() => setDeleteTarget(g)}
-                            disabled={g.isPrimary}
-                            aria-label={t("admin.gateways.delete")}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </Tooltip>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {displayedGateways.map((g) => (
+                <GatewayTableRow
+                  key={g.id}
+                  gateway={g}
+                  testState={testStates[g.id]}
+                  isSyncing={syncStates[g.id]}
+                  onSetPrimary={(target) => setPrimaryTarget(target)}
+                  onTest={(target) => handleTest(target)}
+                  onResetCircuit={(target) => handleResetCircuit(target)}
+                  onSyncModels={(target) => handleSync(target)}
+                  onEdit={(target) => {
+                    setSelectedGateway(target);
+                    setModalOpen(true);
+                  }}
+                  onDelete={(target) => setDeleteTarget(target)}
+                  t={t}
+                />
+              ))}
             </tbody>
           </table>
+          <DataTablePagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={gateways.length}
+            onPageChange={setPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(1);
+            }}
+            disabled={loading}
+          />
         </div>
       )}
 

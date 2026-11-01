@@ -13,10 +13,9 @@ import {
   Clock,
   CheckCircle2,
   FileText,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useToast } from "@/providers/toast-provider";
 import { cn } from "@/lib/cn";
 import type { PaymentTransactionItem, TransactionSummaryStats } from "@/lib/payments/types";
@@ -33,6 +32,7 @@ export function PaymentTransactionsView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -46,7 +46,7 @@ export function PaymentTransactionsView() {
       setLoading(true);
       const params = new URLSearchParams();
       params.set("page", page.toString());
-      params.set("limit", "15");
+      params.set("limit", pageSize.toString());
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (search.trim()) params.set("search", search.trim());
 
@@ -64,13 +64,13 @@ export function PaymentTransactionsView() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, search, toast]);
+  }, [page, pageSize, statusFilter, search, toast]);
 
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams();
     params.set("page", page.toString());
-    params.set("limit", "15");
+    params.set("limit", pageSize.toString());
     if (statusFilter !== "ALL") params.set("status", statusFilter);
     if (search.trim()) params.set("search", search.trim());
 
@@ -94,7 +94,7 @@ export function PaymentTransactionsView() {
     return () => {
       active = false;
     };
-  }, [page, statusFilter, search]);
+  }, [page, pageSize, statusFilter, search]);
 
   function copyText(text: string, id: string) {
     void navigator.clipboard.writeText(text);
@@ -350,33 +350,17 @@ export function PaymentTransactionsView() {
         </div>
 
         {/* Pagination Footer */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between p-3 border-t border-[var(--border)] text-xs text-[var(--muted)]">
-            <div>
-              Halaman {page} dari {totalPages} ({totalCount} total)
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="h-7 px-2 border border-[var(--border)]"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={page >= totalPages || loading}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="h-7 px-2 border border-[var(--border)]"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalCount}
+          onPageChange={setPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+          disabled={loading}
+        />
       </div>
 
       {/* Modals */}

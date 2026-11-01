@@ -6,6 +6,7 @@ import { useI18n } from "@/providers/i18n-provider";
 import { dispatchModelsInvalidated } from "@/providers/account-provider";
 import { cn } from "@/lib/cn";
 import { PlanModal, type AdminPlan } from "@/components/admin/plan-modal";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 function formatNumber(value: number | null) {
   if (value == null) return "∞";
@@ -60,6 +61,10 @@ export function PlansTab() {
   const [modalPlan, setModalPlan] = useState<AdminPlan | null | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Pagination state (default 10)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const loadPlans = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -85,6 +90,11 @@ export function PlansTab() {
   const sortedPlans = useMemo(
     () => [...plans].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)),
     [plans]
+  );
+
+  const displayedPlans = useMemo(
+    () => sortedPlans.slice((page - 1) * pageSize, page * pageSize),
+    [sortedPlans, page, pageSize]
   );
 
   async function handleDelete(plan: AdminPlan) {
@@ -154,7 +164,7 @@ export function PlansTab() {
               <tr><td colSpan={6} className="px-4 py-12 text-center text-[var(--muted)]">{t("admin.plans.loading")}</td></tr>
             ) : sortedPlans.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-12 text-center text-[var(--muted)]">{t("admin.plans.empty")}</td></tr>
-            ) : sortedPlans.map((plan) => (
+            ) : displayedPlans.map((plan) => (
               <tr key={plan.id} className="transition-colors hover:bg-[var(--hover)]/40">
                 <td className="px-4 py-4">
                   <div className="flex items-start gap-3">
@@ -202,6 +212,17 @@ export function PlansTab() {
             ))}
           </tbody>
         </table>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={sortedPlans.length}
+          onPageChange={setPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+          disabled={loading}
+        />
       </div>
 
       {modalPlan !== undefined && (

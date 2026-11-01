@@ -10,6 +10,7 @@ import type { PaymentMethodItem } from "@/lib/payments/types";
 import { PaymentMethodModal } from "./payment-method-modal";
 import { resolveAssetUrl } from "@/lib/storage/assets";
 import { SmartImage } from "@/components/ui/smart-image";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 export function PaymentMethodsView() {
   const { toast } = useToast();
@@ -20,6 +21,10 @@ export function PaymentMethodsView() {
   const [deletingMethod, setDeletingMethod] = useState<PaymentMethodItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // Pagination state (default 10)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadMethods = useCallback(async () => {
     try {
@@ -127,6 +132,8 @@ export function PaymentMethodsView() {
     card: "Kartu Kredit/Debit",
   };
 
+  const displayedMethods = methods.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2">
@@ -193,7 +200,7 @@ export function PaymentMethodsView() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {methods.map((method) => {
+          {displayedMethods.map((method) => {
             const isToggling = togglingId === method.publicId;
             return (
               <div
@@ -327,6 +334,20 @@ export function PaymentMethodsView() {
             );
           })}
         </div>
+      )}
+
+      {methods.length > 0 && (
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={methods.length}
+          onPageChange={setPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+          className="rounded-[12px] border border-[var(--border)]"
+        />
       )}
 
       {/* Edit / Add Modal */}

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { useAccount, dispatchModelsInvalidated } from "@/providers/account-provider";
@@ -40,6 +41,10 @@ export function CatalogTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [providerFilter, setProviderFilter] = useState("all");
+
+  // Pagination state (default 10)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modals state
   const [modalOpen, setModalOpen] = useState(false);
@@ -150,6 +155,8 @@ export function CatalogTab() {
     }
   }
 
+  const displayedModels = models.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className="space-y-4">
       {/* Top action header */}
@@ -197,7 +204,10 @@ export function CatalogTab() {
           <input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder={t("admin.catalog.searchPlaceholder")}
             className="w-full pl-8 pr-3 py-1.5 rounded-[8px] border border-[var(--border)] bg-transparent text-xs text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--accent)] outline-none"
           />
@@ -210,7 +220,10 @@ export function CatalogTab() {
               ...providers.map((p) => ({ value: p.id, label: p.name, sublabel: `(${p.slug})` })),
             ]}
             value={providerFilter}
-            onChange={setProviderFilter}
+            onChange={(val) => {
+              setProviderFilter(val);
+              setPage(1);
+            }}
             searchable
           />
         </div>
@@ -224,7 +237,10 @@ export function CatalogTab() {
               { value: "deprecated", label: t("admin.catalog.statusDeprecated") },
             ]}
             value={statusFilter}
-            onChange={setStatusFilter}
+            onChange={(val) => {
+              setStatusFilter(val);
+              setPage(1);
+            }}
           />
         </div>
       </div>
@@ -258,7 +274,7 @@ export function CatalogTab() {
                   </td>
                 </tr>
               ) : (
-                models.map((m) => (
+                displayedModels.map((m) => (
                   <tr key={m.id} className="hover:bg-[var(--hover)] transition-colors">
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1.5">
@@ -369,6 +385,17 @@ export function CatalogTab() {
             </tbody>
           </table>
         </div>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={models.length}
+          onPageChange={setPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+          disabled={loading}
+        />
       </div>
 
       <CatalogModelModal

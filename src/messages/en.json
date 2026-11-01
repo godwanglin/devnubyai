@@ -485,6 +485,15 @@
     "title": "Admin Console",
     "backToChat": "Back to Chat",
     "badge": "Admin",
+    "pagination": {
+      "rowsPerPage": "Rows per page:",
+      "showing": "Showing {from}-{to} of {total} items",
+      "pageOf": "Page {page} of {totalPages}",
+      "first": "First page",
+      "prev": "Previous",
+      "next": "Next",
+      "last": "Last page"
+    },
     "groups": {
       "ai": "AI & Routing",
       "management": "Management",

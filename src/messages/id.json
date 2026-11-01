@@ -485,6 +485,15 @@
     "title": "Admin Console",
     "backToChat": "Kembali ke Percakapan",
     "badge": "Admin",
+    "pagination": {
+      "rowsPerPage": "Baris per halaman:",
+      "showing": "Menampilkan {from}-{to} dari {total} data",
+      "pageOf": "Halaman {page} dari {totalPages}",
+      "first": "Halaman Pertama",
+      "prev": "Sebelumnya",
+      "next": "Berikutnya",
+      "last": "Halaman Terakhir"
+    },
     "groups": {
       "ai": "AI & Routing",
       "management": "Manajemen",

@@ -6,13 +6,6 @@ import {
   RefreshCw,
   UserPlus,
   Download,
-  Pencil,
-  Eye,
-  Trash2,
-  ShieldCheck,
-  ChevronLeft,
-  ChevronRight,
-  ShieldAlert,
 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -21,8 +14,10 @@ import type { AdminUserListItemDto } from "@/lib/users/types";
 import { UserEditModal } from "@/components/admin/user-edit-modal";
 import { CreateUserModal } from "@/components/admin/create-user-modal";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
+import { UserTableRow } from "@/components/admin/user-table-row";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 interface PlanOption {
   id: string;
@@ -38,6 +33,7 @@ export function UsersTab() {
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +80,7 @@ export function UsersTab() {
     try {
       const params = new URLSearchParams();
       params.set("page", page.toString());
-      params.set("limit", "15");
+      params.set("limit", pageSize.toString());
       if (searchTerm) params.set("search", searchTerm);
       if (roleFilter !== "all") params.set("role", roleFilter);
       if (statusFilter !== "all") params.set("status", statusFilter);
@@ -102,13 +98,13 @@ export function UsersTab() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchTerm, roleFilter, statusFilter, planFilter]);
+  }, [page, pageSize, searchTerm, roleFilter, statusFilter, planFilter]);
 
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams();
     params.set("page", page.toString());
-    params.set("limit", "15");
+    params.set("limit", pageSize.toString());
     if (searchTerm) params.set("search", searchTerm);
     if (roleFilter !== "all") params.set("role", roleFilter);
     if (statusFilter !== "all") params.set("status", statusFilter);
@@ -137,7 +133,7 @@ export function UsersTab() {
     return () => {
       active = false;
     };
-  }, [page, searchTerm, roleFilter, statusFilter, planFilter]);
+  }, [page, pageSize, searchTerm, roleFilter, statusFilter, planFilter]);
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -316,170 +312,31 @@ export function UsersTab() {
                 </td>
               </tr>
             ) : (
-              users.map((u) => {
-                const isActive = u.status === "active";
-                return (
-                  <tr key={u.id} className="transition-colors hover:bg-[var(--hover)]/40">
-                    {/* User info */}
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/10 text-xs font-bold text-[var(--primary)]">
-                          {u.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-semibold text-xs text-[var(--ink)] truncate max-w-[200px]">
-                            {u.name}
-                          </div>
-                          <div className="text-[11px] text-[var(--muted)] truncate max-w-[200px]">
-                            {u.email}
-                          </div>
-                          <div className="font-mono text-[9px] text-[var(--muted)] mt-0.5">
-                            {u.publicId.slice(0, 13)}...
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Role */}
-                    <td className="px-4 py-3.5">
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                          u.role === "admin"
-                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                            : "bg-[var(--hover)] text-[var(--muted)] border border-[var(--border)]"
-                        )}
-                      >
-                        {u.role === "admin" && <ShieldCheck className="h-3 w-3" />}
-                        {u.role}
-                      </span>
-                    </td>
-
-                    {/* Plan */}
-                    <td className="px-4 py-3.5">
-                      <span className="inline-block rounded-[6px] border border-[var(--border)] bg-[var(--panel)] px-2 py-0.5 text-xs font-medium text-[var(--ink)]">
-                        {u.planName || "Free Plan"}
-                      </span>
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-4 py-3.5">
-                      <div className="flex flex-col items-start gap-1">
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border",
-                            isActive
-                              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                              : "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                          )}
-                        >
-                          {isActive ? t("admin.users.statusActive") : t("admin.users.statusDeactivated")}
-                        </span>
-                        {!isActive && u.statusReason && (
-                          <span
-                            title={u.statusReason}
-                            className="max-w-[140px] truncate text-[10px] text-[var(--muted)] flex items-center gap-1"
-                          >
-                            <ShieldAlert className="h-2.5 w-2.5 text-rose-500 shrink-0" />
-                            {u.statusReason}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Activity */}
-                    <td className="px-4 py-3.5 text-xs text-[var(--muted)]">
-                      <div>
-                        {u.lastLoginAt ? (
-                          <span>{new Date(u.lastLoginAt).toLocaleDateString("id-ID")}</span>
-                        ) : (
-                          <span className="italic text-[10px]">{t("admin.users.neverLoggedIn")}</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-[var(--muted)] mt-0.5">
-                        Dibuat: {new Date(u.createdAt).toLocaleDateString("id-ID")}
-                      </div>
-                    </td>
-
-                    {/* Usage & Sessions */}
-                    <td className="px-4 py-3.5 text-xs">
-                      <div className="font-medium text-[var(--ink)]">
-                        {new Intl.NumberFormat("id-ID").format(
-                          u.stats.totalPromptTokens + u.stats.totalCompletionTokens
-                        )}{" "}
-                        token
-                      </div>
-                      <div className="text-[10px] text-emerald-500 font-medium mt-0.5">
-                        {u.stats.activeSessionsCount} sesi aktif
-                      </div>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-3.5 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setDetailUserId(u.id)}
-                          title={t("admin.users.viewDetail")}
-                          className="rounded-[6px] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingUser(u)}
-                          title={t("admin.users.editUser")}
-                          className="rounded-[6px] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingUser(u)}
-                          title={t("admin.users.deleteUser")}
-                          className="rounded-[6px] p-1.5 text-rose-500/80 transition-colors hover:bg-rose-500/10 hover:text-rose-500"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
+              users.map((u) => (
+                <UserTableRow
+                  key={u.id}
+                  user={u}
+                  onDetail={(id) => setDetailUserId(id)}
+                  onEdit={(user) => setEditingUser(user)}
+                  onDelete={(user) => setDeletingUser(user)}
+                  t={t}
+                />
+              ))
             )}
           </tbody>
         </table>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={total}
+          onPageChange={setPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+          disabled={loading}
+        />
       </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-xs text-[var(--muted)] px-1">
-          <div>
-            {t("admin.users.pagination").replace("{from}", ((page - 1) * 15 + 1).toString()).replace("{to}", Math.min(page * 15, total).toString()).replace("{total}", total.toString())}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-[6px] border border-[var(--border)] p-1.5 disabled:opacity-40 hover:bg-[var(--hover)]"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            <span className="px-2">
-              {t("admin.users.pageOf").replace("{page}", page.toString()).replace("{totalPages}", totalPages.toString())}
-            </span>
-            <button
-              type="button"
-              disabled={page >= totalPages || loading}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-[6px] border border-[var(--border)] p-1.5 disabled:opacity-40 hover:bg-[var(--hover)]"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Modals */}
       {editingUser && (

@@ -10,6 +10,7 @@ import { useToast } from "@/providers/toast-provider";
 import { cn } from "@/lib/cn";
 import { PROMPT_PLACEHOLDERS, type SystemPromptDto } from "@/lib/chat/system-prompts-shared";
 import { SystemPromptModal } from "./system-prompt-modal";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
 export function SystemPromptsTab() {
   const { t } = useI18n();
@@ -21,6 +22,10 @@ export function SystemPromptsTab() {
   const [deleting, setDeleting] = useState<SystemPromptDto | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // Pagination state (default 10)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +80,8 @@ export function SystemPromptsTab() {
     }
   }
 
+  const displayedPrompts = (prompts ?? []).slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -104,7 +111,7 @@ export function SystemPromptsTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {prompts.map((prompt) => (
+          {displayedPrompts.map((prompt) => (
             <div
               key={prompt.id}
               className={cn(
@@ -171,6 +178,17 @@ export function SystemPromptsTab() {
               </div>
             </div>
           ))}
+          <DataTablePagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={prompts.length}
+            onPageChange={setPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(1);
+            }}
+            className="rounded-[12px] border border-[var(--border)]"
+          />
         </div>
       )}
 

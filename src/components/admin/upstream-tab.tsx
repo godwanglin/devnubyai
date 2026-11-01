@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
-import { ChevronLeft, ChevronRight, Copy, Eye, Search } from "lucide-react";
+import { Copy, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { UpstreamMetadataModal } from "@/components/admin/upstream-metadata-modal";
@@ -40,7 +41,8 @@ export function UpstreamTab() {
   const [gatewayId, setGatewayId] = React.useState("");
   const [available, setAvailable] = React.useState("all");
   const [page, setPage] = React.useState(1);
-  const [pageInfo, setPageInfo] = React.useState({ total: 0, totalPages: 1, pageSize: 50 });
+  const [pageSize, setPageSize] = React.useState(10);
+  const [pageInfo, setPageInfo] = React.useState({ total: 0, totalPages: 1, pageSize: 10 });
   const [loading, setLoading] = React.useState(true);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [selectedModel, setSelectedModel] = React.useState<SanitizedUpstreamModelDetailDto | null>(null);
@@ -56,7 +58,7 @@ export function UpstreamTab() {
     await Promise.resolve();
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), pageSize: "50", available });
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), available });
       if (search.trim()) params.set("search", search.trim());
       if (gatewayId) params.set("gatewayId", gatewayId);
       const response = await fetch(`/api/v1/admin/upstream-models?${params.toString()}`, { credentials: "same-origin" });
@@ -69,7 +71,7 @@ export function UpstreamTab() {
     } finally {
       setLoading(false);
     }
-  }, [available, gatewayId, page, search, toast]);
+  }, [available, gatewayId, page, pageSize, search, toast]);
 
   const hasLoadedGatewaysRef = React.useRef(false);
   React.useEffect(() => {
@@ -169,7 +171,17 @@ export function UpstreamTab() {
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-3 text-xs text-[var(--muted)]"><span>{t("admin.upstream.pagination", { page, totalPages: pageInfo.totalPages, total: pageInfo.total })}</span><div className="flex gap-1"><Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}><ChevronLeft className="h-4 w-4" />{t("admin.upstream.previous")}</Button><Button variant="ghost" size="sm" disabled={page >= pageInfo.totalPages} onClick={() => setPage((value) => Math.min(pageInfo.totalPages, value + 1))}>{t("admin.upstream.next")}<ChevronRight className="h-4 w-4" /></Button></div></div>
+        <DataTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={pageInfo.total}
+          onPageChange={setPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+          disabled={loading}
+        />
       </div>
       <UpstreamMetadataModal model={selectedModel} onClose={() => setSelectedModel(null)} />
     </div>
