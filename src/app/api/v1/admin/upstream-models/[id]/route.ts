@@ -4,6 +4,7 @@ import {
   getSanitizedUpstreamModel,
   toggleUpstreamModelAvailability,
   updateUpstreamModelSchema,
+  deleteUpstreamModel,
 } from "@/lib/upstream-models/admin-service";
 
 interface RouteContext {
@@ -61,6 +62,30 @@ export async function PATCH(
     );
 
     return jsonSuccess({ model: updated }, { requestId });
+  } catch (err) {
+    return jsonError(err, { requestId });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  context: RouteContext
+) {
+  const requestId = getRequestId(request);
+
+  try {
+    const adminUser = await requireAdmin();
+    const { id: rawId } = await context.params;
+
+    let id: bigint;
+    try {
+      id = BigInt(rawId);
+    } catch {
+      throw ApiError.badRequest("Invalid model ID");
+    }
+
+    await deleteUpstreamModel(id, adminUser.id);
+    return jsonSuccess({ deleted: true }, { requestId });
   } catch (err) {
     return jsonError(err, { requestId });
   }

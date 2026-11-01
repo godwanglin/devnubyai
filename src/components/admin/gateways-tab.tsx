@@ -118,8 +118,8 @@ export function GatewaysTab() {
       }
       toast(
         t("admin.gateways.syncSuccess", {
-          synced: json.data.syncedCount,
-          unavailable: json.data.unavailableCount,
+          synced: json.data.syncedCount ?? 0,
+          deleted: json.data.deletedCount ?? 0,
         })
       );
       fetchGateways();

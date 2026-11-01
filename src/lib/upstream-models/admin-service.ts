@@ -331,3 +331,147 @@ export async function toggleUpstreamModelAvailability(
     },
   };
 }
+
+export const createUpstreamModelSchema = z.object({
+  gatewayId: z.string().min(1, "Gateway is required"),
+  modelKey: z.string().trim().min(1, "Model key is required").max(191),
+  ownedBy: z.string().trim().max(191).optional().nullable(),
+  isAvailable: z.boolean().default(true),
+  rawMetadata: z.record(z.string(), z.unknown()).optional().nullable(),
+});
+
+export type CreateUpstreamModelInput = z.infer<typeof createUpstreamModelSchema>;
+
+export async function createUpstreamModel(
+  input: CreateUpstreamModelInput,
+  actorUserId: bigint
+): Promise<SanitizedUpstreamModelDto> {
+  let gatewayId: bigint;
+  try {
+    gatewayId = BigInt(input.gatewayId);
+  } catch {
+    throw ApiError.badRequest("Invalid gatewayId");
+  }
+
+  const gateway = await db.gateway.findUnique({
+    where: { id: gatewayId },
+    select: { id: true, name: true, slug: true, isEnabled: true, healthStatus: true },
+  });
+  if (!gateway) {
+    throw ApiError.notFound("Gateway not found");
+  }
+
+  const now = new Date();
+  const created = await db.$transaction(async (tx) => {
+    const model = await tx.upstreamModel.upsert({
+      where: {
+        gatewayId_modelKey: {
+          gatewayId,
+          modelKey: input.modelKey,
+        },
+      },
+      create: {
+        gatewayId,
+        modelKey: input.modelKey,
+        ownedBy: input.ownedBy || null,
+        isAvailable: input.isAvailable ?? true,
+        rawMetadata: (input.rawMetadata as Prisma.InputJsonValue) ?? undefined,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      },
+      update: {
+        ownedBy: input.ownedBy || null,
+        isAvailable: input.isAvailable ?? true,
+        rawMetadata: (input.rawMetadata as Prisma.InputJsonValue) ?? undefined,
+        lastSeenAt: now,
+      },
+      include: {
+        gateway: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            isEnabled: true,
+            healthStatus: true,
+          },
+        },
+        _count: {
+          select: { routes: true },
+        },
+      },
+    });
+
+    await recordAdminAudit(
+      {
+        actorUserId,
+        action: "upstream_model.create",
+        entityType: "upstream_model",
+        entityId: model.id.toString(),
+        afterState: {
+          modelKey: model.modelKey,
+          gatewayId: gatewayId.toString(),
+          isAvailable: model.isAvailable,
+          ownedBy: model.ownedBy,
+        },
+      },
+      tx
+    );
+
+    await bumpRoutingVersion(actorUserId, tx);
+
+    return model;
+  });
+
+  return {
+    id: created.id.toString(),
+    gatewayId: created.gatewayId.toString(),
+    modelKey: created.modelKey,
+    ownedBy: created.ownedBy,
+    isAvailable: Boolean(created.isAvailable),
+    firstSeenAt: created.firstSeenAt.toISOString(),
+    lastSeenAt: created.lastSeenAt.toISOString(),
+    createdAt: created.createdAt.toISOString(),
+    updatedAt: created.updatedAt.toISOString(),
+    routesCount: created._count.routes,
+    gateway: {
+      id: created.gateway.id.toString(),
+      name: created.gateway.name,
+      slug: created.gateway.slug,
+      isEnabled: Boolean(created.gateway.isEnabled),
+      healthStatus: created.gateway.healthStatus,
+    },
+  };
+}
+
+export async function deleteUpstreamModel(id: bigint, actorUserId: bigint): Promise<void> {
+  const existing = await db.upstreamModel.findUnique({
+    where: { id },
+    select: { id: true, modelKey: true, gatewayId: true },
+  });
+
+  if (!existing) {
+    throw ApiError.notFound("Upstream model not found");
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.upstreamModel.delete({
+      where: { id },
+    });
+
+    await recordAdminAudit(
+      {
+        actorUserId,
+        action: "upstream_model.delete",
+        entityType: "upstream_model",
+        entityId: id.toString(),
+        beforeState: {
+          modelKey: existing.modelKey,
+          gatewayId: existing.gatewayId.toString(),
+        },
+      },
+      tx
+    );
+
+    await bumpRoutingVersion(actorUserId, tx);
+  });
+}

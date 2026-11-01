@@ -269,3 +269,26 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
     availableDates,
   };
 }
+
+/**
+ * Safely unlinks a daily log file (e.g. "2026-11-01" or "2026-11-01.log") from the .logs directory.
+ */
+export async function deleteLogFile(dateStr: string): Promise<boolean> {
+  const cleanDate = dateStr.replace(/\.log$/, "").trim();
+  // Sanity check to avoid path traversal
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+    throw new Error("Invalid date format. Expected YYYY-MM-DD");
+  }
+
+  const filePath = path.join(LOG_DIR, `${cleanDate}.log`);
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error(`[FILE_LOGGER_DELETE_ERR] failed deleting ${filePath}:`, err);
+    throw err;
+  }
+}

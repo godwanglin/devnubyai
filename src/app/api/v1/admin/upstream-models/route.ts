@@ -3,6 +3,8 @@ import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import {
   listSanitizedUpstreamModels,
   listUpstreamModelsQuerySchema,
+  createUpstreamModel,
+  createUpstreamModelSchema,
 } from "@/lib/upstream-models/admin-service";
 
 export async function GET(request: Request) {
@@ -22,6 +24,21 @@ export async function GET(request: Request) {
 
     const result = await listSanitizedUpstreamModels(parsedQuery);
     return jsonSuccess(result, { requestId });
+  } catch (err) {
+    return jsonError(err, { requestId });
+  }
+}
+
+export async function POST(request: Request) {
+  const requestId = getRequestId(request);
+
+  try {
+    const adminUser = await requireAdmin();
+    const body = await request.json().catch(() => ({}));
+    const parsed = createUpstreamModelSchema.parse(body);
+
+    const model = await createUpstreamModel(parsed, adminUser.id);
+    return jsonSuccess({ model }, { requestId, status: 201 });
   } catch (err) {
     return jsonError(err, { requestId });
   }

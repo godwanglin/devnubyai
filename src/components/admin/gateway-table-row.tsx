@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -8,7 +9,8 @@ import {
   HelpCircle,
   Zap,
   RotateCcw,
-  Sparkles,
+  RefreshCw,
+  ExternalLink,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -179,8 +181,17 @@ export function GatewayTableRow({
 
           <Tooltip content={t("admin.gateways.syncModels")}>
             <Button variant="ghost" size="sm" disabled={isSyncing} onClick={() => onSyncModels(g)}>
-              <Sparkles className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-[var(--accent)]" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-[var(--accent)]" : ""}`} />
             </Button>
+          </Tooltip>
+
+          <Tooltip content={t("admin.gateways.viewUpstream")}>
+            <Link
+              href={`/admin/upstream?gatewayId=${g.id}`}
+              className="inline-flex items-center justify-center h-8 w-8 rounded-[8px] hover:bg-[var(--hover)] text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
           </Tooltip>
 
           <Tooltip content={t("admin.gateways.edit")}>

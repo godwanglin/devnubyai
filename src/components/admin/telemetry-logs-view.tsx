@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Search, Copy, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Search, Copy, CheckCircle2, AlertTriangle, XCircle, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import type { SanitizedRoutingAttemptDto } from "@/lib/logs/admin-service";
@@ -22,6 +24,10 @@ export function TelemetryLogsView() {
   const [outcome, setOutcome] = useState("all");
   const [date, setDate] = useState("");
   const [availableLogDates, setAvailableLogDates] = useState<string[]>([]);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const activeDate = date || availableLogDates[0] || "";
 
   const fetchTelemetry = useCallback(async () => {
     setLoading(true);
@@ -59,6 +65,33 @@ export function TelemetryLogsView() {
     return () => clearTimeout(timer);
   }, [fetchTelemetry]);
 
+  async function handleDeleteLogFile() {
+    if (!activeDate) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/v1/admin/logs/routing-attempts?date=${encodeURIComponent(activeDate)}`,
+        {
+          method: "DELETE",
+          credentials: "same-origin",
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error?.message || "Failed to delete log file");
+      }
+      toast(t("admin.logs.deleteSuccess", { date: activeDate }));
+      setDeleteConfirmOpen(false);
+      setDate("");
+      setPage(1);
+      void fetchTelemetry();
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : "Failed to delete log file");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* Filter Bar */}
@@ -94,18 +127,30 @@ export function TelemetryLogsView() {
           />
         </div>
         {availableLogDates.length > 0 && (
-          <div className="w-full sm:w-44">
-            <CustomSelect
-              options={availableLogDates.map((d) => ({
-                value: d,
-                label: d,
-              }))}
-              value={date || availableLogDates[0]}
-              onChange={(val) => {
-                setPage(1);
-                setDate(val);
-              }}
-            />
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <div className="w-full sm:w-44">
+              <CustomSelect
+                options={availableLogDates.map((d) => ({
+                  value: d,
+                  label: d,
+                }))}
+                value={activeDate}
+                onChange={(val) => {
+                  setPage(1);
+                  setDate(val);
+                }}
+              />
+            </div>
+            <Tooltip content={t("admin.logs.deleteLogFile")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteConfirmOpen(true)}
+                className="h-9 w-9 px-0 text-[var(--muted)] hover:text-rose-500 hover:bg-rose-500/10"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -233,6 +278,18 @@ export function TelemetryLogsView() {
           disabled={loading}
         />
       </div>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteLogFile}
+        title={t("admin.logs.deleteConfirmTitle")}
+        description={t("admin.logs.deleteConfirmDesc", { date: activeDate })}
+        confirmLabel={t("admin.logs.deleteConfirmButton")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        loading={isDeleting}
+      />
     </div>
   );
 }

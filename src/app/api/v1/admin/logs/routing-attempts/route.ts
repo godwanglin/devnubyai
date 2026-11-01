@@ -1,9 +1,10 @@
 import { requireAdmin } from "@/lib/auth/session";
-import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import {
   listRoutingAttempts,
   routingAttemptsQuerySchema,
 } from "@/lib/logs/admin-service";
+import { deleteLogFile } from "@/lib/logger/file-logger";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -23,6 +24,24 @@ export async function GET(request: Request) {
 
     const result = await listRoutingAttempts(parsedQuery);
     return jsonSuccess(result, { requestId });
+  } catch (err) {
+    return jsonError(err, { requestId });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const requestId = getRequestId(request);
+
+  try {
+    await requireAdmin();
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get("date");
+    if (!date) {
+      throw ApiError.badRequest("Date parameter (YYYY-MM-DD) is required to delete log file");
+    }
+
+    const deleted = await deleteLogFile(date);
+    return jsonSuccess({ deleted, date }, { requestId });
   } catch (err) {
     return jsonError(err, { requestId });
   }
