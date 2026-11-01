@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth/session";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { createDokuCheckout, DokuApiError } from "@/lib/doku/client";
-import { dokuCheckoutRequestSchema } from "@/lib/doku/schemas";
+import { dokuCheckoutRequestSchema, DEFAULT_CUSTOMER_PHONE } from "@/lib/doku/schemas";
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         id: parsed.data.customer.id || user.id.toString(),
         name: parsed.data.customer.name || user.name || "Customer",
         email: parsed.data.customer.email || user.email,
-        phone: parsed.data.customer.phone || "",
+        phone: parsed.data.customer.phone?.trim() || DEFAULT_CUSTOMER_PHONE,
       },
     };
 

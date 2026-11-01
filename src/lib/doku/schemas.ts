@@ -21,11 +21,17 @@ export const dokuSettingsPatchSchema = z.object({
 
 export type DokuSettingsPatch = z.infer<typeof dokuSettingsPatchSchema>;
 
+export const DEFAULT_CUSTOMER_PHONE = "088220783426";
+
 export const dokuCheckoutCustomerSchema = z.object({
   id: z.string().optional(),
   name: z.string().trim().min(1, "Customer name is required"),
   email: z.string().trim().email("Invalid customer email"),
-  phone: z.string().trim().optional(),
+  phone: z
+    .string()
+    .trim()
+    .optional()
+    .transform((val) => (val && val.length > 0 ? val : DEFAULT_CUSTOMER_PHONE)),
 });
 
 export const dokuCheckoutItemSchema = z.object({

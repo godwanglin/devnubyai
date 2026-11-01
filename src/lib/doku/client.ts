@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { DEFAULT_CUSTOMER_PHONE } from "./schemas";
 import type {
   DokuConfig,
   DokuCheckoutRequest,
@@ -175,7 +176,7 @@ export async function createDokuCheckout(
       id: request.customer.id || `CUST-${crypto.randomBytes(4).toString("hex")}`,
       name: request.customer.name,
       email: request.customer.email,
-      phone: request.customer.phone || "",
+      phone: request.customer.phone?.trim() || DEFAULT_CUSTOMER_PHONE,
     },
   };
 
@@ -321,9 +322,9 @@ export async function createDokuDirectVa(
       info3: request.info3 || "Terima Kasih",
     },
     customer: {
-      // name: "TECH",
       name: request.customer.name,
-      email: request.customer.email,  
+      email: request.customer.email,
+      phone: request.customer.phone?.trim() || DEFAULT_CUSTOMER_PHONE,
     },
   };
 

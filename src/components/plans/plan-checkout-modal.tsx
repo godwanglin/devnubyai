@@ -132,6 +132,7 @@ export function PlanCheckoutModal({
             customer: {
               name: user?.name || "DevNuby Customer",
               email: user?.email || "customer@devnuby.ai",
+              phone: "088220783426",
             },
           }),
         });
@@ -154,6 +155,7 @@ export function PlanCheckoutModal({
             customer: {
               name: user?.name || "DevNuby Customer",
               email: user?.email || "customer@devnuby.ai",
+              phone: "088220783426",
             },
             items: [
               {
