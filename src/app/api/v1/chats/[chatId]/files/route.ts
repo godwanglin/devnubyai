@@ -75,11 +75,14 @@ export async function POST(request: Request, context: RouteContext) {
     const formData = await request.formData();
     const file = formData.get("file");
     const rawSource = formData.get("source");
-    const fileSource = rawSource === "tool" ? "tool" : "upload";
 
     if (!file || typeof file === "string" || !(file instanceof Blob)) {
       throw ApiError.badRequest("No valid file provided in request");
     }
+
+    // Client-labelled "tool" uploads only exist for code-execution chart images;
+    // anything else counts against the user's own upload quota.
+    const fileSource = rawSource === "tool" && isImageMimeType(file.type || "") ? "tool" : "upload";
 
     const rawName = (file as File).name || "unnamed-file";
     const fileSize = file.size;
