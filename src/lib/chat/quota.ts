@@ -310,3 +310,23 @@ export async function recordUserUsage(userId: bigint, input: RecordUsageInput): 
   ]);
   await invalidateUserQuotaCache(userId);
 }
+
+/**
+ * Bills a stream that stopped or failed after producing output, so aborting
+ * mid-generation is not free. Providers often report usage only at the end,
+ * so missing counts fall back to a ~4 chars/token estimate. Never throws.
+ */
+export async function recordPartialUsage(
+  userId: bigint,
+  input: RecordUsageInput & { generatedChars: number; promptChars: () => number }
+): Promise<void> {
+  const { generatedChars, promptChars, ...usage } = input;
+  if (usage.promptTokens <= 0 && usage.completionTokens <= 0 && generatedChars <= 0) return;
+  await recordUserUsage(userId, {
+    ...usage,
+    promptTokens: usage.promptTokens > 0 ? usage.promptTokens : Math.ceil(promptChars() / 4),
+    completionTokens: Math.max(usage.completionTokens, Math.ceil(generatedChars / 4)),
+  }).catch((err) => {
+    console.error("[USAGE_RECORD_ERROR]", err);
+  });
+}

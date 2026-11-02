@@ -6,7 +6,7 @@ import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool, type ToolExecutionResult } from "@/lib/tools";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
-import { recordUserUsage } from "@/lib/chat/quota";
+import { recordPartialUsage, recordUserUsage, type RecordUsageInput } from "@/lib/chat/quota";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
 import { startStreamHub } from "@/lib/chat/stream-hub";
@@ -211,6 +211,9 @@ export function createChatGenerationStream(
       let fullReasoning = "";
       let promptTokens = 0;
       let completionTokens = 0;
+      // Set once the model is resolved, so aborted/failed streams can still be billed
+      let billedModel: RecordUsageInput["model"] | null = null;
+      let estimatePromptChars = () => 0;
 
       const cleanup = () => {
         unregisterStream(assistantMessagePublicId, streamController);
@@ -245,6 +248,8 @@ export function createChatGenerationStream(
 
         // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
+        billedModel = resolvedModel;
+        estimatePromptChars = () => JSON.stringify(currentMessages).length;
 
         // Parallelize initial DB lookups (sessionFiles, user, chatSettings) to minimize TTFT
         const [sessionFiles, user, chatSettings, sessionProject] = await Promise.all([
@@ -846,6 +851,7 @@ export function createChatGenerationStream(
         });
 
         // Always record usage (priced from the model's catalog rates) so requestCount moves even at $0
+        billedModel = null;
         await recordUserUsage(userId, {
           promptTokens,
           completionTokens,
@@ -897,6 +903,14 @@ export function createChatGenerationStream(
             },
           })
           .catch(() => {});
+
+        if (billedModel && !isUpstreamRateLimit) {
+          await recordPartialUsage(userId, {
+            promptTokens, completionTokens, model: billedModel, sessionId, messageId: assistantMessageId, requestId,
+            generatedChars: fullContent.length + fullReasoning.length,
+            promptChars: estimatePromptChars,
+          });
+        }
 
         if (isAbort) {
           writer.write({
