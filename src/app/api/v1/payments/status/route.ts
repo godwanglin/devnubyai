@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { checkDokuOrderStatus } from "@/lib/doku/client";
-import type { Prisma } from "@/generated/client";
+import { applyDokuSettlement } from "@/lib/payments/settlement";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -40,38 +40,16 @@ export async function GET(request: Request) {
         try {
           const dokuStatus = await checkDokuOrderStatus(config, invoiceNumber);
           const dokuTx = dokuStatus?.transaction as { status?: string } | undefined;
-          if (dokuTx?.status === "SUCCESS") {
-            status = "PAID";
-            paidAt = new Date();
-
-            await db.paymentTransaction.update({
-              where: { invoiceNumber },
-              data: {
-                status: "PAID",
-                paidAt,
-                dokuResponse: dokuStatus as unknown as Prisma.InputJsonValue,
-              },
-            });
-
-            // If transaction has plan metadata, activate plan
-            const metadata = tx.metadata as Record<string, unknown> | null;
-            const rawPlanId = metadata?.planId;
-            if (rawPlanId && tx.userId) {
-              try {
-                await db.user.update({
-                  where: { id: tx.userId },
-                  data: { planId: BigInt(String(rawPlanId)) },
-                });
-              } catch (e) {
-                console.error(`Failed to assign plan to user ${tx.userId}:`, e);
-              }
+          if (dokuTx?.status === "SUCCESS" || dokuTx?.status === "FAILED") {
+            const settled = await applyDokuSettlement(
+              invoiceNumber,
+              dokuTx.status === "SUCCESS" ? "PAID" : "FAILED",
+              dokuStatus
+            );
+            if (settled) {
+              status = settled.status;
+              paidAt = settled.paidAt;
             }
-          } else if (dokuTx?.status === "FAILED") {
-            status = "FAILED";
-            await db.paymentTransaction.update({
-              where: { invoiceNumber },
-              data: { status: "FAILED" },
-            });
           }
         } catch {
           // If check fails (e.g. not yet synced in DOKU or sandbox mock), fallback to DB status

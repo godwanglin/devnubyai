@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { verifyDokuSignature } from "@/lib/doku/client";
+import { applyDokuSettlement } from "@/lib/payments/settlement";
 import type { DokuNotificationPayload } from "@/lib/doku/types";
-import type { Prisma } from "@/generated/client";
 
 export async function POST(request: Request) {
   const targetPath = new URL(request.url).pathname;
@@ -58,38 +57,8 @@ export async function POST(request: Request) {
   const amount = payload?.order?.amount;
 
   if (invoiceNumber) {
-    const isSuccess = status === "SUCCESS";
-    const newStatus = isSuccess ? "PAID" : status === "FAILED" ? "FAILED" : "PENDING";
-
-    const tx = await db.paymentTransaction.findUnique({
-      where: { invoiceNumber },
-    });
-
-    if (tx) {
-      await db.paymentTransaction.update({
-        where: { invoiceNumber },
-        data: {
-          status: newStatus,
-          dokuResponse: payload as unknown as Prisma.InputJsonValue,
-          ...(isSuccess ? { paidAt: new Date() } : {}),
-        },
-      });
-
-      if (isSuccess && tx.userId) {
-        const metadata = tx.metadata as Record<string, unknown> | null;
-        const rawPlanId = metadata?.planId;
-        if (rawPlanId) {
-          try {
-            await db.user.update({
-              where: { id: tx.userId },
-              data: { planId: BigInt(String(rawPlanId)) },
-            });
-          } catch (e) {
-            console.error(`Failed to assign plan to user ${tx.userId}:`, e);
-          }
-        }
-      }
-    }
+    const newStatus = status === "SUCCESS" ? "PAID" : status === "FAILED" ? "FAILED" : "PENDING";
+    await applyDokuSettlement(invoiceNumber, newStatus, payload);
   }
 
   // DOKU expects 200 OK acknowledging receipt with correlation headers
