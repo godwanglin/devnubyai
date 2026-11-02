@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { downloadFromR2, sanitizeKey } from "@/lib/storage/r2";
+import { FILE_RESPONSE_CSP, isImageMimeType } from "@/lib/files/policy";
 
 type RouteContext = { params: Promise<{ token: string; fileId: string }> };
 
@@ -47,7 +48,8 @@ export async function GET(_request: Request, context: RouteContext) {
       filename: safeFilename,
     });
 
-    const isImage = sessionFile.mimeType.startsWith("image/");
+    // Only raster images render inline; anything else (incl. mislabelled SVG) downloads
+    const isImage = isImageMimeType(sessionFile.mimeType);
 
     return new NextResponse(new Uint8Array(downloaded.content), {
       status: 200,
@@ -61,6 +63,7 @@ export async function GET(_request: Request, context: RouteContext) {
           ? `inline; filename="${safeFilename}"`
           : `attachment; filename="${safeFilename}"`,
         "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": FILE_RESPONSE_CSP,
       },
     });
   } catch {

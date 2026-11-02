@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getChatSession } from "@/lib/chat/service";
 import { db } from "@/lib/db";
 import { uploadToR2, downloadFromR2, sanitizeKey } from "@/lib/storage/r2";
+import { FILE_RESPONSE_CSP, isImageMimeType } from "@/lib/files/policy";
 import { NextResponse } from "next/server";
 
 type RouteContext = { params: Promise<{ chatId: string; fileId: string }> };
@@ -35,7 +36,8 @@ export async function GET(_request: Request, context: RouteContext) {
       filename: sanitizeKey(sessionFile.filename),
     });
 
-    const isImage = sessionFile.mimeType.startsWith("image/");
+    // Only raster images render inline; anything else (incl. mislabelled SVG) downloads
+    const isImage = isImageMimeType(sessionFile.mimeType);
     const safeFilename = sanitizeKey(sessionFile.filename);
 
     return new NextResponse(new Uint8Array(downloaded.content), {
@@ -51,6 +53,7 @@ export async function GET(_request: Request, context: RouteContext) {
           ? `inline; filename="${safeFilename}"`
           : `attachment; filename="${safeFilename}"`,
         "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": FILE_RESPONSE_CSP,
       },
     });
   } catch (err: unknown) {

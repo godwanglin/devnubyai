@@ -297,6 +297,12 @@ export function getMimeTypeForFilename(
 /**
  * Checks whether a given MIME type is an image format suitable for preview & vision.
  */
+/**
+ * CSP for user/AI file bytes served from the app origin: if a browser ever
+ * renders one as a document, it runs no script and gets an opaque origin.
+ */
+export const FILE_RESPONSE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+
 export function isImageMimeType(mimeType: string): boolean {
   const lower = mimeType.toLowerCase().trim();
   if (lower.includes("svg")) return false;

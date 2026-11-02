@@ -112,7 +112,7 @@ export const writeFileTool: ToolDefinition<WriteFileParams, WriteFileData> = {
     }
 
     try {
-      let mimeType = params.mimeType || MIME_BY_EXTENSION[extension] || "text/plain";
+      let mimeType = (params.mimeType || MIME_BY_EXTENSION[extension] || "text/plain").toLowerCase();
       if (extension === ".svg" || mimeType.includes("svg")) {
         mimeType = "text/plain";
       }

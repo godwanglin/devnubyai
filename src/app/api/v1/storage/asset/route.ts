@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { downloadAssetFromR2 } from "@/lib/storage/assets";
+import { FILE_RESPONSE_CSP } from "@/lib/files/policy";
 
 export async function GET(request: Request) {
   try {
@@ -25,6 +26,8 @@ export async function GET(request: Request) {
         "Content-Length": String(sizeBytes),
         "Cache-Control": "public, max-age=31536000, immutable",
         "X-Content-Type-Options": "nosniff",
+        // SVG icons still render via <img>, but never run script if opened directly
+        "Content-Security-Policy": FILE_RESPONSE_CSP,
       },
     });
   } catch (err: unknown) {
