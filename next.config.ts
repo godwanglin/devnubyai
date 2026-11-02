@@ -10,9 +10,21 @@ const SANDBOX_WORKER_CSP = [
   `connect-src ${PYODIDE_CDN}`,
 ].join("; ");
 
+// Baseline hardening for every route. A full CSP needs nonces for the inline
+// theme script, so it is not set globally here.
+const SECURITY_HEADERS = [
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  ...(process.env.NODE_ENV === "production"
+    ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }]
+    : []),
+];
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
       {
         source: "/workers/wasm-sandbox.worker.js",
         headers: [{ key: "Content-Security-Policy", value: SANDBOX_WORKER_CSP }],
