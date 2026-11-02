@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { encryptSecret } from "@/lib/crypto/vault";
-import { validateSafeUrl } from "@/lib/tools/ssrf";
+import { validateSafeUrlResolved } from "@/lib/tools/ssrf";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { bumpRoutingVersion } from "@/lib/routing/settings";
 import { getGatewayById } from "@/lib/gateways/repository";
@@ -145,7 +145,7 @@ export async function createAdminGateway(
   input: CreateGatewayInput,
   actorUserId: bigint
 ): Promise<SanitizedGatewayDto> {
-  const ssrfCheck = validateSafeUrl(input.baseUrl);
+  const ssrfCheck = await validateSafeUrlResolved(input.baseUrl);
   if (!ssrfCheck.safe) {
     throw ApiError.badRequest(`Unsafe baseUrl: ${ssrfCheck.reason}`);
   }
@@ -220,7 +220,7 @@ export async function updateAdminGateway(
   }
 
   if (input.baseUrl) {
-    const ssrfCheck = validateSafeUrl(input.baseUrl);
+    const ssrfCheck = await validateSafeUrlResolved(input.baseUrl);
     if (!ssrfCheck.safe) {
       throw ApiError.badRequest(`Unsafe baseUrl: ${ssrfCheck.reason}`);
     }

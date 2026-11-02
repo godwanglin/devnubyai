@@ -140,6 +140,30 @@ export async function validateSafeUrlResolved(rawUrl: string): Promise<{
   }
 }
 
+const resolvedHostCache = new Map<string, { safe: boolean; reason?: string; expiresAt: number }>();
+const RESOLVED_HOST_TTL_MS = 60_000;
+
+/**
+ * validateSafeUrlResolved with a 60s per-host cache, for hot paths (gateway
+ * calls on every chat turn) where a DNS lookup per request would add latency.
+ */
+export async function validateSafeUrlCached(rawUrl: string): Promise<{ safe: boolean; reason?: string }> {
+  let host: string;
+  try {
+    host = new URL(rawUrl).host.toLowerCase();
+  } catch {
+    return { safe: false, reason: "Invalid URL format." };
+  }
+  const now = Date.now();
+  const cached = resolvedHostCache.get(host);
+  if (cached && cached.expiresAt > now) return cached;
+
+  const { safe, reason } = await validateSafeUrlResolved(rawUrl);
+  if (resolvedHostCache.size > 1000) resolvedHostCache.clear();
+  resolvedHostCache.set(host, { safe, reason, expiresAt: now + RESOLVED_HOST_TTL_MS });
+  return { safe, reason };
+}
+
 interface PinnedRequestInit {
   method?: string;
   headers?: Record<string, string>;

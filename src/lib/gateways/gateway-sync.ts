@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { bumpRoutingVersion } from "@/lib/routing/settings";
-import { validateSafeUrl } from "@/lib/tools/ssrf";
+import { validateSafeUrlResolved } from "@/lib/tools/ssrf";
 import { getGatewayById } from "@/lib/gateways/repository";
 
 export interface GatewayTestResult {
@@ -31,7 +31,7 @@ export async function testGatewayConnectivity(id: bigint): Promise<GatewayTestRe
   const targetUrlStr = `${decrypted.baseUrl}${
     decrypted.modelsPath.startsWith("/") ? decrypted.modelsPath : `/${decrypted.modelsPath}`
   }`;
-  const ssrfCheck = validateSafeUrl(targetUrlStr);
+  const ssrfCheck = await validateSafeUrlResolved(targetUrlStr);
   if (!ssrfCheck.safe) {
     return {
       success: false,
@@ -54,6 +54,8 @@ export async function testGatewayConnectivity(id: bigint): Promise<GatewayTestRe
   try {
     const res = await fetch(targetUrlStr, {
       method: "GET",
+      // Don't forward the gateway API key to wherever a redirect points
+      redirect: "manual",
       headers,
       signal: controller.signal,
     });
@@ -105,7 +107,7 @@ export async function syncGatewayUpstreamModels(
   const targetUrlStr = `${decrypted.baseUrl}${
     decrypted.modelsPath.startsWith("/") ? decrypted.modelsPath : `/${decrypted.modelsPath}`
   }`;
-  const ssrfCheck = validateSafeUrl(targetUrlStr);
+  const ssrfCheck = await validateSafeUrlResolved(targetUrlStr);
   if (!ssrfCheck.safe) {
     throw ApiError.badRequest(`Unsafe gateway target: ${ssrfCheck.reason}`);
   }
@@ -123,6 +125,8 @@ export async function syncGatewayUpstreamModels(
   try {
     const res = await fetch(targetUrlStr, {
       method: "GET",
+      // Don't forward the gateway API key to wherever a redirect points
+      redirect: "manual",
       headers,
       signal: controller.signal,
     });

@@ -6,6 +6,7 @@ import {
   classifyThrownError,
   isUpstreamRateLimitText,
 } from "@/lib/routing/errors";
+import { validateSafeUrlCached } from "@/lib/tools/ssrf";
 
 /**
  * Shared POST + SSE pipeline for wire adapters.
@@ -55,8 +56,21 @@ export async function* streamFromGateway(
   signal?.addEventListener("abort", abortFromClient, { once: true });
 
   try {
-    const response = await fetch(`${gateway.baseUrl}${path}`, {
+    const targetUrl = `${gateway.baseUrl}${path}`;
+    // Gateways must be public: re-check DNS (cached) so a hostname can't be pointed at internal hosts
+    const ssrfCheck = await validateSafeUrlCached(targetUrl);
+    if (!ssrfCheck.safe) {
+      throw new GatewayError({
+        errorClass: "network",
+        httpStatus: null,
+        message: `Gateway target blocked: ${ssrfCheck.reason}`,
+      });
+    }
+
+    const response = await fetch(targetUrl, {
       method: "POST",
+      // Never follow redirects with the API key attached; a 3xx surfaces as an HTTP error
+      redirect: "manual",
       headers: {
         "content-type": "application/json",
         accept: "text/event-stream",
