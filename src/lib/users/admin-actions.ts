@@ -5,6 +5,7 @@ import {
   invalidateUserQuotaCache,
   invalidateUserSessionsCache,
 } from "@/lib/redis/cache-keys";
+import { markUserSessionsRevoked } from "@/lib/auth/session";
 import { parseUserId } from "./admin-schemas";
 
 export async function revokeAdminUserSessions(
@@ -26,6 +27,7 @@ export async function revokeAdminUserSessions(
   });
 
   await invalidateUserSessionsCache(user.id);
+  await markUserSessionsRevoked(user.id);
 
   return { revokedCount: result.count };
 }

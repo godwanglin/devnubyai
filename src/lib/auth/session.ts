@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { invalidateUserSessionsCache, invalidateUserMeCache } from "@/lib/redis/cache-keys";
+import { redis } from "@/lib/redis/client";
 import type { Plan } from "@/generated/client";
 
 export const SESSION_COOKIE_NAME = "devnuby_session";
@@ -60,9 +61,40 @@ export async function getSession(): Promise<SessionContext | null> {
 interface CachedSessionContext {
   ctx: SessionContext;
   expiresAt: number;
+  cachedAt: number;
 }
 
 const sessionL1Cache = new Map<string, CachedSessionContext>();
+
+const SESSION_L1_TTL_MS = 20_000;
+const revokedAtKey = (userId: bigint) => `auth:revoked-at:${userId}`;
+
+/**
+ * Marks every cached session of a user as stale on all instances, so a revoked
+ * session (logout elsewhere, password change, suspension) stops working at once
+ * instead of surviving in another process's L1 cache for up to 20s.
+ */
+export async function markUserSessionsRevoked(userId: bigint): Promise<void> {
+  for (const [token, entry] of sessionL1Cache) {
+    if (entry.ctx.user.id === userId) sessionL1Cache.delete(token);
+  }
+  if (!redis) return;
+  try {
+    await redis.set(revokedAtKey(userId), String(Date.now()), "EX", Math.ceil(SESSION_L1_TTL_MS / 1000) * 3);
+  } catch {
+    // best effort: falls back to the short L1 TTL
+  }
+}
+
+async function isRevokedSince(userId: bigint, cachedAt: number): Promise<boolean> {
+  if (!redis) return false;
+  try {
+    const raw = await redis.get(revokedAtKey(userId));
+    return raw !== null && Number(raw) >= cachedAt;
+  } catch {
+    return false;
+  }
+}
 
 export function invalidateSessionTokenCache(rawToken?: string): void {
   if (rawToken) {
@@ -79,7 +111,10 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
   const now = Date.now();
   const cached = sessionL1Cache.get(rawToken);
   if (cached && now < cached.expiresAt && cached.ctx.expiresAt.getTime() > now) {
-    return cached.ctx;
+    if (!(await isRevokedSince(cached.ctx.user.id, cached.cachedAt))) {
+      return cached.ctx;
+    }
+    sessionL1Cache.delete(rawToken);
   }
 
   const tokenHash = hashSessionToken(rawToken);
@@ -136,7 +171,8 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
 
   sessionL1Cache.set(rawToken, {
     ctx,
-    expiresAt: Math.min(now + 20_000, session.expiresAt.getTime()),
+    expiresAt: Math.min(now + SESSION_L1_TTL_MS, session.expiresAt.getTime()),
+    cachedAt: now,
   });
 
   return ctx;
@@ -235,6 +271,7 @@ export async function destroySession(): Promise<void> {
         await Promise.allSettled([
           invalidateUserSessionsCache(s.userId),
           invalidateUserMeCache(s.userId),
+          markUserSessionsRevoked(s.userId),
         ]);
       }
     } catch {

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { hashPassword } from "@/lib/auth/password";
+import { markUserSessionsRevoked } from "@/lib/auth/session";
 import {
   invalidateUserQuotaCache,
   invalidateUserMeCache,
@@ -413,6 +414,7 @@ export async function updateAdminUser(
   const passwordReset = Boolean(input.newPassword?.trim()) && user.id !== actorUserId;
   if (deactivating || passwordReset) {
     await db.authSession.deleteMany({ where: { userId: user.id } });
+    await markUserSessionsRevoked(user.id);
   }
 
   await recordAdminAudit({

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { requireSession } from "@/lib/auth/session";
+import { markUserSessionsRevoked, requireSession } from "@/lib/auth/session";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import {
@@ -89,6 +89,7 @@ export async function DELETE(request: Request) {
       });
 
       await invalidateUserSessionsCache(ctx.user.id);
+      await markUserSessionsRevoked(ctx.user.id);
 
       return jsonSuccess({ revoked: true, count: 1 }, { requestId });
     }
@@ -102,6 +103,7 @@ export async function DELETE(request: Request) {
     });
 
     await invalidateUserSessionsCache(ctx.user.id);
+    await markUserSessionsRevoked(ctx.user.id);
 
     return jsonSuccess({ revoked: true, count: result.count }, { requestId });
   } catch (err) {

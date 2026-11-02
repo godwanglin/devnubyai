@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { requireSession, requireUser, invalidateSessionTokenCache } from "@/lib/auth/session";
+import { requireSession, requireUser, markUserSessionsRevoked } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { invalidateUserMeCache, invalidateUserSessionsCache } from "@/lib/redis/cache-keys";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     await db.authSession.deleteMany({
       where: { userId: user.id, id: { not: sessionId } },
     });
-    invalidateSessionTokenCache();
+    await markUserSessionsRevoked(user.id);
 
     await Promise.allSettled([invalidateUserMeCache(user.id), invalidateUserSessionsCache(user.id)]);
 
