@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import {
   Plus_Jakarta_Sans,
   Inter,
@@ -65,7 +66,9 @@ export const metadata: Metadata = {
 
 const fontVariables = `${plusJakartaSans.variable} ${inter.variable} ${outfit.variable} ${roboto.variable} ${lora.variable} ${merriweather.variable} ${firaCode.variable} ${jetbrainsMono.variable}`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Per-request CSP nonce from the proxy (makes pages dynamically rendered)
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html
       lang="id"
@@ -75,6 +78,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `
               try {
