@@ -17,10 +17,11 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Request ID (reuse incoming or mint a fresh UUIDv7)
-  const incomingReqId = request.headers.get(REQUEST_ID_HEADER);
+  // 1. Request ID (reuse a well-formed incoming one or mint a fresh UUIDv7;
+  //    arbitrary client text would let callers forge or flood log lines)
+  const incomingReqId = request.headers.get(REQUEST_ID_HEADER)?.trim();
   const requestId =
-    incomingReqId && incomingReqId.trim().length > 0 ? incomingReqId.trim() : uuidv7();
+    incomingReqId && /^[A-Za-z0-9._:-]{1,128}$/.test(incomingReqId) ? incomingReqId : uuidv7();
 
   // 2. CSRF Origin check for mutating API requests
   if (pathname.startsWith("/api/") && MUTATING_METHODS.has(request.method)) {
