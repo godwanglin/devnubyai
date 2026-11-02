@@ -9,7 +9,7 @@ import {
 } from "@/lib/redis/cache-keys";
 import { computeCostUsd, costLimit, toUsd } from "@/lib/billing/cost";
 import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
-import { effectiveParallelLimit } from "./concurrency";
+import { countActiveGenerations, effectiveParallelLimit } from "./concurrency";
 import type { QuotaKind, QuotaNotice } from "./quota-shared";
 
 /**
@@ -196,15 +196,20 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
     );
   }
 
+  // Request limits count every generation (sends and regenerates): finished ones from
+  // usage_logs plus the ones still streaming, which have no usage row yet.
   const rpmLimit = user.plan?.requestsPerMinute ?? null;
+  const dailyLimitValue = user.plan?.dailyRequestLimit ?? null;
+  const activeGenerations =
+    (rpmLimit ?? 0) > 0 || (dailyLimitValue ?? 0) > 0 ? await countActiveGenerations(userId) : 0;
+
   if (rpmLimit !== null && rpmLimit > 0) {
     const oneMinuteAgo = new Date(now.getTime() - 60_000);
-    const recentCount = await db.chatMessage.count({
-      where: { role: "user", createdAt: { gte: oneMinuteAgo }, session: { userId } },
-    });
+    const recentCount =
+      (await db.usageLog.count({ where: { userId, createdAt: { gte: oneMinuteAgo } } })) + activeGenerations;
     if (recentCount >= rpmLimit) {
-      const oldest = await db.chatMessage.findFirst({
-        where: { role: "user", createdAt: { gte: oneMinuteAgo }, session: { userId } },
+      const oldest = await db.usageLog.findFirst({
+        where: { userId, createdAt: { gte: oneMinuteAgo } },
         orderBy: { createdAt: "asc" }, select: { createdAt: true },
       });
       throw ApiError.rateLimited(
@@ -214,12 +219,11 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
     }
   }
 
-  const dailyLimit = user.plan?.dailyRequestLimit ?? null;
+  const dailyLimit = dailyLimitValue;
   if (dailyLimit !== null && dailyLimit > 0) {
     const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const dailyCount = await db.chatMessage.count({
-      where: { role: "user", createdAt: { gte: startOfTodayUtc }, session: { userId } },
-    });
+    const dailyCount =
+      (await db.usageLog.count({ where: { userId, createdAt: { gte: startOfTodayUtc } } })) + activeGenerations;
     if (dailyCount >= dailyLimit) {
       throw ApiError.rateLimited(
         `Daily request limit reached (${dailyCount}/${dailyLimit} requests today). Try again tomorrow or upgrade your plan.`,
