@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
-import { redis } from "@/lib/redis/client";
+import { incrementRateCounter } from "@/lib/api/rate-limit";
 
 /**
  * Resolves one exact email to a registered user's display name / avatar, for
@@ -16,38 +16,11 @@ const querySchema = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
 });
 
-const localCounters = new Map<string, { count: number; resetAt: number }>();
-
 async function assertWithinLimit(userId: bigint): Promise<void> {
-  const key = `rate:user-lookup:${userId}`;
-  let count: number;
-
-  const client = redis;
-  if (client) {
-    try {
-      count = await client.incr(key);
-      if (count === 1) await client.expire(key, WINDOW_SECONDS);
-    } catch {
-      count = bumpLocal(key);
-    }
-  } else {
-    count = bumpLocal(key);
-  }
-
+  const count = await incrementRateCounter(`rate:user-lookup:${userId}`, WINDOW_SECONDS);
   if (count > LOOKUPS_PER_WINDOW) {
     throw ApiError.rateLimited("Too many lookups, try again in a minute");
   }
-}
-
-function bumpLocal(key: string): number {
-  const now = Date.now();
-  const entry = localCounters.get(key);
-  if (!entry || entry.resetAt <= now) {
-    localCounters.set(key, { count: 1, resetAt: now + WINDOW_SECONDS * 1000 });
-    return 1;
-  }
-  entry.count += 1;
-  return entry.count;
 }
 
 export async function GET(request: Request) {

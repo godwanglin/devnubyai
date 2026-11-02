@@ -1,14 +1,24 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { detectLocationFromRequest } from "@/lib/auth/location";
 import { ApiError, jsonError, jsonSuccess, getRequestId } from "@/lib/api/response";
+import { incrementRateCounter, peekRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+// Failed attempts are counted per account (not per IP, which is spoofable via X-Forwarded-For)
+const MAX_FAILED_ATTEMPTS = 10;
+const FAILED_WINDOW_SECONDS = 15 * 60;
+
+function failedLoginKey(normalizedEmail: string): string {
+  return `rate:login-fail:${createHash("sha256").update(normalizedEmail).digest("hex")}`;
+}
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
@@ -21,19 +31,31 @@ export async function POST(request: Request) {
 
     const { email, password } = parsed.data;
     const normalizedEmail = email.trim().toLowerCase();
+    const rateKey = failedLoginKey(normalizedEmail);
+
+    if ((await peekRateCounter(rateKey)) >= MAX_FAILED_ATTEMPTS) {
+      return jsonError(
+        ApiError.rateLimited("Terlalu banyak percobaan masuk. Coba lagi dalam 15 menit."),
+        { requestId }
+      );
+    }
 
     const user = await db.user.findUnique({
       where: { email: normalizedEmail },
     });
 
     if (!user || !user.passwordHash) {
+      await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS);
       return jsonError(ApiError.unauthorized("Email atau kata sandi salah"), { requestId });
     }
 
     const isValid = verifyPassword(password, user.passwordHash);
     if (!isValid) {
+      await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS);
       return jsonError(ApiError.unauthorized("Email atau kata sandi salah"), { requestId });
     }
+
+    await resetRateCounter(rateKey);
 
     if (user.status !== "active") {
       return jsonError(ApiError.forbidden("Akun Anda telah dinonaktifkan"), { requestId });
