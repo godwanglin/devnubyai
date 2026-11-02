@@ -1,4 +1,5 @@
 import net from "net";
+import dns from "node:dns/promises";
 
 /**
  * SSRF and Network Hardening Utilities.
@@ -28,9 +29,18 @@ export function isPrivateIp(rawIp: string): boolean {
     ip = ip.slice(1, -1);
   }
 
-  // Handle IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1)
-  if (ip.startsWith("::ffff:")) {
-    ip = ip.slice(7);
+  // Handle IPv4-mapped / NAT64 IPv6 in dotted (::ffff:127.0.0.1) or hex (::ffff:7f00:1) form
+  const mapped = /^(?:::ffff:|::|64:ff9b::)(.+)$/.exec(ip);
+  if (mapped && ip !== "::1" && ip !== "::") {
+    const tail = mapped[1];
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(tail);
+    if (hex) {
+      const hi = parseInt(hex[1], 16);
+      const lo = parseInt(hex[2], 16);
+      ip = `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+    } else if (net.isIP(tail) === 4) {
+      ip = tail;
+    }
   }
 
   // Check explicit blocklist
@@ -65,21 +75,88 @@ export function isPrivateIp(rawIp: string): boolean {
     if (octets.every((o) => o === 255)) return true;
     // Test-Net
     if (o1 === 192 && o2 === 0) return true;
+    // Carrier-grade NAT 100.64.0.0/10
+    if (o1 === 100 && o2 >= 64 && o2 <= 127) return true;
+    // Benchmarking 198.18.0.0/15
+    if (o1 === 198 && (o2 === 18 || o2 === 19)) return true;
+    // Multicast and reserved 224.0.0.0/3
+    if (o1 >= 224) return true;
   }
 
   if (family === 6) {
+    const firstHextet = parseInt(ip.split(":")[0] || "0", 16);
     if (
       ip === "::1" ||
       ip === "::" ||
-      ip.startsWith("fe80:") || // Link-local
-      ip.startsWith("fc00:") || // Unique local
-      ip.startsWith("fd00:")
+      ip.startsWith("::ffff:") || // Any remaining IPv4-mapped form
+      (firstHextet & 0xfe00) === 0xfc00 || // Unique local fc00::/7
+      (firstHextet & 0xffc0) === 0xfe80 || // Link-local fe80::/10
+      (firstHextet & 0xff00) === 0xff00 || // Multicast ff00::/8
+      ip.startsWith("2001:db8:") // Documentation
     ) {
       return true;
     }
   }
 
   return false;
+}
+
+const MAX_REDIRECTS = 5;
+
+/**
+ * Like validateSafeUrl, but also resolves the hostname and rejects it when any
+ * address it resolves to is private. Use before every outbound hop.
+ */
+export async function validateSafeUrlResolved(rawUrl: string): Promise<{
+  safe: boolean;
+  reason?: string;
+  parsedUrl?: URL;
+}> {
+  const result = validateSafeUrl(rawUrl);
+  if (!result.safe || !result.parsedUrl) return result;
+
+  const hostname = result.parsedUrl.hostname.replace(/^\[|\]$/g, "");
+  if (net.isIP(hostname)) return result;
+
+  try {
+    const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+    const blocked = addresses.find((a) => isPrivateIp(a.address));
+    if (addresses.length === 0 || blocked) {
+      return {
+        safe: false,
+        reason: `Host '${hostname}' resolves to a reserved or private network address.`,
+      };
+    }
+  } catch {
+    return { safe: false, reason: `Host '${hostname}' could not be resolved.` };
+  }
+  return result;
+}
+
+/**
+ * fetch() that validates (including DNS) the initial URL and every redirect
+ * hop before sending it, instead of letting fetch follow redirects blindly.
+ */
+export async function safeFetch(
+  rawUrl: string,
+  init: Omit<RequestInit, "redirect">
+): Promise<{ response: Response; finalUrl: string } | { blocked: string }> {
+  let current = rawUrl;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const check = await validateSafeUrlResolved(current);
+    if (!check.safe || !check.parsedUrl) {
+      return { blocked: check.reason || "URL is not allowed." };
+    }
+    const response = await fetch(check.parsedUrl.toString(), { ...init, redirect: "manual" });
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && location) {
+      await response.body?.cancel().catch(() => {});
+      current = new URL(location, check.parsedUrl).toString();
+      continue;
+    }
+    return { response, finalUrl: check.parsedUrl.toString() };
+  }
+  return { blocked: `Too many redirects (max ${MAX_REDIRECTS}).` };
 }
 
 /**

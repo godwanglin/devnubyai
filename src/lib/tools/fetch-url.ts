@@ -3,7 +3,7 @@ import type {
   ToolExecutionContext,
   ToolExecutionResult,
 } from "./types";
-import { validateSafeUrl } from "./ssrf";
+import { safeFetch, validateSafeUrl } from "./ssrf";
 
 export interface FetchUrlParams {
   url: string;
@@ -46,6 +46,31 @@ function stripTags(html: string): string {
   out = out.replace(/[ \t]+/g, " ");
   out = out.replace(/\n{3,}/g, "\n\n");
   return out.trim();
+}
+
+/** Reads the body but stops (returns null) once it exceeds maxBytes. */
+async function readBodyCapped(res: Response, maxBytes: number): Promise<Uint8Array | null> {
+  if (!res.body) return new Uint8Array(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
 }
 
 function extractTitle(html: string): string | undefined {
@@ -110,15 +135,25 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
       : controller.signal;
 
     try {
-      const res = await fetch(url, {
+      // Validates DNS and every redirect hop before the request is sent (SSRF guard)
+      const fetched = await safeFetch(url, {
         method: "GET",
         headers: {
           "User-Agent": "DevnubyAIRuntime/1.0 (+https://devnuby.ai)",
           Accept: "text/html,text/plain,application/json,application/xml,*/*;q=0.8",
         },
-        redirect: "follow",
         signal,
       });
+
+      if ("blocked" in fetched) {
+        return {
+          success: false,
+          error: { code: "SSRF_BLOCKED", message: fetched.blocked },
+          metadata: { durationMs: Date.now() - startTime },
+        };
+      }
+
+      const { response: res, finalUrl } = fetched;
 
       if (!res.ok) {
         return {
@@ -131,23 +166,9 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
         };
       }
 
-      // Re-validate final URL after redirects (SSRF guard)
-      const finalUrl = res.url || url;
-      const finalValidation = validateSafeUrl(finalUrl);
-      if (!finalValidation.safe) {
-        return {
-          success: false,
-          error: {
-            code: "SSRF_BLOCKED",
-            message: `Redirect target blocked: ${finalValidation.reason}`,
-          },
-          metadata: { durationMs: Date.now() - startTime },
-        };
-      }
-
       const contentType = res.headers.get("content-type") || "application/octet-stream";
-      const buffer = await res.arrayBuffer();
-      if (buffer.byteLength > MAX_BYTES) {
+      const buffer = await readBodyCapped(res, MAX_BYTES);
+      if (!buffer) {
         return {
           success: false,
           error: {
