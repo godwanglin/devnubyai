@@ -4,6 +4,7 @@ import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/respon
 import { getDokuConfig } from "@/lib/doku/settings";
 import { createDokuCheckout, DokuApiError } from "@/lib/doku/client";
 import { dokuCheckoutRequestSchema, DEFAULT_CUSTOMER_PHONE } from "@/lib/doku/schemas";
+import { resolvePlanCheckout } from "@/lib/payments/plan-checkout";
 import type { Prisma } from "@/generated/client";
 
 export async function POST(request: Request) {
@@ -33,9 +34,13 @@ export async function POST(request: Request) {
       throw ApiError.badRequest("Invalid checkout request", parsed.error.format());
     }
 
+    const planCheckout = await resolvePlanCheckout(parsed.data.metadata, parsed.data.amount);
+
     // Auto-fill customer info if not explicitly provided
     const checkoutRequest = {
       ...parsed.data,
+      amount: planCheckout.amount,
+      items: [{ name: planCheckout.itemName, price: planCheckout.amount, quantity: 1 }],
       customer: {
         id: parsed.data.customer.id || user.id.toString(),
         name: parsed.data.customer.name || user.name || "Customer",
@@ -71,7 +76,7 @@ export async function POST(request: Request) {
           customerName: checkoutRequest.customer.name,
           customerEmail: checkoutRequest.customer.email,
           customerPhone: checkoutRequest.customer.phone || null,
-          metadata: (parsed.data.metadata as Prisma.InputJsonValue) || undefined,
+          metadata: planCheckout.metadata as Prisma.InputJsonValue,
           dokuResponse: result.rawResponse ? (result.rawResponse as Prisma.InputJsonValue) : undefined,
           expiredAt: result.expiredDate ? new Date(result.expiredDate) : undefined,
         },

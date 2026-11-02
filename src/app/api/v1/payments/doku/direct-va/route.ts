@@ -4,6 +4,7 @@ import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/respon
 import { getDokuConfig } from "@/lib/doku/settings";
 import { createDokuDirectVa, DokuApiError } from "@/lib/doku/client";
 import { dokuDirectVaRequestSchema, DEFAULT_CUSTOMER_PHONE } from "@/lib/doku/schemas";
+import { resolvePlanCheckout } from "@/lib/payments/plan-checkout";
 import type { Prisma } from "@/generated/client";
 
 export async function POST(request: Request) {
@@ -33,8 +34,12 @@ export async function POST(request: Request) {
       throw ApiError.badRequest("Invalid direct VA request", parsed.error.format());
     }
 
+    const planCheckout = await resolvePlanCheckout(parsed.data.metadata, parsed.data.amount);
+
     const vaRequest = {
       ...parsed.data,
+      amount: planCheckout.amount,
+      reusableStatus: false,
       customer: {
         id: parsed.data.customer.id || user.id.toString(),
         name: parsed.data.customer.name || user.name || "Customer",
@@ -70,7 +75,7 @@ export async function POST(request: Request) {
           customerName: vaRequest.customer.name,
           customerEmail: vaRequest.customer.email,
           customerPhone: vaRequest.customer.phone || null,
-          metadata: (parsed.data.metadata as Prisma.InputJsonValue) || undefined,
+          metadata: planCheckout.metadata as Prisma.InputJsonValue,
           dokuResponse: result.rawResponse ? (result.rawResponse as Prisma.InputJsonValue) : undefined,
           expiredAt: result.expiredDateUtc ? new Date(result.expiredDateUtc) : undefined,
         },
