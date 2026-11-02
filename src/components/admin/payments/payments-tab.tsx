@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { PaymentMethodsView } from "./payment-methods-view";
 import { PaymentTransactionsView } from "./payment-transactions-view";
 import { PaymentGatewayConfigCard } from "./payment-gateway-config-card";
+import { TripayConfigCard } from "./tripay-config-card";
 
 type PaymentSubTab = "methods" | "transactions" | "gateway";
 
@@ -36,7 +37,7 @@ export function PaymentsTab() {
       <div>
         <h1 className="text-xl font-bold text-[var(--ink)]">Manajemen Pembayaran</h1>
         <p className="text-xs text-[var(--muted)] mt-0.5">
-          Kelola metode pembayaran, logo R2, alur checkout, transaksi masuk, dan status integrasi DOKU Payment Gateway.
+          Kelola metode pembayaran, logo R2, alur checkout, transaksi masuk, dan status integrasi payment gateway (DOKU & Tripay QRIS).
         </p>
       </div>
 
@@ -67,7 +68,12 @@ export function PaymentsTab() {
       <div>
         {activeTab === "methods" && <PaymentMethodsView />}
         {activeTab === "transactions" && <PaymentTransactionsView />}
-        {activeTab === "gateway" && <PaymentGatewayConfigCard />}
+        {activeTab === "gateway" && (
+          <div className="space-y-4">
+            <PaymentGatewayConfigCard />
+            <TripayConfigCard />
+          </div>
+        )}
       </div>
     </div>
   );

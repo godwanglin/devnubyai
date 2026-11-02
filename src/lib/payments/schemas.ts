@@ -16,6 +16,7 @@ export const paymentMethodCreateSchema = z.object({
     "retail",
     "card",
   ]),
+  provider: z.enum(["doku", "tripay"]).default("doku"),
   dokuCode: z.string().trim().max(64).optional().nullable(),
   flowType: z.enum(["direct", "checkout"]).default("direct"),
   imagePath: z.string().trim().max(512).optional().nullable(),

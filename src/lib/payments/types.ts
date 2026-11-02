@@ -7,6 +7,9 @@ export type PaymentMethodCategory =
 
 export type PaymentFlowType = "direct" | "checkout";
 
+/** Gateway that serves a method; Tripay is QRIS-only */
+export type PaymentProvider = "doku" | "tripay";
+
 export type PaymentTransactionStatus =
   | "PENDING"
   | "PAID"
@@ -21,6 +24,7 @@ export interface PaymentMethodItem {
   name: string;
   code: string;
   category: PaymentMethodCategory;
+  provider: PaymentProvider;
   dokuCode: string | null;
   flowType: PaymentFlowType;
   imagePath: string | null;

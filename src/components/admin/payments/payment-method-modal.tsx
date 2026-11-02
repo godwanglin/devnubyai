@@ -5,9 +5,41 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/providers/toast-provider";
 import { UploadCloud, Image as ImageIcon, Loader2, X } from "lucide-react";
-import type { PaymentMethodItem, PaymentMethodCategory, PaymentFlowType } from "@/lib/payments/types";
+import type {
+  PaymentMethodItem,
+  PaymentMethodCategory,
+  PaymentFlowType,
+  PaymentProvider,
+} from "@/lib/payments/types";
+import { TRIPAY_QRIS_CHANNELS, type TripayQrisChannel } from "@/lib/tripay/types";
 import { resolveAssetUrl } from "@/lib/storage/assets";
 import { SmartImage } from "@/components/ui/smart-image";
+import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-select";
+
+const PROVIDER_OPTIONS: CustomSelectOption<PaymentProvider>[] = [
+  { value: "doku", label: "DOKU", sublabel: "VA, QRIS, Checkout" },
+  { value: "tripay", label: "Tripay", sublabel: "Khusus QRIS" },
+];
+
+const CATEGORY_OPTIONS: CustomSelectOption<PaymentMethodCategory>[] = [
+  { value: "virtual_account", label: "Virtual Account" },
+  { value: "qris", label: "QRIS" },
+  { value: "ewallet", label: "E-Wallet" },
+  { value: "retail", label: "Convenience Store" },
+  { value: "card", label: "Kartu Kredit / Debit" },
+];
+
+const FLOW_OPTIONS: CustomSelectOption<PaymentFlowType>[] = [
+  { value: "direct", label: "Direct", sublabel: "Tampil Kode/VA di UI" },
+  { value: "checkout", label: "Checkout", sublabel: "Redirect DOKU" },
+];
+
+const TRIPAY_CHANNEL_OPTIONS: CustomSelectOption<TripayQrisChannel>[] = [
+  { value: "QRIS2", label: "QRIS2", sublabel: "QRIS" },
+  { value: "QRIS", label: "QRIS", sublabel: "QRIS by ShopeePay" },
+  { value: "QRISC", label: "QRISC", sublabel: "QRIS (Customizable)" },
+  { value: "QRIS_SHOPEEPAY", label: "QRIS_SHOPEEPAY", sublabel: "QRIS Custom by ShopeePay" },
+];
 
 interface PaymentMethodModalProps {
   isOpen: boolean;
@@ -27,8 +59,20 @@ export function PaymentMethodModal({
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [provider, setProvider] = useState<PaymentProvider>("doku");
   const [category, setCategory] = useState<PaymentMethodCategory>("virtual_account");
   const [dokuCode, setDokuCode] = useState("");
+  const isTripay = provider === "tripay";
+
+  function handleProviderChange(next: PaymentProvider) {
+    setProvider(next);
+    if (next === "tripay") {
+      // Tripay is QRIS-only and rendered in our own UI
+      setCategory("qris");
+      setFlowType("direct");
+      if (!(TRIPAY_QRIS_CHANNELS as readonly string[]).includes(dokuCode)) setDokuCode("QRIS2");
+    }
+  }
   const [flowType, setFlowType] = useState<PaymentFlowType>("direct");
   const [imagePath, setImagePath] = useState("");
   const [description, setDescription] = useState("");
@@ -47,6 +91,7 @@ export function PaymentMethodModal({
       if (method) {
         setName(method.name);
         setCode(method.code);
+        setProvider(method.provider);
         setCategory(method.category);
         setDokuCode(method.dokuCode || "");
         setFlowType(method.flowType);
@@ -60,6 +105,7 @@ export function PaymentMethodModal({
       } else {
         setName("");
         setCode("");
+        setProvider("doku");
         setCategory("virtual_account");
         setDokuCode("");
         setFlowType("direct");
@@ -122,9 +168,10 @@ export function PaymentMethodModal({
       const payload = {
         name: name.trim(),
         code: code.trim().toLowerCase(),
-        category,
+        provider,
+        category: isTripay ? "qris" : category,
         dokuCode: dokuCode.trim() || null,
-        flowType,
+        flowType: isTripay ? "direct" : flowType,
         imagePath: imagePath.trim() || null,
         description: description.trim() || null,
         instructions: instructions.trim() || null,
@@ -196,45 +243,63 @@ export function PaymentMethodModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[var(--muted)] font-medium mb-1">Kategori</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as PaymentMethodCategory)}
-              className="w-full px-2.5 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[var(--ink)] focus:outline-hidden"
-            >
-              <option value="virtual_account">Virtual Account</option>
-              <option value="qris">QRIS</option>
-              <option value="ewallet">E-Wallet</option>
-              <option value="retail">Convenience Store</option>
-              <option value="card">Kartu Kredit / Debit</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[var(--muted)] font-medium mb-1">Alur Pembayaran (Flow)</label>
-            <select
-              value={flowType}
-              onChange={(e) => setFlowType(e.target.value as PaymentFlowType)}
-              className="w-full px-2.5 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[var(--ink)] focus:outline-hidden"
-            >
-              <option value="direct">Direct (Tampil Kode/VA di UI)</option>
-              <option value="checkout">Checkout (Redirect DOKU)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[var(--muted)] font-medium mb-1">DOKU Channel Code</label>
-            <input
-              type="text"
-              value={dokuCode}
-              onChange={(e) => setDokuCode(e.target.value)}
-              placeholder="Contoh: VIRTUAL_ACCOUNT_BRI"
-              className="w-full px-3 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[var(--ink)] font-mono focus:outline-hidden"
+            <label className="block text-[var(--muted)] font-medium mb-1">Sumber (Payment Gateway)</label>
+            <CustomSelect<PaymentProvider>
+              options={PROVIDER_OPTIONS}
+              value={provider}
+              onChange={handleProviderChange}
             />
           </div>
+
+          <div>
+            <label className="block text-[var(--muted)] font-medium mb-1">
+              {isTripay ? "Tripay Channel Code" : "DOKU Channel Code"}
+            </label>
+            {isTripay ? (
+              <CustomSelect<TripayQrisChannel>
+                options={TRIPAY_CHANNEL_OPTIONS}
+                value={(TRIPAY_QRIS_CHANNELS as readonly string[]).includes(dokuCode) ? (dokuCode as TripayQrisChannel) : "QRIS2"}
+                onChange={setDokuCode}
+              />
+            ) : (
+              <input
+                type="text"
+                value={dokuCode}
+                onChange={(e) => setDokuCode(e.target.value)}
+                placeholder="Contoh: VIRTUAL_ACCOUNT_BRI"
+                className="w-full px-3 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[var(--ink)] font-mono focus:outline-hidden"
+              />
+            )}
+          </div>
         </div>
+
+        {isTripay ? (
+          <p className="text-[11px] text-[var(--muted)]">
+            Tripay khusus QRIS: kategori otomatis QRIS dan QR ditampilkan langsung di halaman pembayaran.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[var(--muted)] font-medium mb-1">Kategori</label>
+              <CustomSelect<PaymentMethodCategory>
+                options={CATEGORY_OPTIONS}
+                value={category}
+                onChange={setCategory}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[var(--muted)] font-medium mb-1">Alur Pembayaran (Flow)</label>
+              <CustomSelect<PaymentFlowType>
+                options={FLOW_OPTIONS}
+                value={flowType}
+                onChange={setFlowType}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Upload Gambar ke R2 */}
         <div className="p-3 rounded-[10px] bg-[var(--surface)] border border-[var(--border)] space-y-2">

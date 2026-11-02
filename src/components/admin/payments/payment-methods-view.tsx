@@ -140,7 +140,7 @@ export function PaymentMethodsView() {
         <div>
           <h2 className="text-base font-semibold text-[var(--ink)]">Daftar Metode Pembayaran</h2>
           <p className="text-xs text-[var(--muted)]">
-            Atur metode pembayaran, logo gambar R2, alur pembayaran (Direct VA vs DOKU Checkout), dan status aktif.
+            Atur metode pembayaran, logo gambar R2, sumber gateway (DOKU / Tripay QRIS), alur pembayaran, dan status aktif.
           </p>
         </div>
 
@@ -269,7 +269,11 @@ export function PaymentMethodsView() {
                   <div>
                     <span className="text-[var(--muted)] block">Tipe Alur:</span>
                     <span className="font-medium text-[var(--ink)] capitalize">
-                      {method.flowType === "direct" ? "⚡ Direct VA" : "🔗 DOKU Checkout"}
+                      {method.provider === "tripay"
+                        ? `🟢 Tripay QRIS · ${method.dokuCode || "-"}`
+                        : method.flowType === "direct"
+                          ? "⚡ DOKU Direct VA"
+                          : "🔗 DOKU Checkout"}
                     </span>
                   </div>
                   <div>
