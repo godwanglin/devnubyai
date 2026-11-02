@@ -37,6 +37,10 @@ export function useChatHistory({
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [fetchedSessionMeta, setFetchedSessionMeta] = useState<Session | null>(null);
+  // Set when the server refuses a PIN-locked chat; cleared and refetched after unlocking
+  const [lockedChatId, setLockedChatId] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const lockedRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [prevChatId, setPrevChatId] = useState(currentChatId);
@@ -77,6 +81,12 @@ export function useChatHistory({
         if (!messagesRes.ok) {
           if (messagesRes.status === 404) {
             onNotFound();
+          } else if (messagesRes.status === 403) {
+            const err = await messagesRes.json().catch(() => null);
+            if (active && err?.error?.details?.reason === "CHAT_LOCKED") {
+              lockedRef.current = true;
+              setLockedChatId(currentChatId);
+            }
           }
           return;
         }
@@ -122,7 +132,7 @@ export function useChatHistory({
     return () => {
       active = false;
     };
-  }, [currentChatId, ownedChatId, onNotFound, setUiMessages]);
+  }, [currentChatId, ownedChatId, onNotFound, setUiMessages, reloadTick]);
 
   async function handleLoadOlder(options?: {
     limit?: number;
@@ -182,6 +192,16 @@ export function useChatHistory({
   }
 
   return {
+    isChatLocked: lockedChatId !== null && lockedChatId === currentChatId,
+    retryAfterUnlock: () => {
+      lockedRef.current = false;
+      setLockedChatId(null);
+      setReloadTick((n) => n + 1);
+    },
+    /** Prompt dismissed: leave the chat unless it was just unlocked */
+    cancelUnlock: () => {
+      if (lockedRef.current) onNotFound();
+    },
     isLoadingMessages,
     olderCursor,
     isLoadingOlder,

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 import { MAX_MESSAGE_CHARS } from "@/lib/chat/service-types";
 import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 
@@ -37,7 +37,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       throw ApiError.badRequest("Invalid update payload", parsed.error.format());
     }
 
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     const targetMessage = await db.chatMessage.findFirst({
       where: {

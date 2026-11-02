@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth/session";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 import { db } from "@/lib/db";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { executeWithFallback } from "@/lib/routing/executor";
@@ -19,7 +19,7 @@ export async function POST(request: Request, context: RouteContext) {
     const user = await requireUser();
     const { chatId } = await context.params;
 
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     // Title is generated once, on the first turn only: later turns keep the existing title
     const userTurns = await db.chatMessage.count({

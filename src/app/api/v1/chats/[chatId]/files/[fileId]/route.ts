@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth/session";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 import { db } from "@/lib/db";
 import { uploadToR2, downloadFromR2, sanitizeKey } from "@/lib/storage/r2";
 import { FILE_RESPONSE_CSP, MAX_FILE_BYTES, isImageMimeType } from "@/lib/files/policy";
@@ -14,7 +14,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const user = await requireUser();
     const { chatId, fileId } = await context.params;
 
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     const sessionFile = await db.sessionFile.findFirst({
       where: {
@@ -76,7 +76,7 @@ export async function PUT(request: Request, context: RouteContext) {
     const user = await requireUser();
     const { chatId, fileId } = await context.params;
 
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     const sessionFile = await db.sessionFile.findFirst({
       where: { publicId: fileId, sessionId: session.id },

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 
 type RouteContext = { params: Promise<{ chatId: string }> };
 
@@ -30,7 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const user = await requireUser();
     const { chatId } = await context.params;
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     const rows = await db.chatMessage.findMany({
       where: {

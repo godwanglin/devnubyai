@@ -31,6 +31,8 @@ export async function GET(request: Request) {
     const sessions = await db.chatSession.findMany({
       where: {
         userId: user.id,
+        // PIN-locked chats are never included in exports
+        isLocked: false,
         ...(cursorId ? { id: { lt: cursorId } } : {}),
       },
       orderBy: { id: "desc" },

@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/client";
 import { deleteKeyFromR2 } from "@/lib/storage/r2";
 import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 import { assertUserModelAccess } from "./model-access";
+import { hasValidPinUnlock, revokePinUnlock } from "@/lib/auth/pin-unlock";
 import { toSessionDto, toMessageDto } from "./mappers";
 import type {
   SessionWithMeta,
@@ -191,6 +192,24 @@ export async function getChatSession(
 }
 
 /**
+ * getChatSession for routes that read or write a chat's content: a locked chat
+ * is refused (403, details.reason = "CHAT_LOCKED") until the user has entered
+ * their PIN (see pin-unlock).
+ */
+export async function getUnlockedChatSession(
+  userId: bigint,
+  sessionPublicId: string
+): Promise<Awaited<ReturnType<typeof getChatSession>>> {
+  const session = await getChatSession(userId, sessionPublicId);
+  if (session.isLocked && !(await hasValidPinUnlock(userId))) {
+    throw new ApiError(403, "FORBIDDEN", "Chat ini terkunci. Masukkan PIN untuk membukanya.", {
+      reason: "CHAT_LOCKED",
+    });
+  }
+  return session;
+}
+
+/**
  * Update chat session (title, isPinned, isArchived, or default model).
  */
 export async function updateChatSession(
@@ -205,7 +224,11 @@ export async function updateChatSession(
     isLocked?: boolean;
   }
 ): Promise<SessionWithMeta> {
-  const existing = await getChatSession(userId, sessionPublicId);
+  // Unlocking requires a fresh PIN entry; locking does not
+  const existing =
+    data.isLocked === false
+      ? await getUnlockedChatSession(userId, sessionPublicId)
+      : await getChatSession(userId, sessionPublicId);
 
   let catalogModelId: bigint | undefined = undefined;
   if (data.modelPublicId !== undefined) {
@@ -262,6 +285,12 @@ export async function updateChatSession(
     },
   });
 
+  // Locking hides the chat from its public share link right away
+  if (data.isLocked === true) {
+    await invalidateSharedChatCache(existing.shareToken);
+    await revokePinUnlock();
+  }
+
   return toSessionDto(updated);
 }
 
@@ -301,7 +330,7 @@ export async function listChatMessages(
   sessionPublicId: string,
   options: { limit?: number; cursor?: string } = {}
 ): Promise<ListChatMessagesResult> {
-  const session = await getChatSession(userId, sessionPublicId);
+  const session = await getUnlockedChatSession(userId, sessionPublicId);
   const limit = Math.min(Math.max(1, options.limit ?? 10), 500);
 
   let cursorCondition: Prisma.ChatMessageWhereInput | undefined;

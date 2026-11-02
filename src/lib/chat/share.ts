@@ -13,7 +13,7 @@ import {
   isImageMimeType,
 } from "@/lib/files/policy";
 import { stripFeedbackParts } from "./feedback";
-import { getChatSession, type ChatMessageDto } from "./service";
+import { getChatSession, getUnlockedChatSession, type ChatMessageDto } from "./service";
 
 export interface SessionFileItemDto {
   id: string;
@@ -43,7 +43,7 @@ export async function listSessionFiles(
   userId: bigint,
   sessionPublicId: string
 ): Promise<SessionFileItemDto[]> {
-  const session = await getChatSession(userId, sessionPublicId);
+  const session = await getUnlockedChatSession(userId, sessionPublicId);
 
   const files = await db.sessionFile.findMany({
     where: { sessionId: session.id },
@@ -74,7 +74,11 @@ export async function enableChatShare(
   userId: bigint,
   sessionPublicId: string
 ): Promise<{ shareToken: string; sharedAt: string }> {
+  // A locked chat can't be published (its share link would bypass the PIN)
   const existing = await getChatSession(userId, sessionPublicId);
+  if (existing.isLocked) {
+    throw ApiError.badRequest("Buka kunci chat ini sebelum membagikannya.");
+  }
 
   if (existing.shareToken && existing.sharedAt) {
     return {
@@ -148,10 +152,12 @@ export async function getPublicSharedChat(shareToken: string): Promise<SharedCha
       title: true,
       sharedAt: true,
       updatedAt: true,
+      isLocked: true,
     },
   });
 
-  if (!session) {
+  // Locked chats stay private even if a share link was created earlier
+  if (!session || session.isLocked) {
     throw ApiError.notFound("Shared conversation not found");
   }
 

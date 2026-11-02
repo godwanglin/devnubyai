@@ -1,7 +1,7 @@
 import { createUIMessageStreamResponse } from "ai";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError } from "@/lib/api/response";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 import { resumeStreamHub } from "@/lib/chat/stream-hub";
 
 type RouteContext = { params: Promise<{ chatId: string }> };
@@ -19,7 +19,7 @@ export async function GET(request: Request, context: RouteContext) {
       return new Response(null, { status: 204, headers: { "x-request-id": requestId } });
     }
     const user = await requireUser();
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     const stream = resumeStreamHub(session.publicId);
     if (!stream) {

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
-import { getChatSession, listChatMessages, getRecentMessagesForGateway } from "@/lib/chat/service";
+import { getUnlockedChatSession, listChatMessages, getRecentMessagesForGateway } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { claimGenerationSlot } from "@/lib/chat/concurrency";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
@@ -78,7 +78,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Verify session ownership
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     // Check user quota before generation
     const quota = await assertUserQuota(user.id);

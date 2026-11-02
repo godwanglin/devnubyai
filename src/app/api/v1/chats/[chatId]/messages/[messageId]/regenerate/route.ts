@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, ApiError } from "@/lib/api/response";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { claimGenerationSlot } from "@/lib/chat/concurrency";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
@@ -40,7 +40,7 @@ export async function POST(request: Request, context: RouteContext) {
       throw ApiError.badRequest("Invalid regenerate payload", parsed.error.format());
     }
 
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
     const quota = await assertUserQuota(user.id);
 
     // Target assistant message

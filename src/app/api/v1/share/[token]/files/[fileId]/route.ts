@@ -18,11 +18,13 @@ export async function GET(_request: Request, context: RouteContext) {
       select: {
         id: true,
         publicId: true,
+        isLocked: true,
         user: { select: { publicId: true } },
       },
     });
 
-    if (!session) {
+    // Locked chats stay private even if a share link was created earlier
+    if (!session || session.isLocked) {
       return new NextResponse("Not found", { status: 404 });
     }
 

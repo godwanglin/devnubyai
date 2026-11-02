@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
-import { getChatSession } from "@/lib/chat/service";
+import { getUnlockedChatSession } from "@/lib/chat/service";
 import { listSessionFiles } from "@/lib/chat/share";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { uploadToR2, sanitizeKey } from "@/lib/storage/r2";
@@ -70,7 +70,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { chatId } = await context.params;
 
     // Verify chat session ownership
-    const session = await getChatSession(user.id, chatId);
+    const session = await getUnlockedChatSession(user.id, chatId);
 
     const formData = await request.formData();
     const file = formData.get("file");

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/client";
 import { copyInR2 } from "@/lib/storage/r2";
-import { getChatSession, type SessionWithMeta } from "./service";
+import { getUnlockedChatSession, type SessionWithMeta } from "./service";
 
 /**
  * Duplicate an existing chat session along with its persisted messages and files.
@@ -12,7 +12,7 @@ export async function duplicateChatSession(
   sessionPublicId: string,
   options: { title?: string } = {}
 ): Promise<SessionWithMeta> {
-  const source = await getChatSession(userId, sessionPublicId);
+  const source = await getUnlockedChatSession(userId, sessionPublicId);
 
   const sourceMessages = await db.chatMessage.findMany({
     where: {

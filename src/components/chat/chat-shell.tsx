@@ -23,6 +23,7 @@ import { ProjectHomeView } from "@/components/projects/project-home-view";
 import { dispatchProjectsUpdated } from "@/hooks/use-projects";
 import { ChatMessagesSkeleton } from "./chat-skeleton";
 import { RenameModal } from "@/components/modals/rename-modal";
+import { PinModal } from "@/components/modals/pin-modal";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { ShareChatModal } from "@/components/modals/share-chat-modal";
 import { useChatSessions } from "@/hooks/use-chat-sessions";
@@ -365,6 +366,9 @@ export function ChatShell() {
   }
 
   const {
+    isChatLocked,
+    retryAfterUnlock,
+    cancelUnlock,
     isLoadingMessages,
     olderCursor,
     isLoadingOlder,
@@ -939,6 +943,9 @@ export function ChatShell() {
         onToggleSidebar={handleToggleSidebar}
         onClose={closeFilesPanel}
       />
+
+      {/* The server refuses PIN-locked chats until the PIN is entered */}
+      <PinModal isOpen={isChatLocked} mode="verify" onClose={cancelUnlock} onSuccess={retryAfterUnlock} />
 
       <RenameModal
         isOpen={Boolean(renamingTarget)}
