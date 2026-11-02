@@ -303,6 +303,19 @@ export function getMimeTypeForFilename(
  */
 export const FILE_RESPONSE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
 
+/**
+ * Image sources that may load automatically in AI/markdown output: our own
+ * relative routes, blob: and inline raster data:. Anything else would let a
+ * prompt-injected reply leak data to a third-party host just by rendering, so
+ * it waits for an explicit click.
+ */
+export function isTrustedImageSrc(src: string): boolean {
+  const s = src.trim();
+  if (s.startsWith("/") && !s.startsWith("//") && !s.startsWith("/\\")) return true;
+  if (s.startsWith("blob:")) return true;
+  return /^data:image\/(png|jpe?g|gif|webp)[;,]/i.test(s);
+}
+
 export function isImageMimeType(mimeType: string): boolean {
   const lower = mimeType.toLowerCase().trim();
   if (lower.includes("svg")) return false;

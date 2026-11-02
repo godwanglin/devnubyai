@@ -12,6 +12,8 @@ import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 import { CitationBadge } from "@/components/chat/citation-badge";
 import { SmartImage } from "./smart-image";
+import { Button } from "./button";
+import { isTrustedImageSrc } from "@/lib/files/policy";
 import { VisualBlock, getVisualKind } from "./visual-block";
 import type { CompactWebSource } from "@/lib/tools/compact-source";
 
@@ -184,8 +186,31 @@ function MarkdownTable({ children }: { children?: React.ReactNode }) {
 }
 
 function MarkdownImage(props: React.ComponentPropsWithoutRef<"img">) {
+  const { t } = useI18n();
+  const [allowExternal, setAllowExternal] = useState(false);
   const src = typeof props.src === "string" ? props.src : "";
   if (!src) return null;
+
+  // External images load only on request: rendering them would ping (and leak data to) their host
+  if (!allowExternal && !isTrustedImageSrc(src)) {
+    let host = src;
+    try {
+      host = new URL(src).host;
+    } catch {
+      // keep the raw value
+    }
+    return (
+      <span className="my-3 flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-[var(--border)] px-3 py-2 text-xs text-[var(--muted)]">
+        <span className="min-w-0 truncate">
+          {t("message.externalImage")} · {host}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => setAllowExternal(true)}>
+          {t("message.loadImage")}
+        </Button>
+      </span>
+    );
+  }
+
   return (
     <span className="block my-3">
       <SmartImage

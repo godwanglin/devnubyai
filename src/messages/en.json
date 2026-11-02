@@ -323,6 +323,8 @@
     "saveAndSubmit": "Submit",
     "regenerate": "Regenerate",
     "copyCode": "Copy",
+    "externalImage": "External image",
+    "loadImage": "Load image",
     "generating": "Generating...",
     "readAloud": "Read aloud",
     "share": "Share",
