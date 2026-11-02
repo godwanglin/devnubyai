@@ -343,6 +343,15 @@ export async function updateAdminUser(
     throw ApiError.notFound("User tidak ditemukan");
   }
 
+  // Same rule as delete: an admin can't lock themselves (and possibly everyone) out
+  if (
+    user.id === actorUserId &&
+    ((input.role !== undefined && input.role !== user.role) ||
+      (input.status !== undefined && input.status !== "active"))
+  ) {
+    throw ApiError.badRequest("Tidak dapat mengubah role atau menonaktifkan akun Anda sendiri");
+  }
+
   const updateData: Prisma.UserUpdateInput = {};
 
   if (input.name !== undefined) updateData.name = input.name.trim();
@@ -399,8 +408,10 @@ export async function updateAdminUser(
     },
   });
 
-  // If status changed to inactive/suspended, revoke active sessions immediately
-  if (deactivating) {
+  // If status changed to inactive/suspended, or an admin reset the password,
+  // revoke active sessions immediately
+  const passwordReset = Boolean(input.newPassword?.trim()) && user.id !== actorUserId;
+  if (deactivating || passwordReset) {
     await db.authSession.deleteMany({ where: { userId: user.id } });
   }
 
