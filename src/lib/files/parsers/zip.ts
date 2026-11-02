@@ -3,10 +3,24 @@ import { parseXml, type XmlElement } from "./xml";
 
 export type ZipArchive = JSZip;
 
+// Zip-bomb guard on the sizes declared in the central directory. JSZip only checks
+// real sizes after inflating, so a header that lies about its size is not caught here.
+const MAX_ZIP_ENTRIES = 10_000;
+const MAX_ZIP_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
+
 export async function loadZip(input: Uint8Array | ArrayBuffer): Promise<ZipArchive> {
   const mod = await import("jszip");
   const JSZipCtor = (mod.default ?? mod) as unknown as typeof JSZip;
-  return JSZipCtor.loadAsync(input);
+  const zip = await JSZipCtor.loadAsync(input);
+
+  const entries = Object.values(zip.files) as (JSZip.JSZipObject & {
+    _data?: { uncompressedSize?: number };
+  })[];
+  const declaredBytes = entries.reduce((sum, e) => sum + (e._data?.uncompressedSize ?? 0), 0);
+  if (entries.length > MAX_ZIP_ENTRIES || declaredBytes > MAX_ZIP_UNCOMPRESSED_BYTES) {
+    throw new Error("Archive is too large to open safely.");
+  }
+  return zip;
 }
 
 /** Case-insensitive lookup; some producers vary the casing of part names. */
