@@ -33,6 +33,7 @@ export interface AdminPlan {
   requestsPerMinute: number | null;
   dailyUploadLimitMb: number | null;
   dailyAgentUploadLimitMb: number | null;
+  maxParallelRequests: number | null;
   badge: string | null;
   isActive: boolean;
   sortOrder: number;
@@ -90,6 +91,9 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
   const [uploadLimitMb, setUploadLimitMb] = useState<string>(plan?.dailyUploadLimitMb != null ? String(plan.dailyUploadLimitMb) : "");
   const [agentUploadLimitMb, setAgentUploadLimitMb] = useState<string>(
     plan?.dailyAgentUploadLimitMb != null ? String(plan.dailyAgentUploadLimitMb) : ""
+  );
+  const [maxParallel, setMaxParallel] = useState<string>(
+    plan?.maxParallelRequests != null ? String(plan.maxParallelRequests) : ""
   );
   const [features, setFeatures] = useState<PlanFeature[]>(() => normalizePlanFeatures(plan?.features));
   const [badge, setBadge] = useState(plan?.badge ?? "");
@@ -161,6 +165,7 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
       requestsPerMinute: parseCountLimit(requestsPerMinute),
       dailyUploadLimitMb: parseCountLimit(uploadLimitMb),
       dailyAgentUploadLimitMb: parseCountLimit(agentUploadLimitMb),
+      maxParallelRequests: parseCountLimit(maxParallel),
       // Manual rows left without any text are dropped instead of saved empty
       features: features.filter((f) => f.type === "auto" || hasAnyText(f.text)),
       badge: badge.trim() || null,
@@ -447,6 +452,7 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
                   ["rpm", t("admin.plans.limitRequestsPerMinute"), requestsPerMinute, setRequestsPerMinute, "20"],
                   ["upload", t("admin.plans.limitUploadMb"), uploadLimitMb, setUploadLimitMb, "50"],
                   ["agentUpload", t("admin.plans.limitAgentUploadMb"), agentUploadLimitMb, setAgentUploadLimitMb, "100"],
+                  ["parallel", t("admin.plans.limitParallel"), maxParallel, setMaxParallel, "3"],
                 ] as const
               ).map(([key, label, value, setValue, example]) => (
                 <div key={key}>

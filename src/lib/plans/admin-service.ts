@@ -41,6 +41,7 @@ export const createPlanSchema = z.object({
   // Rolling 24h upload size caps in MB; 0 or null means unlimited.
   dailyUploadLimitMb: z.number().int().min(0).max(1000000).optional().nullable(),
   dailyAgentUploadLimitMb: z.number().int().min(0).max(1000000).optional().nullable(),
+  maxParallelRequests: z.number().int().min(0).max(100).optional().nullable(),
   badge: z.string().trim().max(32).optional().nullable(),
   isActive: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(65535).default(100),
@@ -75,6 +76,7 @@ export interface PlanDto {
   requestsPerMinute: number | null;
   dailyUploadLimitMb: number | null;
   dailyAgentUploadLimitMb: number | null;
+  maxParallelRequests: number | null;
   badge: string | null;
   isActive: boolean;
   sortOrder: number;
@@ -175,6 +177,7 @@ function mapPlanToDto(
     requestsPerMinute: plan.requestsPerMinute,
     dailyUploadLimitMb: plan.dailyUploadLimitMb,
     dailyAgentUploadLimitMb: plan.dailyAgentUploadLimitMb,
+    maxParallelRequests: plan.maxParallelRequests,
     badge: plan.badge,
     isActive: plan.isActive,
     sortOrder: plan.sortOrder,
@@ -243,6 +246,7 @@ export async function createAdminPlan(input: CreatePlanInput, actorUserId: bigin
         requestsPerMinute: input.requestsPerMinute ?? null,
         dailyUploadLimitMb: input.dailyUploadLimitMb || null,
         dailyAgentUploadLimitMb: input.dailyAgentUploadLimitMb || null,
+        maxParallelRequests: input.maxParallelRequests || null,
         badge: input.badge ?? null,
         features: toFeaturesJson(input.features),
         isActive: input.isActive,
@@ -373,6 +377,9 @@ export async function updateAdminPlan(
         ...(input.dailyUploadLimitMb !== undefined ? { dailyUploadLimitMb: input.dailyUploadLimitMb || null } : {}),
         ...(input.dailyAgentUploadLimitMb !== undefined
           ? { dailyAgentUploadLimitMb: input.dailyAgentUploadLimitMb || null }
+          : {}),
+        ...(input.maxParallelRequests !== undefined
+          ? { maxParallelRequests: input.maxParallelRequests || null }
           : {}),
         ...(input.badge !== undefined ? { badge: input.badge } : {}),
         ...(input.features !== undefined ? { features: toFeaturesJson(input.features) } : {}),

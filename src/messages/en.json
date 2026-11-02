@@ -730,6 +730,7 @@
       "limitRequestsPerMinute": "Requests / minute",
       "limitUploadMb": "Uploads / 24h (MB)",
       "limitAgentUploadMb": "Agent files / 24h (MB)",
+      "limitParallel": "Max parallel generations",
       "featureAutoPlaceholder": "Leave empty for the default text",
       "featureAutoUsageHint": "Leave empty for the default text. {value} = usage multiplier, {base} = base plan name.",
       "featureAutoCountHint": "Leave empty for the default text. {value} = the limit. Hidden when no limit is set."

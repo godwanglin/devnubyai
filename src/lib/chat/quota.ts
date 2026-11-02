@@ -9,6 +9,7 @@ import {
 } from "@/lib/redis/cache-keys";
 import { computeCostUsd, costLimit, toUsd } from "@/lib/billing/cost";
 import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
+import { effectiveParallelLimit } from "./concurrency";
 import type { QuotaKind, QuotaNotice } from "./quota-shared";
 
 /**
@@ -27,6 +28,8 @@ export interface QuotaCheckResult {
   fiveHourUsedUsd: number;
   requestCount: number;
   dailyRequestLimit: number | null;
+  /** Concurrent generations allowed by the effective plan */
+  maxParallelRequests: number;
 }
 
 type PlanCostLimits = {
@@ -149,6 +152,7 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
     fiveHourCostLimitUsd: true,
     dailyRequestLimit: true,
     requestsPerMinute: true,
+    maxParallelRequests: true,
   } as const;
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -234,6 +238,7 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
     fiveHourUsedUsd: fiveHourUsed,
     requestCount: w.monthly?.requestCount ?? 0,
     dailyRequestLimit: dailyLimit,
+    maxParallelRequests: effectiveParallelLimit(user.plan?.maxParallelRequests),
   };
 }
 

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { getChatSession, listChatMessages, getRecentMessagesForGateway } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
+import { claimGenerationSlot } from "@/lib/chat/concurrency";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
 import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
@@ -58,6 +59,7 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const requestId = getRequestId(request);
+  let releaseSlot: (() => Promise<void>) | null = null;
 
   try {
     const user = await requireUser();
@@ -79,7 +81,7 @@ export async function POST(request: Request, context: RouteContext) {
     const session = await getChatSession(user.id, chatId);
 
     // Check user quota before generation
-    await assertUserQuota(user.id);
+    const quota = await assertUserQuota(user.id);
 
     // Resolve target model early so we can record its ID and check status
     const resolvedModel = await resolveCatalogModel(
@@ -87,6 +89,9 @@ export async function POST(request: Request, context: RouteContext) {
       session.catalogModelPublicId
     );
     await assertUserModelAccess(user.id, resolvedModel.id);
+
+    // Cap concurrent generations per plan before anything is written
+    releaseSlot = await claimGenerationSlot(user.id, quota.maxParallelRequests);
 
     // Atomically persist user message, assistant placeholder, link uploaded files, and update session metadata
     const autoTitle =
@@ -255,7 +260,9 @@ export async function POST(request: Request, context: RouteContext) {
       mentionedSourceIds: mentions.map((m) => m.id),
       clientTimeZone: resolveClientTimeZone(request),
       requestId,
+      onSettled: releaseSlot,
     });
+    releaseSlot = null; // owned by the stream now
 
     return createUIMessageStreamResponse({
       stream,
@@ -264,6 +271,7 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
   } catch (err) {
+    await releaseSlot?.();
     return jsonError(err, { requestId });
   }
 }

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
+import { claimGenerationSlot } from "@/lib/chat/concurrency";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
 import { createUIMessageStreamResponse } from "ai";
@@ -21,6 +22,7 @@ type RouteContext = { params: Promise<{ chatId: string; messageId: string }> };
 
 export async function POST(request: Request, context: RouteContext) {
   const requestId = getRequestId(request);
+  let releaseSlot: (() => Promise<void>) | null = null;
 
   try {
     const user = await requireUser();
@@ -39,7 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const session = await getChatSession(user.id, chatId);
-    await assertUserQuota(user.id);
+    const quota = await assertUserQuota(user.id);
 
     // Target assistant message
     const targetMessage = await db.chatMessage.findFirst({
@@ -86,6 +88,9 @@ export async function POST(request: Request, context: RouteContext) {
     );
     await assertUserModelAccess(user.id, resolvedModel.id);
 
+    // Cap concurrent generations per plan before the message is reset
+    releaseSlot = await claimGenerationSlot(user.id, quota.maxParallelRequests);
+
     // Reset target assistant message to status "streaming"
     await db.chatMessage.update({
       where: { id: targetMessage.id },
@@ -123,7 +128,9 @@ export async function POST(request: Request, context: RouteContext) {
       mentionedSourceIds: extractSourceMentions(lastUserMsg?.parts).map((m) => m.id),
       clientTimeZone: resolveClientTimeZone(request),
       requestId,
+      onSettled: releaseSlot,
     });
+    releaseSlot = null; // owned by the stream now
 
     return createUIMessageStreamResponse({
       stream,
@@ -132,6 +139,7 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
   } catch (err) {
+    await releaseSlot?.();
     return jsonError(err, { requestId });
   }
 }

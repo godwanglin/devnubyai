@@ -37,6 +37,8 @@ model Plan {
   requestsPerMinute  Int?     @map("requests_per_minute") 
   dailyUploadLimitMb      Int?     @map("daily_upload_limit_mb")
   dailyAgentUploadLimitMb Int?     @map("daily_agent_upload_limit_mb")
+  // Concurrent generations per user; null/0 = default (3)
+  maxParallelRequests     Int?     @map("max_parallel_requests")
   badge              String?  @db.VarChar(32)
   features           Json?
   isActive           Boolean  @default(true) @map("is_active")

@@ -730,6 +730,7 @@
       "limitRequestsPerMinute": "Request / menit",
       "limitUploadMb": "Upload / 24 jam (MB)",
       "limitAgentUploadMb": "File agen / 24 jam (MB)",
+      "limitParallel": "Generasi paralel maks.",
       "featureAutoPlaceholder": "Kosongkan untuk teks bawaan",
       "featureAutoUsageHint": "Kosongkan untuk teks bawaan. {value} = kelipatan pemakaian, {base} = nama plan dasar.",
       "featureAutoCountHint": "Kosongkan untuk teks bawaan. {value} = angka batas. Tidak tampil jika batas kosong."

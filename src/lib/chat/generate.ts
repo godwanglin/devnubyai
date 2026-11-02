@@ -44,6 +44,8 @@ export interface StreamGenerationOptions {
   /** Validated IANA zone of the user (see `resolveClientTimeZone`) */
   clientTimeZone?: string;
   requestId: string;
+  /** Runs once the generation ends in any way (e.g. frees its concurrency slot) */
+  onSettled?: (() => Promise<void>) | null;
 }
 
 /**
@@ -198,6 +200,7 @@ export function createChatGenerationStream(
     mentionedSourceIds,
     clientTimeZone,
     requestId,
+    onSettled,
   } = options;
 
   // Only an explicit /stop aborts: a dropped client connection (reload) must not
@@ -944,6 +947,7 @@ export function createChatGenerationStream(
         }
       } finally {
         cleanup();
+        await onSettled?.().catch(() => {});
       }
     },
   });
