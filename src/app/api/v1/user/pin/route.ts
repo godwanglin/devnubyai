@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
-import { hashPin, verifyPin } from "@/lib/auth/pin";
+import { hashPin, isLegacyPinHash, verifyPin } from "@/lib/auth/pin";
 import { invalidateUserMeCache } from "@/lib/redis/cache-keys";
 import { incrementRateCounter, peekRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
 
@@ -86,6 +86,12 @@ export async function PUT(request: Request) {
     const isValid = verifyPin(parsed.data.pin, dbUser.chatPinHash);
     if (isValid) {
       await resetRateCounter(rateKey);
+      if (isLegacyPinHash(dbUser.chatPinHash)) {
+        await db.user.update({
+          where: { id: user.id },
+          data: { chatPinHash: hashPin(parsed.data.pin) },
+        });
+      }
     } else {
       await incrementRateCounter(rateKey, FAILED_PIN_WINDOW_SECONDS);
     }
