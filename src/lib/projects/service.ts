@@ -357,23 +357,17 @@ export async function moveChatToProject(
 }
 
 /**
- * Collaborators must be active registered users, and never the owner.
- * Unknown or self emails are dropped silently (the UI already blocks them).
+ * Normalizes and dedupes invitee emails and drops the owner's own address.
  */
 async function sanitizeInvitedEmails(ownerId: bigint, emails: string[]): Promise<string[]> {
   const normalized = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
   if (normalized.length === 0) return [];
 
-  const [owner, users] = await Promise.all([
-    db.user.findUnique({ where: { id: ownerId }, select: { email: true } }),
-    db.user.findMany({
-      where: { email: { in: normalized }, status: "active" },
-      select: { email: true },
-    }),
-  ]);
+  // Not filtered by registration: echoing back only registered addresses let anyone
+  // enumerate accounts. Membership is checked when an invitee opens the project.
+  const owner = await db.user.findUnique({ where: { id: ownerId }, select: { email: true } });
   const ownerEmail = owner?.email.toLowerCase();
-  const registered = new Set(users.map((u) => u.email.toLowerCase()));
-  return normalized.filter((e) => e !== ownerEmail && registered.has(e));
+  return normalized.filter((e) => e !== ownerEmail);
 }
 
 export async function updateProjectShare(

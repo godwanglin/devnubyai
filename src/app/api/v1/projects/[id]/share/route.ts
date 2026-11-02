@@ -5,7 +5,7 @@ import { updateProjectShare, revokeProjectShare } from "@/lib/projects/service";
 
 const updateShareSchema = z.object({
   shareAccess: z.enum(["anyone", "invited"]).optional(),
-  invitedEmails: z.array(z.string().email()).optional(),
+  invitedEmails: z.array(z.string().email().max(320)).max(50).optional(),
 });
 
 type RouteContext = { params: Promise<{ id: string }> };
