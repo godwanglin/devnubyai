@@ -5,7 +5,7 @@ import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { detectLocationFromRequest } from "@/lib/auth/location";
 import { ApiError, jsonError, jsonSuccess, getRequestId } from "@/lib/api/response";
-import { incrementRateCounter, peekRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
+import { incrementRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -33,7 +33,8 @@ export async function POST(request: Request) {
     const normalizedEmail = email.trim().toLowerCase();
     const rateKey = failedLoginKey(normalizedEmail);
 
-    if ((await peekRateCounter(rateKey)) >= MAX_FAILED_ATTEMPTS) {
+    // Count the attempt before checking it, so parallel bursts can't all slip past the cap
+    if ((await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS)) > MAX_FAILED_ATTEMPTS) {
       return jsonError(
         ApiError.rateLimited("Terlalu banyak percobaan masuk. Coba lagi dalam 15 menit."),
         { requestId }
@@ -45,13 +46,11 @@ export async function POST(request: Request) {
     });
 
     if (!user || !user.passwordHash) {
-      await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS);
       return jsonError(ApiError.unauthorized("Email atau kata sandi salah"), { requestId });
     }
 
     const isValid = verifyPassword(password, user.passwordHash);
     if (!isValid) {
-      await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS);
       return jsonError(ApiError.unauthorized("Email atau kata sandi salah"), { requestId });
     }
 

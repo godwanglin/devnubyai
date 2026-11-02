@@ -18,37 +18,19 @@ function bumpLocal(key: string, windowSeconds: number): number {
   return entry.count;
 }
 
-function peekLocal(key: string): number {
-  const entry = localCounters.get(key);
-  if (!entry || entry.resetAt <= Date.now()) return 0;
-  return entry.count;
-}
-
 /** Increment the counter for `key` and return the new count within the window. */
 export async function incrementRateCounter(key: string, windowSeconds: number): Promise<number> {
   if (redis) {
     try {
-      const count = await redis.incr(key);
-      if (count === 1) await redis.expire(key, windowSeconds);
-      return count;
+      // Atomic: the TTL is set together with the key, so it can never be left without expiry
+      const results = await redis.multi().set(key, 0, "EX", windowSeconds, "NX").incr(key).exec();
+      const incr = results?.[1];
+      if (incr && !incr[0]) return Number(incr[1]);
     } catch {
       // fall through to the local counter
     }
   }
   return bumpLocal(key, windowSeconds);
-}
-
-/** Read the current count for `key` without incrementing it. */
-export async function peekRateCounter(key: string): Promise<number> {
-  if (redis) {
-    try {
-      const raw = await redis.get(key);
-      return raw ? Number(raw) || 0 : 0;
-    } catch {
-      // fall through to the local counter
-    }
-  }
-  return peekLocal(key);
 }
 
 /** Clear the counter for `key` (e.g. after a successful login). */

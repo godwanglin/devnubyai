@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { hashPin, isLegacyPinHash, verifyPin } from "@/lib/auth/pin";
 import { invalidateUserMeCache } from "@/lib/redis/cache-keys";
-import { incrementRateCounter, peekRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
+import { incrementRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
 
 const MAX_FAILED_PIN_ATTEMPTS = 5;
 const FAILED_PIN_WINDOW_SECONDS = 15 * 60;
@@ -79,7 +79,7 @@ export async function PUT(request: Request) {
 
     // A 4-digit PIN falls to brute force without a cap on wrong guesses
     const rateKey = `rate:pin-fail:${user.id}`;
-    if ((await peekRateCounter(rateKey)) >= MAX_FAILED_PIN_ATTEMPTS) {
+    if ((await incrementRateCounter(rateKey, FAILED_PIN_WINDOW_SECONDS)) > MAX_FAILED_PIN_ATTEMPTS) {
       throw ApiError.rateLimited("Terlalu banyak percobaan PIN. Coba lagi dalam 15 menit.");
     }
 
@@ -92,8 +92,6 @@ export async function PUT(request: Request) {
           data: { chatPinHash: hashPin(parsed.data.pin) },
         });
       }
-    } else {
-      await incrementRateCounter(rateKey, FAILED_PIN_WINDOW_SECONDS);
     }
     return jsonSuccess({ valid: isValid }, { requestId });
   } catch (err) {
