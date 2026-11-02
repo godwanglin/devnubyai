@@ -1,0 +1,20 @@
+{
+  "allowlist": [
+    "127.0.0.1:3026",
+    "127.0.0.1:2018",
+    "localhost:3026",
+    "localhost:2018",
+    "aidev.weebinhub.biz.id",
+    "9rt.topupin.store"
+  ],
+  "blocklist": [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+    "169.254.169.254",
+    "metadata.google.internal",
+    "kubernetes.default",
+    "194.233.78.169"
+  ]
+}

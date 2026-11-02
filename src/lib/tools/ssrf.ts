@@ -4,6 +4,7 @@ import http from "node:http";
 import https from "node:https";
 import zlib from "node:zlib";
 import { Readable } from "node:stream";
+import { isTargetAllowed, isTargetExplicitlyBlocked } from "@/lib/network/network-rules";
 
 /**
  * SSRF and Network Hardening Utilities.
@@ -48,7 +49,7 @@ export function isPrivateIp(rawIp: string): boolean {
   }
 
   // Check explicit blocklist
-  if (BLOCKED_HOSTNAMES.has(ip)) {
+  if (isTargetExplicitlyBlocked(ip) || BLOCKED_HOSTNAMES.has(ip)) {
     return true;
   }
 
@@ -121,6 +122,20 @@ export async function validateSafeUrlResolved(rawUrl: string): Promise<{
   const result = validateSafeUrl(rawUrl);
   if (!result.safe || !result.parsedUrl) return result;
 
+  // If explicitly allowed in config/network-rules.json, bypass private/loopback rejection
+  if (isTargetAllowed(result.parsedUrl)) {
+    const hostname = result.parsedUrl.hostname.replace(/^\[|\]$/g, "");
+    const literalFamily = net.isIP(hostname);
+    if (literalFamily) return { ...result, address: { address: hostname, family: literalFamily } };
+    try {
+      const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+      if (addresses.length > 0) return { ...result, address: addresses[0] };
+    } catch {
+      if (hostname === "localhost") return { ...result, address: { address: "127.0.0.1", family: 4 } };
+    }
+    return { ...result, address: { address: "127.0.0.1", family: 4 } };
+  }
+
   const hostname = result.parsedUrl.hostname.replace(/^\[|\]$/g, "");
   const literalFamily = net.isIP(hostname);
   if (literalFamily) return { ...result, address: { address: hostname, family: literalFamily } };
@@ -150,7 +165,11 @@ const RESOLVED_HOST_TTL_MS = 60_000;
 export async function validateSafeUrlCached(rawUrl: string): Promise<{ safe: boolean; reason?: string }> {
   let host: string;
   try {
-    host = new URL(rawUrl).host.toLowerCase();
+    const u = new URL(rawUrl);
+    if (isTargetAllowed(u)) {
+      return { safe: true };
+    }
+    host = u.host.toLowerCase();
   } catch {
     return { safe: false, reason: "Invalid URL format." };
   }
@@ -284,7 +303,12 @@ export function validateSafeUrl(rawUrl: string): {
     const hostname = url.hostname.toLowerCase();
 
     // Check blocked hostnames
-    if (BLOCKED_HOSTNAMES.has(hostname)) {
+    // Allowlist check: if explicitly whitelisted in config/network-rules.json, allow immediately
+    if (isTargetAllowed(url)) {
+      return { safe: true, parsedUrl: url };
+    }
+
+    if (isTargetExplicitlyBlocked(hostname) || BLOCKED_HOSTNAMES.has(hostname)) {
       return {
         safe: false,
         reason: `Host '${hostname}' is restricted (internal/loopback/VPS address).`,

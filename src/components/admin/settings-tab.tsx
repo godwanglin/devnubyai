@@ -9,6 +9,7 @@ import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { MAX_TOOL_ROUNDS_LIMIT, type ChatSettings } from "@/lib/chat/settings-shared";
 import { DatabasePoolConfigCard } from "./database-pool-config-card";
+import { NetworkRulesConfigCard } from "./network-rules-config-card";
 
 /** Sentinel for "no explicit model" (CustomSelect values are non-empty strings) */
 const AUTO_MODEL = "__auto__";
@@ -231,6 +232,9 @@ export function SettingsTab() {
 
         {/* Card 2: Database Connection Pool Config Card */}
         <DatabasePoolConfigCard />
+
+        {/* Card 3: Network & SSRF Dynamic Rules */}
+        <NetworkRulesConfigCard />
       </div>
     </div>
   );
