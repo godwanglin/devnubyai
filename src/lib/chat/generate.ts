@@ -249,7 +249,16 @@ export function createChatGenerationStream(
         // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
         billedModel = resolvedModel;
-        estimatePromptChars = () => JSON.stringify(currentMessages).length;
+        // Text only: base64 image parts would inflate the estimate by megabytes
+        estimatePromptChars = () =>
+          currentMessages.reduce(
+            (n, m) =>
+              n +
+              (typeof m.content === "string"
+                ? m.content.length
+                : m.content.reduce((k, p) => k + (p.type === "text" ? p.text.length : 0), 0)),
+            0
+          );
 
         // Parallelize initial DB lookups (sessionFiles, user, chatSettings) to minimize TTFT
         const [sessionFiles, user, chatSettings, sessionProject] = await Promise.all([
