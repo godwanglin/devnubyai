@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
+import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
 
 export async function assertUserModelAccess(userId: bigint, catalogModelId: bigint): Promise<void> {
   const user = await db.user.findUnique({
@@ -7,6 +8,7 @@ export async function assertUserModelAccess(userId: bigint, catalogModelId: bigi
     select: {
       role: true,
       planId: true,
+      planExpiresAt: true,
       plan: {
         select: {
           id: true,
@@ -19,10 +21,11 @@ export async function assertUserModelAccess(userId: bigint, catalogModelId: bigi
 
   if (!user) throw ApiError.unauthorized("User account not found");
 
-  let planId = user.planId;
+  const expired = isPlanExpired(user.planExpiresAt);
+  let planId = expired ? null : user.planId;
   if (!planId) {
     const freePlan = await db.plan.findUnique({
-      where: { slug: "free" },
+      where: { slug: FREE_PLAN_SLUG },
       select: { id: true },
     });
     planId = freePlan?.id ?? null;
@@ -42,7 +45,7 @@ export async function assertUserModelAccess(userId: bigint, catalogModelId: bigi
   });
 
   if (!access) {
-    const planName = user.plan?.name || "Free";
+    const planName = (!expired && user.plan?.name) || "Free";
     throw ApiError.forbidden(
       `Model ini tidak termasuk dalam ${planName} Anda. Silakan tingkatkan paket Anda ke Pro di /plans untuk mengaksesnya.`
     );

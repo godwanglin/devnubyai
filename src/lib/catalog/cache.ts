@@ -6,6 +6,7 @@ import {
   invalidateCachePattern,
 } from "@/lib/redis/client";
 import { invalidatePlansCache } from "@/lib/redis/cache-keys";
+import { FREE_PLAN_SLUG } from "@/lib/plans/effective-plan";
 import { invalidateResolvedModelCache } from "@/lib/chat/generate";
 import type { ApiModelItem } from "@/app/api/v1/models/route";
 
@@ -110,7 +111,7 @@ export async function getActiveCatalogModelsForPlan(
   let effectivePlanId = planId;
   if (!effectivePlanId) {
     const freePlan = await db.plan.findUnique({
-      where: { slug: "free" },
+      where: { slug: FREE_PLAN_SLUG },
       select: { id: true },
     });
     effectivePlanId = freePlan?.id ?? null;

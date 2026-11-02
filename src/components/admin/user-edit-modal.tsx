@@ -31,6 +31,8 @@ export function UserEditModal({ user, plans, onClose, onSuccess }: UserEditModal
   const [status, setStatus] = useState(user.status);
   const [statusReason, setStatusReason] = useState(user.statusReason || "");
   const [planId, setPlanId] = useState(user.planId || "none");
+  // yyyy-mm-dd for the date input; empty = plan never expires
+  const [planExpiresOn, setPlanExpiresOn] = useState(user.planExpiresAt?.slice(0, 10) ?? "");
   const [newPassword, setNewPassword] = useState("");
   const [resetChatPin, setResetChatPin] = useState(false);
 
@@ -51,6 +53,7 @@ export function UserEditModal({ user, plans, onClose, onSuccess }: UserEditModal
         role,
         status,
         planId: planId === "none" ? null : planId,
+        planExpiresAt: planExpiresOn ? new Date(`${planExpiresOn}T23:59:59.000Z`).toISOString() : null,
         statusReason: isDeactivating ? statusReason : null,
       };
 
@@ -149,6 +152,19 @@ export function UserEditModal({ user, plans, onClose, onSuccess }: UserEditModal
               size="md"
             />
           </div>
+        </div>
+
+        {/* Plan expiry */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--muted)]">
+            {t("admin.users.planExpiresAt")}
+          </label>
+          <Input
+            type="date"
+            value={planExpiresOn}
+            onChange={(e) => setPlanExpiresOn(e.target.value)}
+          />
+          <p className="text-[11px] text-[var(--muted)]">{t("admin.users.planExpiresAtHint")}</p>
         </div>
 
         {/* Status & Reason */}

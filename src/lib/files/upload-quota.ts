@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
+import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
 
 /**
  * Rolling 24-hour upload size quota per plan (in MB).
@@ -27,10 +28,17 @@ export async function assertUploadQuota(
     where: "userId" in ref ? { id: ref.userId } : { publicId: ref.userPublicId },
     select: {
       id: true,
+      planExpiresAt: true,
       plan: { select: { dailyUploadLimitMb: true, dailyAgentUploadLimitMb: true } },
     },
   });
   if (!user) throw ApiError.unauthorized("User account not found");
+  if (isPlanExpired(user.planExpiresAt)) {
+    user.plan = await db.plan.findUnique({
+      where: { slug: FREE_PLAN_SLUG },
+      select: { dailyUploadLimitMb: true, dailyAgentUploadLimitMb: true },
+    });
+  }
 
   const limitMb =
     kind === "user" ? user.plan?.dailyUploadLimitMb : user.plan?.dailyAgentUploadLimitMb;

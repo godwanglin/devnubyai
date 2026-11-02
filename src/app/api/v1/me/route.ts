@@ -39,6 +39,7 @@ export async function GET(request: Request) {
         role: user.role,
         plan: user.plan?.slug ?? "free",
         planLabel: user.plan?.name ?? "Free Plan",
+        planExpiresAt: user.planExpiresAt?.toISOString() ?? null,
         avatarUrl: user.avatarUrl,
       },
     };

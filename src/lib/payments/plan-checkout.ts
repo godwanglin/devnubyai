@@ -1,8 +1,7 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { applyPlanDiscount, isPlanDiscountType } from "@/lib/plans/pricing";
-
-export type BillingCycle = "monthly" | "yearly";
+import type { BillingCycle } from "@/lib/plans/effective-plan";
 
 export interface PlanCheckout {
   planId: bigint;

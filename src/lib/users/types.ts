@@ -9,6 +9,8 @@ export interface AdminUserListItemDto {
   statusReason: string | null;
   planId: string | null;
   planName: string | null;
+  /** ISO time the plan stops applying; null = never */
+  planExpiresAt: string | null;
   planSlug: string | null;
   hasPassword: boolean;
   hasChatPin: boolean;

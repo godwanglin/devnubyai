@@ -765,6 +765,8 @@
       "sessionsCount": "{count} active sessions",
       "tokensCount": "{tokens} tokens",
       "editUser": "Edit User",
+      "planExpiresAt": "Plan Valid Until",
+      "planExpiresAtHint": "Leave empty for a plan that never expires. After this date the user is treated as the Free plan.",
       "viewDetail": "Details & Activity",
       "revokeSessions": "Revoke All Sessions",
       "revokeConfirm": "Revoke all active login sessions for",

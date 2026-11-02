@@ -17,6 +17,7 @@ export const updateAdminUserSchema = z.object({
   status: z.enum(["active", "deactivated", "suspended"]).optional(),
   statusReason: z.string().trim().max(500).optional().nullable(),
   planId: z.string().optional().nullable(),
+  planExpiresAt: z.iso.datetime().optional().nullable(),
   newPassword: z.string().min(6).optional().nullable(),
   resetChatPin: z.boolean().optional(),
 });

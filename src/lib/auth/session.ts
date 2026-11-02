@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { invalidateUserSessionsCache, invalidateUserMeCache } from "@/lib/redis/cache-keys";
 import { redis } from "@/lib/redis/client";
+import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
 import type { Plan } from "@/generated/client";
 
 export const SESSION_COOKIE_NAME = "devnuby_session";
@@ -37,6 +38,8 @@ export interface SessionUser {
   status: string;
   planId: bigint | null;
   plan: Plan | null;
+  /** Expiry of the purchased plan (null = none); `plan` is already the effective one */
+  planExpiresAt: Date | null;
 }
 
 export interface SessionContext {
@@ -153,6 +156,13 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
     return null;
   }
 
+  // An expired paid plan behaves as the free plan everywhere the session plan is read
+  let { planId, plan } = session.user;
+  if (isPlanExpired(session.user.planExpiresAt, now)) {
+    plan = await db.plan.findUnique({ where: { slug: FREE_PLAN_SLUG } });
+    planId = plan?.id ?? null;
+  }
+
   const ctx: SessionContext = {
     sessionId: session.id,
     expiresAt: session.expiresAt,
@@ -164,8 +174,9 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
       avatarUrl: session.user.avatarUrl,
       role: session.user.role,
       status: session.user.status,
-      planId: session.user.planId,
-      plan: session.user.plan,
+      planId,
+      plan,
+      planExpiresAt: session.user.planExpiresAt,
     },
   };
 

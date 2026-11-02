@@ -8,6 +8,7 @@ import {
   invalidateUserQuotaCache,
 } from "@/lib/redis/cache-keys";
 import { computeCostUsd, costLimit, toUsd } from "@/lib/billing/cost";
+import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
 import type { QuotaKind, QuotaNotice } from "./quota-shared";
 
 /**
@@ -142,23 +143,23 @@ export async function getUserQuotaWindows(
 
 /** Verify monthly, weekly, five-hour spend plus RPM and daily request limits. */
 export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult> {
+  const planLimitsSelect = {
+    monthlyCostLimitUsd: true,
+    weeklyCostLimitUsd: true,
+    fiveHourCostLimitUsd: true,
+    dailyRequestLimit: true,
+    requestsPerMinute: true,
+  } as const;
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: {
-      id: true,
-      plan: {
-        select: {
-          monthlyCostLimitUsd: true,
-          weeklyCostLimitUsd: true,
-          fiveHourCostLimitUsd: true,
-          dailyRequestLimit: true,
-          requestsPerMinute: true,
-        },
-      },
-    },
+    select: { id: true, planExpiresAt: true, plan: { select: planLimitsSelect } },
   });
 
   if (!user) throw ApiError.unauthorized("User account not found");
+  // An expired paid plan is held to the free plan's limits
+  if (isPlanExpired(user.planExpiresAt)) {
+    user.plan = await db.plan.findUnique({ where: { slug: FREE_PLAN_SLUG }, select: planLimitsSelect });
+  }
 
   const now = new Date();
   const w = await loadWindows(userId, now);

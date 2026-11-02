@@ -117,6 +117,7 @@ export async function listAdminUsers(filter: ListUsersFilter = {}): Promise<{
       statusReason: u.statusReason,
       planId: u.planId ? u.planId.toString() : null,
       planName: u.plan?.name ?? null,
+      planExpiresAt: u.planExpiresAt?.toISOString() ?? null,
       planSlug: u.plan?.slug ?? null,
       hasPassword: Boolean(u.passwordHash),
       hasChatPin: Boolean(u.chatPinHash),
@@ -217,6 +218,7 @@ export async function getAdminUserDetail(
     statusReason: u.statusReason,
     planId: u.planId ? u.planId.toString() : null,
     planName: u.plan?.name ?? null,
+    planExpiresAt: u.planExpiresAt?.toISOString() ?? null,
     planSlug: u.plan?.slug ?? null,
     hasPassword: Boolean(u.passwordHash),
     hasChatPin: Boolean(u.chatPinHash),
@@ -316,6 +318,7 @@ export async function createAdminUser(
     statusReason: newUser.statusReason,
     planId: newUser.planId ? newUser.planId.toString() : null,
     planName: newUser.plan?.name ?? null,
+    planExpiresAt: null,
     planSlug: newUser.plan?.slug ?? null,
     hasPassword: Boolean(newUser.passwordHash),
     hasChatPin: Boolean(newUser.chatPinHash),
@@ -384,6 +387,11 @@ export async function updateAdminUser(
     } else {
       updateData.plan = { connect: { id: BigInt(input.planId) } };
     }
+  }
+
+  // Admin-set expiry for the assigned plan; null/empty = never expires
+  if (input.planExpiresAt !== undefined) {
+    updateData.planExpiresAt = input.planExpiresAt ? new Date(input.planExpiresAt) : null;
   }
 
   if (input.newPassword?.trim()) {
@@ -456,6 +464,7 @@ export async function updateAdminUser(
     statusReason: updated.statusReason,
     planId: updated.planId ? updated.planId.toString() : null,
     planName: updated.plan?.name ?? null,
+    planExpiresAt: updated.planExpiresAt?.toISOString() ?? null,
     planSlug: updated.plan?.slug ?? null,
     hasPassword: Boolean(updated.passwordHash),
     hasChatPin: Boolean(updated.chatPinHash),

@@ -765,6 +765,8 @@
       "sessionsCount": "{count} sesi aktif",
       "tokensCount": "{tokens} token",
       "editUser": "Edit Pengguna",
+      "planExpiresAt": "Paket Berlaku Hingga",
+      "planExpiresAtHint": "Kosongkan agar paket tidak pernah kedaluwarsa. Setelah lewat tanggal ini, pengguna diperlakukan sebagai paket Free.",
       "viewDetail": "Detail & Aktivitas",
       "revokeSessions": "Cabut Semua Sesi",
       "revokeConfirm": "Cabut semua sesi aktif untuk",
