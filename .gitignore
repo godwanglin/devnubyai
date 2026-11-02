@@ -48,3 +48,6 @@ next-env.d.ts
 
 # telemetry & runtime logs
 /.logs/
+
+# local deploy rules
+DEPLOY_RULE.md

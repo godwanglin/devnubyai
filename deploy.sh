@@ -16,18 +16,17 @@ echo " Port: 6752"
 echo " Time: $(date)"
 echo "========================================="
 
-# 1. Ensure .env is preserved
-if [ -f .env ]; then
-    mkdir -p .git/info
-    grep -qxF ".env" .git/info/exclude 2>/dev/null || printf "\n.env\n" >> .git/info/exclude
-fi
+# 1. Ensure .env and DEPLOY_RULE.md are preserved
+mkdir -p .git/info
+grep -qxF ".env" .git/info/exclude 2>/dev/null || printf "\n.env\n" >> .git/info/exclude
+grep -qxF "DEPLOY_RULE.md" .git/info/exclude 2>/dev/null || printf "DEPLOY_RULE.md\n" >> .git/info/exclude
 
 # 2. Sync latest code from GitHub
 echo "[1/6] Fetching latest changes from GitHub..."
 git remote set-url origin https://github.com/godwanglin/devnubyai.git
 git fetch origin main
 git reset --hard origin/main
-git clean -fd -e .env
+git clean -fd -e .env -e DEPLOY_RULE.md
 
 # 3. Install dependencies
 echo "[2/6] Installing dependencies..."
