@@ -14,14 +14,15 @@ import { MAX_IMAGE_BYTES } from "@/lib/files/policy";
 import { MAX_QUOTES_PER_MESSAGE, MAX_QUOTE_CHARS, withQuotedContext } from "@/lib/chat/quotes";
 import { MAX_SOURCE_MENTIONS_PER_MESSAGE, withSourceMentionNote } from "@/lib/chat/source-mentions";
 import type { ChatMessageInput, MultimodalContentPart } from "@/lib/gateways/types";
+import { MAX_FILE_IDS_PER_MESSAGE, MAX_MESSAGE_CHARS, MAX_MODEL_ID_CHARS } from "@/lib/chat/service-types";
 
 const sendMessageSchema = z.object({
-  content: z.string().trim().min(1, "Message content cannot be empty"),
-  model: z.string().trim().optional(),
+  content: z.string().trim().min(1, "Message content cannot be empty").max(MAX_MESSAGE_CHARS),
+  model: z.string().trim().max(MAX_MODEL_ID_CHARS).optional(),
   reasoningLevel: z.enum(["0", "1", "2", "3", "4"]).optional(),
   webSearch: z.boolean().optional(),
   extendedThinking: z.boolean().optional(),
-  fileIds: z.array(z.string().trim()).optional(),
+  fileIds: z.array(z.string().trim().max(64)).max(MAX_FILE_IDS_PER_MESSAGE).optional(),
   quotes: z
     .array(z.string().trim().min(1).max(MAX_QUOTE_CHARS))
     .max(MAX_QUOTES_PER_MESSAGE)

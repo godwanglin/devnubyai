@@ -13,7 +13,7 @@ import { extractSourceMentions } from "@/lib/chat/source-mentions";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const regenerateSchema = z.object({
-  model: z.string().trim().optional(),
+  model: z.string().trim().max(128).optional(),
   reasoningLevel: z.enum(["0", "1", "2", "3", "4"]).optional(),
 });
 

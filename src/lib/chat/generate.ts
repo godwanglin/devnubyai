@@ -143,10 +143,10 @@ export async function resolveCatalogModel(
     throw ApiError.modelUnavailable("No active AI model is currently available.");
   }
 
-  resolvedModelCache.set(candidatePublicId, {
-    model,
-    expiresAt: now + 30_000,
-  });
+  // Only cache real catalog ids: caching fallbacks under arbitrary client strings grows unbounded
+  if (model.publicId === candidatePublicId) {
+    resolvedModelCache.set(candidatePublicId, { model, expiresAt: now + 30_000 });
+  }
 
   return model;
 }

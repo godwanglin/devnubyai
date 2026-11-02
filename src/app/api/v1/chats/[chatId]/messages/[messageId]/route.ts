@@ -3,9 +3,10 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
+import { MAX_MESSAGE_CHARS } from "@/lib/chat/service-types";
 
 const updateMessageSchema = z.object({
-  content: z.string().trim().min(1, "Message content cannot be empty"),
+  content: z.string().trim().min(1, "Message content cannot be empty").max(MAX_MESSAGE_CHARS),
   truncateAfter: z.boolean().optional(),
 });
 

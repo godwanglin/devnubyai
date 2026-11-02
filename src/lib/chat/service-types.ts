@@ -1,3 +1,8 @@
+/** Upper bounds for chat message payloads (generous; they only stop abuse) */
+export const MAX_MESSAGE_CHARS = 500_000;
+export const MAX_MODEL_ID_CHARS = 128;
+export const MAX_FILE_IDS_PER_MESSAGE = 50;
+
 export interface SessionWithMeta {
   id: string; // publicId
   title: string;
