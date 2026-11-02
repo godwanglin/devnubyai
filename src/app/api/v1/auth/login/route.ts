@@ -13,8 +13,10 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-// Failed attempts are counted per account (not per IP, which is spoofable via X-Forwarded-For)
-const MAX_FAILED_ATTEMPTS = 10;
+// Attempts are capped per trusted client IP (stops mass guessing) and per account.
+// The account cap is looser so locking someone else out takes far more effort.
+const MAX_ATTEMPTS_PER_IP = 30;
+const MAX_FAILED_ATTEMPTS = 20;
 const FAILED_WINDOW_SECONDS = 15 * 60;
 
 let dummyPasswordHash: string | null = null;
@@ -39,9 +41,14 @@ export async function POST(request: Request) {
     const { email, password } = parsed.data;
     const normalizedEmail = email.trim().toLowerCase();
     const rateKey = failedLoginKey(normalizedEmail);
+    const ipAddress = getClientIp(request);
 
     // Count the attempt before checking it, so parallel bursts can't all slip past the cap
-    if ((await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS)) > MAX_FAILED_ATTEMPTS) {
+    const overIpLimit =
+      ipAddress !== null &&
+      (await incrementRateCounter(`rate:login-ip:${ipAddress}`, FAILED_WINDOW_SECONDS)) >
+        MAX_ATTEMPTS_PER_IP;
+    if (overIpLimit || (await incrementRateCounter(rateKey, FAILED_WINDOW_SECONDS)) > MAX_FAILED_ATTEMPTS) {
       return jsonError(
         ApiError.rateLimited("Terlalu banyak percobaan masuk. Coba lagi dalam 15 menit."),
         { requestId }
@@ -69,7 +76,6 @@ export async function POST(request: Request) {
       return jsonError(ApiError.forbidden("Akun Anda telah dinonaktifkan"), { requestId });
     }
 
-    const ipAddress = getClientIp(request);
     const userAgent = request.headers.get("user-agent") || null;
     const location = await detectLocationFromRequest(request, ipAddress);
 
