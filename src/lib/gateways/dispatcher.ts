@@ -5,8 +5,9 @@ import type {
 } from "./types";
 import { executeChat } from "./adapters/chat";
 import { executeResponses } from "./adapters/responses";
+import { executeOAuthGateway } from "./oauth-dispatch";
 
-export function dispatchGatewayStream(
+function dispatchWireApi(
   gateway: DecryptedGatewayConfig,
   request: GatewayExecutionRequest
 ): AsyncGenerator<GatewayStreamEvent> {
@@ -14,4 +15,14 @@ export function dispatchGatewayStream(
     return executeResponses(gateway, request);
   }
   return executeChat(gateway, request);
+}
+
+export function dispatchGatewayStream(
+  gateway: DecryptedGatewayConfig,
+  request: GatewayExecutionRequest
+): AsyncGenerator<GatewayStreamEvent> {
+  if (gateway.authType === "oauth") {
+    return executeOAuthGateway(gateway, request, dispatchWireApi);
+  }
+  return dispatchWireApi(gateway, request);
 }

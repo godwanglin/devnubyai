@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { getDbPoolConfig } from "./pool-config";
 
 // Bump when the Prisma schema changes so dev HMR swaps in a client with the new models
-const PRISMA_SCHEMA_VERSION = "20261101_pool_v2";
+const PRISMA_SCHEMA_VERSION = "20261105_oauth_providers";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

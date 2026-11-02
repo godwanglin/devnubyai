@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { KeyRound, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { useI18n } from "@/providers/i18n-provider";
@@ -205,6 +206,12 @@ export function GatewaysTab() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>{t("admin.gateways.refresh")}</span>
           </Button>
+          <Link href="/admin/gateway/providers">
+            <Button variant="secondary" size="sm">
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>{t("admin.gateways.oauthProviders")}</span>
+            </Button>
+          </Link>
           <Button
             variant="primary"
             size="sm"

@@ -18,7 +18,9 @@ import type {
   SanitizedUpstreamModelDto,
 } from "@/lib/upstream-models/admin-service";
 
-type GatewayOption = Pick<SanitizedGatewaySummaryDto, "id" | "name" | "slug">;
+type GatewayOption = Pick<SanitizedGatewaySummaryDto, "id" | "name" | "slug"> & {
+  authType?: "api_key" | "oauth";
+};
 
 interface UpstreamListResponse {
   data: {
@@ -58,20 +60,30 @@ export function UpstreamTab() {
   const [deleteTarget, setDeleteTarget] = React.useState<SanitizedUpstreamModelDto | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
 
-  // Sync gatewayId from URL parameter
-  React.useEffect(() => {
-    const paramGw = searchParams.get("gatewayId");
-    if (paramGw !== null && paramGw !== gatewayId) {
-      setGatewayId(paramGw);
+  const urlGatewayId = searchParams.get("gatewayId");
+  const [prevUrlGatewayId, setPrevUrlGatewayId] = React.useState(urlGatewayId);
+
+  // Sync gatewayId when URL parameter changes, without a cascading useEffect
+  if (urlGatewayId !== prevUrlGatewayId) {
+    setPrevUrlGatewayId(urlGatewayId);
+    if (urlGatewayId !== null && urlGatewayId !== gatewayId) {
+      setGatewayId(urlGatewayId);
       setPage(1);
     }
-  }, [searchParams, gatewayId]);
+  }
 
   const loadGateways = React.useCallback(async () => {
-    const response = await fetch("/api/v1/admin/gateways", { credentials: "same-origin" });
+    const response = await fetch("/api/v1/admin/gateways?includeOAuth=true", { credentials: "same-origin" });
     if (!response.ok) throw new Error("Failed to load gateways");
     const payload = (await response.json()) as GatewayListResponse;
-    setGateways(payload.data.gateways.map((gateway) => ({ id: gateway.id, name: gateway.name, slug: gateway.slug })));
+    setGateways(
+      payload.data.gateways.map((gateway) => ({
+        id: gateway.id,
+        name: gateway.name,
+        slug: gateway.slug,
+        authType: gateway.authType,
+      }))
+    );
   }, []);
 
   const loadModels = React.useCallback(async () => {
@@ -194,7 +206,11 @@ export function UpstreamTab() {
           <CustomSelect
             options={[
               { value: "", label: t("admin.upstream.filterAllGateways") },
-              ...gateways.map((g) => ({ value: g.id, label: g.name, sublabel: `(${g.slug})` })),
+              ...gateways.map((g) => ({
+                value: g.id,
+                label: g.name,
+                sublabel: g.authType === "oauth" ? `(OAuth · ${g.slug})` : `(${g.slug})`,
+              })),
             ]}
             value={gatewayId}
             onChange={(val) => changeFilter(() => setGatewayId(val))}

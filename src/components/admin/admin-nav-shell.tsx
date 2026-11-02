@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -24,6 +24,7 @@ import {
 import { DevnubyWordmark } from "@/components/brand/devnuby-logo";
 import { AdminProfilePopover, type AdminUserProfile } from "./admin-profile-popover";
 import { useI18n } from "@/providers/i18n-provider";
+import { AdminBreadcrumbProvider, useAdminBreadcrumb } from "./admin-breadcrumb-context";
 import { cn } from "@/lib/cn";
 
 interface NavItem {
@@ -47,11 +48,13 @@ export function AdminNavShell({
   const { t } = useI18n();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [prevPathname, setPrevPathname] = useState(pathname);
 
-  // Close mobile drawer when route changes
-  useEffect(() => {
+  // Close mobile drawer when route changes, without a useEffect re-render
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     setMobileOpen(false);
-  }, [pathname]);
+  }
 
   const navGroups: NavGroup[] = [
     {
@@ -181,6 +184,7 @@ export function AdminNavShell({
   );
 
   return (
+    <AdminBreadcrumbProvider>
     <div className="h-[100dvh] flex overflow-hidden bg-[var(--surface)] text-[var(--ink)]">
       {/* Desktop Left Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 h-full bg-[var(--panel)] border-r border-[var(--border)] select-none">
@@ -296,9 +300,7 @@ export function AdminNavShell({
                 {t("admin.title")}
               </span>
               <ChevronRight className="w-3.5 h-3.5 text-[var(--muted)] shrink-0 hidden sm:inline" />
-              <span className="text-[var(--ink)] font-semibold truncate text-[13px] sm:text-xs">
-                {activeTitle}
-              </span>
+              <TopbarTrail rootLabel={activeTitle} rootHref={activeItem?.href} />
             </nav>
           </div>
 
@@ -323,5 +325,42 @@ export function AdminNavShell({
         </main>
       </div>
     </div>
+    </AdminBreadcrumbProvider>
+  );
+}
+
+/** Nav item title, followed by any deeper segments a page registered via useSetAdminBreadcrumb. */
+function TopbarTrail({ rootLabel, rootHref }: { rootLabel: string; rootHref?: string }) {
+  const { segments } = useAdminBreadcrumb();
+  const current = "text-[var(--ink)] font-semibold truncate text-[13px] sm:text-xs";
+  const linkClass = "text-[var(--muted)] hover:text-[var(--ink)] transition-colors truncate";
+
+  if (segments.length === 0) return <span className={current}>{rootLabel}</span>;
+
+  return (
+    <>
+      {rootHref ? (
+        <Link href={rootHref} className={linkClass}>
+          {rootLabel}
+        </Link>
+      ) : (
+        <span className={linkClass}>{rootLabel}</span>
+      )}
+      {segments.map((seg, i) => {
+        const isLast = i === segments.length - 1;
+        return (
+          <React.Fragment key={`${seg.label}-${i}`}>
+            <ChevronRight className="w-3.5 h-3.5 text-[var(--muted)] shrink-0" />
+            {isLast || !seg.href ? (
+              <span className={isLast ? current : linkClass}>{seg.label}</span>
+            ) : (
+              <Link href={seg.href} className={linkClass}>
+                {seg.label}
+              </Link>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </>
   );
 }

@@ -6,6 +6,7 @@ export interface RecordAuditParams {
   action: string;
   entityType:
     | "gateway"
+    | "provider_connection"
     | "upstream_model"
     | "catalog_model"
     | "route"

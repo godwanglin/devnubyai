@@ -5,7 +5,6 @@ import { encryptSecret } from "@/lib/crypto/vault";
 import { validateSafeUrlResolved } from "@/lib/tools/ssrf";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { bumpRoutingVersion } from "@/lib/routing/settings";
-import { getGatewayById } from "@/lib/gateways/repository";
 import type { Prisma } from "@/generated/client";
 
 export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -64,9 +63,13 @@ export interface SanitizedGatewayDto {
   lastSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  authType: "api_key" | "oauth";
+  oauthProvider: string | null;
 }
 
 export function sanitizeGateway(g: {
+  authType?: string | null;
+  oauthProvider?: string | null;
   id: bigint;
   slug: string;
   name: string;
@@ -121,11 +124,19 @@ export function sanitizeGateway(g: {
     lastSyncedAt: g.lastSyncedAt?.toISOString() ?? null,
     createdAt: g.createdAt.toISOString(),
     updatedAt: g.updatedAt.toISOString(),
+    authType: g.authType === "oauth" ? "oauth" : "api_key",
+    oauthProvider: g.oauthProvider ?? null,
   };
 }
 
-export async function listSanitizedGateways(): Promise<SanitizedGatewayDto[]> {
+export async function listSanitizedGateways(options?: { includeOAuth?: boolean }): Promise<SanitizedGatewayDto[]> {
+  const where: Prisma.GatewayWhereInput = {};
+  if (!options?.includeOAuth) {
+    where.authType = "api_key";
+  }
+
   const gateways = await db.gateway.findMany({
+    where,
     orderBy: [{ isPrimary: "desc" }, { priority: "asc" }],
   });
   return gateways.map(sanitizeGateway);

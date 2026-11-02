@@ -863,6 +863,7 @@
     "gateways": {
       "title": "Gateway Terkonfigurasi",
       "description": "Kelola gateway AI, kredensial, wire API, status kesehatan, dan sinkronisasi model.",
+      "oauthProviders": "Provider (OAuth)",
       "addGateway": "Tambah Gateway",
       "refresh": "Muat Ulang",
       "primary": "Utama",

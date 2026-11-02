@@ -150,13 +150,48 @@ model Gateway {
   lastSuccessAt       DateTime? @map("last_success_at") @db.Timestamptz(3)
   lastFailureAt       DateTime? @map("last_failure_at") @db.Timestamptz(3)
   lastSyncedAt        DateTime? @map("last_synced_at") @db.Timestamptz(3)
+  // "api_key" (static key) or "oauth" (token pool in provider_connections)
+  authType            String    @default("api_key") @map("auth_type") @db.VarChar(16)
+  // OAuth provider id ("xai", "grok-cli"); one backing gateway per provider
+  oauthProvider       String?   @unique(map: "uq_gateways_oauth_provider") @map("oauth_provider") @db.VarChar(32)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  upstreamModels UpstreamModel[]
+  upstreamModels      UpstreamModel[]
+  providerConnections ProviderConnection[]
 
   @@index([isEnabled, isPrimary, priority], map: "idx_gateways_routing")
   @@map("gateways")
+}
+
+// One OAuth account of an OAuth-backed gateway; tried in sortOrder, skipped when disabled or cooling down
+model ProviderConnection {
+  id                     BigInt    @id @default(autoincrement())
+  gatewayId              BigInt    @map("gateway_id")
+  label                  String?   @db.VarChar(120)
+  email                  String?   @db.VarChar(320)
+  displayName            String?   @map("display_name") @db.VarChar(160)
+  upstreamUserId         String?   @map("upstream_user_id") @db.VarChar(128)
+  accessTokenCiphertext  Bytes     @map("access_token_ciphertext") @db.ByteA
+  refreshTokenCiphertext Bytes?    @map("refresh_token_ciphertext") @db.ByteA
+  idTokenCiphertext      Bytes?    @map("id_token_ciphertext") @db.ByteA
+  scope                  String?   @db.VarChar(512)
+  expiresAt              DateTime? @map("expires_at") @db.Timestamptz(3)
+  providerData           Json?     @map("provider_data")
+  quotaCached            Json?     @map("quota_cached")
+  quotaCheckedAt         DateTime? @map("quota_checked_at") @db.Timestamptz(3)
+  cooldownUntil          DateTime? @map("cooldown_until") @db.Timestamptz(3)
+  lastError              String?   @map("last_error") @db.VarChar(500)
+  isEnabled              Boolean   @default(true) @map("is_enabled")
+  sortOrder              Int       @default(100) @map("sort_order")
+  lastUsedAt             DateTime? @map("last_used_at") @db.Timestamptz(3)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  gateway Gateway @relation(fields: [gatewayId], references: [id], onDelete: Cascade, map: "fk_provider_connections_gateway")
+
+  @@index([gatewayId, isEnabled, sortOrder], map: "idx_provider_connections_pool")
+  @@map("provider_connections")
 }
 
 model UpstreamModel {

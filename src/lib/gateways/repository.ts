@@ -19,6 +19,8 @@ export interface GatewayRow {
   healthStatus: string;
   consecutiveFailures: number;
   circuitOpenUntil: Date | null;
+  authType: string;
+  oauthProvider: string | null;
 }
 
 function parseHeaders(raw: unknown): Record<string, string> | null {
@@ -60,6 +62,8 @@ export function mapGateway(row: GatewayRow): DecryptedGatewayConfig {
     healthStatus,
     consecutiveFailures: row.consecutiveFailures,
     circuitOpenUntil: row.circuitOpenUntil,
+    authType: row.authType === "oauth" ? "oauth" : "api_key",
+    oauthProvider: row.oauthProvider ?? null,
   };
 }
 

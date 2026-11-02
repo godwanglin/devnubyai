@@ -86,6 +86,9 @@ export interface DecryptedGatewayConfig {
   healthStatus: "unknown" | "healthy" | "degraded" | "down";
   consecutiveFailures: number;
   circuitOpenUntil: Date | null;
+  /** "oauth" gateways authenticate with their provider_connections pool, not `apiKey`. */
+  authType: "api_key" | "oauth";
+  oauthProvider: string | null;
 }
 
 export interface CandidateRoute {

@@ -863,6 +863,7 @@
     "gateways": {
       "title": "Configured Gateways",
       "description": "Manage AI gateways, credentials, wire APIs, health states, and model synchronization.",
+      "oauthProviders": "Providers (OAuth)",
       "addGateway": "Add Gateway",
       "refresh": "Refresh",
       "primary": "Primary",

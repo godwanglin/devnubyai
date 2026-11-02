@@ -4,6 +4,7 @@ import { recordAdminAudit } from "@/lib/admin/audit";
 import { bumpRoutingVersion } from "@/lib/routing/settings";
 import { validateSafeUrlResolved } from "@/lib/tools/ssrf";
 import { getGatewayById } from "@/lib/gateways/repository";
+import { resolveOAuthGatewayAuth } from "@/lib/gateways/oauth-dispatch";
 
 export interface GatewayTestResult {
   success: boolean;
@@ -41,10 +42,21 @@ export async function testGatewayConnectivity(id: bigint): Promise<GatewayTestRe
     };
   }
 
+  let effectiveApiKey = decrypted.apiKey;
+  let effectiveHeaders = decrypted.extraHeaders ?? {};
+  if (decrypted.authType === "oauth") {
+    const oauthAuth = await resolveOAuthGatewayAuth(decrypted).catch(() => null);
+    if (!oauthAuth) {
+      return { success: false, httpStatus: 0, latencyMs: 0, error: "No active OAuth account available" };
+    }
+    effectiveApiKey = oauthAuth.accessToken;
+    effectiveHeaders = oauthAuth.headers;
+  }
+
   const headers: Record<string, string> = {
     Accept: "application/json",
-    Authorization: `Bearer ${decrypted.apiKey}`,
-    ...(decrypted.extraHeaders ?? {}),
+    Authorization: `Bearer ${effectiveApiKey}`,
+    ...effectiveHeaders,
   };
 
   const controller = new AbortController();
@@ -112,10 +124,21 @@ export async function syncGatewayUpstreamModels(
     throw ApiError.badRequest(`Unsafe gateway target: ${ssrfCheck.reason}`);
   }
 
+  let effectiveApiKey = decrypted.apiKey;
+  let effectiveHeaders = decrypted.extraHeaders ?? {};
+  if (decrypted.authType === "oauth") {
+    const oauthAuth = await resolveOAuthGatewayAuth(decrypted);
+    if (!oauthAuth) {
+      throw ApiError.badRequest("Cannot sync models: no active OAuth account for this provider");
+    }
+    effectiveApiKey = oauthAuth.accessToken;
+    effectiveHeaders = oauthAuth.headers;
+  }
+
   const headers: Record<string, string> = {
     Accept: "application/json",
-    Authorization: `Bearer ${decrypted.apiKey}`,
-    ...(decrypted.extraHeaders ?? {}),
+    Authorization: `Bearer ${effectiveApiKey}`,
+    ...effectiveHeaders,
   };
 
   const controller = new AbortController();

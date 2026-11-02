@@ -9,6 +9,10 @@ export const CACHE_KEYS = {
   systemPromptsActive: () => "cache:system_prompts:active",
   userMe: (userId: string | bigint) => `cache:user:${userId.toString()}:me`,
   userSessions: (userId: string | bigint) => `cache:user:${userId.toString()}:sessions`,
+  openaiResetCredits: (connectionId: string | bigint) =>
+    `cache:admin:provider_connection:${connectionId.toString()}:reset_credits`,
+  openaiResetCreditsHistory: (connectionId: string | bigint) =>
+    `cache:admin:provider_connection:${connectionId.toString()}:reset_credits_history`,
 } as const;
 
 export const CACHE_TTL = {
@@ -19,6 +23,7 @@ export const CACHE_TTL = {
   SYSTEM_PROMPTS: 3600, // 1 hour
   USER_ME: 300, // 5 minutes
   USER_SESSIONS: 120, // 2 minutes
+  OPENAI_RESET_CREDITS: 300, // 5 minutes, keeps the admin UI from spamming chatgpt.com
 } as const;
 
 /**
@@ -72,4 +77,14 @@ export async function invalidateUserMeCache(userId: string | bigint): Promise<vo
  */
 export async function invalidateUserSessionsCache(userId: string | bigint): Promise<void> {
   await invalidateCacheKey(CACHE_KEYS.userSessions(userId));
+}
+
+/**
+ * Invalidate OpenAI reset-credit availability & history cache for one connection
+ */
+export async function invalidateOpenAiResetCreditsCache(connectionId: string | bigint): Promise<void> {
+  await Promise.allSettled([
+    invalidateCacheKey(CACHE_KEYS.openaiResetCredits(connectionId)),
+    invalidateCacheKey(CACHE_KEYS.openaiResetCreditsHistory(connectionId)),
+  ]);
 }

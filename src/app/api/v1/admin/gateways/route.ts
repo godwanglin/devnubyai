@@ -11,7 +11,9 @@ export async function GET(request: Request) {
 
   try {
     await requireAdmin();
-    const gateways = await listSanitizedGateways();
+    // OAuth gateways are managed under /admin/gateway/providers; only filters opt in to see them
+    const includeOAuth = new URL(request.url).searchParams.get("includeOAuth") === "true";
+    const gateways = await listSanitizedGateways({ includeOAuth });
     return jsonSuccess({ gateways }, { requestId });
   } catch (err) {
     return jsonError(err, { requestId });
