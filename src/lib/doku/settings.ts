@@ -44,7 +44,10 @@ function getEnvDokuConfig(): Partial<DokuConfig> {
     secretKey,
     apiKey,
     publicKey,
-    notificationUrl: process.env.DOKU_NOTIFICATION_URL?.trim() || "",
+    notificationUrl:
+      process.env.DOKU_WEBHOOK_URL?.trim() ||
+      process.env.DOKU_NOTIFICATION_URL?.trim() ||
+      "",
     callbackUrl: process.env.DOKU_CALLBACK_URL?.trim() || "",
   };
 }

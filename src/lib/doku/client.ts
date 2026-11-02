@@ -153,6 +153,14 @@ export async function createDokuCheckout(
   const requestId = crypto.randomUUID();
   const requestTimestamp = getDokuTimestamp();
 
+  const webhookUrl =
+    config.notificationUrl?.trim() ||
+    process.env.DOKU_WEBHOOK_URL?.trim() ||
+    process.env.DOKU_NOTIFICATION_URL?.trim() ||
+    (process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/v1/payments/doku/webhook`
+      : undefined);
+
   const payload = {
     order: {
       invoice_number: request.invoiceNumber,
@@ -178,6 +186,13 @@ export async function createDokuCheckout(
       email: request.customer.email,
       phone: request.customer.phone?.trim() || DEFAULT_CUSTOMER_PHONE,
     },
+    ...(webhookUrl
+      ? {
+          additional_info: {
+            override_notification_url: webhookUrl,
+          },
+        }
+      : {}),
   };
 
   const rawBody = JSON.stringify(payload);
@@ -309,6 +324,14 @@ export async function createDokuDirectVa(
   const requestId = crypto.randomUUID();
   const requestTimestamp = getDokuTimestamp();
 
+  const webhookUrl =
+    config.notificationUrl?.trim() ||
+    process.env.DOKU_WEBHOOK_URL?.trim() ||
+    process.env.DOKU_NOTIFICATION_URL?.trim() ||
+    (process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/v1/payments/doku/webhook`
+      : undefined);
+
   const payload = {
     order: {
       invoice_number: request.invoiceNumber,
@@ -325,6 +348,13 @@ export async function createDokuDirectVa(
       name: request.customer.name,
       email: request.customer.email,
     },
+    ...(webhookUrl
+      ? {
+          additional_info: {
+            override_notification_url: webhookUrl,
+          },
+        }
+      : {}),
   };
 
   const rawBody = JSON.stringify(payload);
