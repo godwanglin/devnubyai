@@ -2,7 +2,9 @@ import { requireUser } from "@/lib/auth/session";
 import { getChatSession } from "@/lib/chat/service";
 import { db } from "@/lib/db";
 import { uploadToR2, downloadFromR2, sanitizeKey } from "@/lib/storage/r2";
-import { FILE_RESPONSE_CSP, isImageMimeType } from "@/lib/files/policy";
+import { FILE_RESPONSE_CSP, MAX_FILE_BYTES, isImageMimeType } from "@/lib/files/policy";
+import { assertUploadQuota } from "@/lib/files/upload-quota";
+import { ApiError } from "@/lib/api/response";
 import { NextResponse } from "next/server";
 
 type RouteContext = { params: Promise<{ chatId: string; fileId: string }> };
@@ -100,6 +102,20 @@ export async function PUT(request: Request, context: RouteContext) {
     const safeFilename = `${stem}${extension}`;
 
     const buffer = Buffer.from(content, "utf8");
+    if (buffer.length > MAX_FILE_BYTES) {
+      return new NextResponse("File content exceeds maximum allowed size of 10 MB.", { status: 413 });
+    }
+
+    // Growth counts against the agent quota, like the AI edit being undone
+    const growth = buffer.length - Number(sessionFile.sizeBytes);
+    if (growth > 0) {
+      try {
+        await assertUploadQuota({ userId: user.id }, "agent", growth);
+      } catch (err) {
+        if (err instanceof ApiError) return new NextResponse(err.message, { status: err.status });
+        throw err;
+      }
+    }
 
     await uploadToR2({
       userId: user.publicId,
