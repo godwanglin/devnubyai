@@ -33,6 +33,70 @@ export interface PoolConnection {
 const RATE_LIMIT_COOLDOWN_MS = 60 * 1000;
 const QUOTA_COOLDOWN_MS = 60 * 60 * 1000;
 
+/**
+ * Models supported by OpenAI / ChatGPT accounts on the "free" plan (the green cards).
+ * Any other model (e.g. sol, astra, daybreak) requires a paid tier (plus/pro/team).
+ * Strips optional cx/ prefix, whitespace, and lowercases for matching.
+ */
+export const OPENAI_FREE_PLAN_ALLOWED_MODELS = new Set<string>([
+  "gpt-6-luna",
+  "gpt-6-luna[1m]",
+  "gpt-5.6-terra",
+  "gpt-5.6-terra[1m]",
+  "gpt-5.6-terra-review",
+  "gpt-5.6-luna",
+  "gpt-5.6-luna[1m]",
+  "gpt-5.6-luna-review",
+  "gpt-reserve",
+  "codex-auto-review",
+]);
+
+export function normalizeModelKey(rawModel: string): string {
+  return rawModel.trim().toLowerCase().replace(/^cx\//i, "");
+}
+
+export function isOpenAiModelAllowedForFree(rawModel: string): boolean {
+  const normalized = normalizeModelKey(rawModel);
+  return OPENAI_FREE_PLAN_ALLOWED_MODELS.has(normalized);
+}
+
+/** Check if an account's cached quota is currently depleted. */
+export function isConnectionQuotaExhausted(conn: PoolConnection, now = Date.now()): boolean {
+  const qc = conn.quotaCached;
+  if (!qc || !qc.supported) return false;
+
+  // Explicit flag from quota fetcher
+  if (qc.exhausted) {
+    // If periodEnd is in the future, it's still exhausted; if past, it has reset
+    if (qc.periodEnd) {
+      const resetTime = Date.parse(qc.periodEnd);
+      if (Number.isFinite(resetTime) && resetTime <= now) return false;
+    }
+    return true;
+  }
+
+  // Check individual windows (session / weekly)
+  const quotas = qc.quotas || {};
+  for (const q of Object.values(quotas)) {
+    if (!q || q.unlimited) continue;
+    if (q.remainingPercentage <= 0) {
+      if (q.resetAt) {
+        const resetTime = Date.parse(q.resetAt);
+        if (Number.isFinite(resetTime) && resetTime <= now) continue;
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function getConnectionPlanType(conn: PoolConnection): string {
+  const fromPd = typeof conn.providerData?.chatgptPlanType === "string" ? conn.providerData.chatgptPlanType : null;
+  const fromQuota = typeof conn.quotaCached?.plan === "string" ? conn.quotaCached.plan : null;
+  return (fromPd || fromQuota || "").toLowerCase().trim();
+}
+
 /** Enabled accounts not cooling down, in admin-defined order. */
 export async function loadConnectionPool(gatewayId: bigint, now = new Date()): Promise<PoolConnection[]> {
   const rows = await db.providerConnection.findMany({
@@ -256,12 +320,44 @@ export async function* executeOAuthGateway(
         .catch(() => {}));
   const onError = deps.onError ?? noteConnectionError;
 
-  const pool = await loadPool(gateway.id);
-  if (pool.length === 0) {
+  const fullPool = await loadPool(gateway.id);
+  if (fullPool.length === 0) {
     throw new GatewayError({
       errorClass: "auth",
       httpStatus: null,
       message: `No active OAuth account for ${gateway.name}`,
+    });
+  }
+
+  // Skip accounts with depleted quota, and free-plan OpenAI accounts for paid-only models
+  const nowMs = Date.now();
+  const freeAllowed = gateway.oauthProvider !== "openai" || isOpenAiModelAllowedForFree(request.model);
+  let skippedQuota = 0;
+  let skippedPlan = 0;
+  const pool = fullPool.filter((conn) => {
+    if (isConnectionQuotaExhausted(conn, nowMs)) {
+      skippedQuota += 1;
+      return false;
+    }
+    if (!freeAllowed && getConnectionPlanType(conn) === "free") {
+      skippedPlan += 1;
+      return false;
+    }
+    return true;
+  });
+
+  if (pool.length === 0) {
+    const reasons = [
+      skippedQuota > 0 ? `${skippedQuota} kuota habis` : null,
+      skippedPlan > 0 ? `${skippedPlan} plan free tidak mendukung model ${request.model}` : null,
+    ].filter(Boolean);
+    const detail = `No eligible OAuth account for ${gateway.name} (${reasons.join(", ")})`;
+    throw new GatewayError({
+      errorClass: skippedQuota > 0 && skippedPlan === 0 ? "rate_limited" : "auth",
+      httpStatus: null,
+      message: detail,
+      // Keep the skip reason in admin telemetry instead of the generic mapped text
+      providerError: detail,
     });
   }
 
