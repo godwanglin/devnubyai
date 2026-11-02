@@ -38,8 +38,15 @@ export function PlanCheckoutModal({
   const [vaResult, setVaResult] = useState<DirectVaResult | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
   const [isPaid, setIsPaid] = useState(false);
+  const [pendingInvoice, setPendingInvoice] = useState<{
+    invoice: string;
+    amount: number;
+    vaNumber?: string;
+    bank?: string;
+    expiredAt?: string;
+  } | null>(null);
 
-  // Sync initial cycle when modal opens
+  // Sync initial cycle & check active pending invoices when modal opens
   useEffect(() => {
     if (isOpen) {
       setCycle(initialCycle);
@@ -47,8 +54,24 @@ export function PlanCheckoutModal({
       setCheckoutResult(null);
       setIsPaid(false);
       setError(null);
+
+      if (user?.id) {
+        fetch(`/api/v1/tracking/pym:${encodeURIComponent(String(user.id))}`, {
+          credentials: "same-origin",
+        })
+          .then((res) => res.json())
+          .then((json) => {
+            const invs = json?.invoices;
+            if (Array.isArray(invs) && invs.length > 0) {
+              setPendingInvoice(invs[0]);
+            } else {
+              setPendingInvoice(null);
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [isOpen, initialCycle]);
+  }, [isOpen, initialCycle, user?.id]);
 
   // Load active payment methods
   useEffect(() => {
@@ -239,9 +262,47 @@ export function PlanCheckoutModal({
           onClose={onClose}
         />
       ) : vaResult ? (
-        <DirectVaView vaResult={vaResult} formatRupiah={formatRupiah} onClose={onClose} />
+        <DirectVaView
+          vaResult={vaResult}
+          userId={user?.id}
+          formatRupiah={formatRupiah}
+          onPaid={handlePaymentSuccess}
+          onClose={onClose}
+        />
       ) : (
         <div className="space-y-5 py-1">
+          {pendingInvoice && (
+            <div className="p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-amber-400">Tagihan Belum Selesai</span>
+                <span className="text-[10px] text-[var(--muted)] font-mono">{pendingInvoice.invoice}</span>
+              </div>
+              <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+                Anda memiliki Virtual Account ({pendingInvoice.bank?.toUpperCase() || "VA"}) aktif:{" "}
+                <span className="text-[var(--ink)] font-mono font-semibold">{pendingInvoice.vaNumber}</span> sebesar{" "}
+                <span className="text-[var(--ink)] font-semibold">{formatRupiah(pendingInvoice.amount)}</span>.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="primary"
+                  className="text-[11px] py-1 px-3 h-auto"
+                  onClick={() => {
+                    setVaResult({
+                      invoiceNumber: pendingInvoice.invoice,
+                      amount: pendingInvoice.amount,
+                      bank: pendingInvoice.bank || "briva",
+                      virtualAccountNumber: pendingInvoice.vaNumber,
+                      paymentCode: pendingInvoice.vaNumber,
+                      expiredDate: pendingInvoice.expiredAt,
+                    });
+                  }}
+                >
+                  Lanjutkan Pembayaran Ini
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Cycle Selector */}
           <div className="flex items-center p-1 rounded-[10px] bg-white/[0.04] border border-white/5">
             <button

@@ -338,7 +338,7 @@ export async function createDokuDirectVa(
       amount: request.amount,
     },
     virtual_account_info: {
-      expired_time: request.expiredTimeMinutes ?? 60,
+      expired_time: 60, // Strictly enforced: flat 60 minutes (1 hour)
       reusable_status: request.reusableStatus ?? false,
       info1: request.info1 || "DevNuby Payment",
       info2: request.info2 || request.customer.name,
