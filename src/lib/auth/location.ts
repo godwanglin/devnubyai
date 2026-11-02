@@ -8,8 +8,9 @@ export async function detectLocationFromRequest(
   request: Request,
   ipAddress: string | null
 ): Promise<string> {
-  // 1. Cloudflare Edge Headers
-  const cfCity = request.headers.get("cf-ipcity");
+  // 1. Cloudflare Edge Headers (only when the request really came through Cloudflare)
+  const viaCloudflare = Boolean(request.headers.get("cf-connecting-ip"));
+  const cfCity = viaCloudflare ? request.headers.get("cf-ipcity") : null;
   const cfRegion = request.headers.get("cf-region-code") || request.headers.get("cf-region");
   if (cfCity) {
     const loc = cfRegion ? `${cfCity}, ${cfRegion}` : cfCity;

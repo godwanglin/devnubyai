@@ -3,6 +3,7 @@ import { handleGoogleCallback } from "@/lib/auth/google";
 import { detectLocationFromRequest } from "@/lib/auth/location";
 import { getRequestId } from "@/lib/api/response";
 import { getPublicOrigin } from "@/lib/api/origin";
+import { getClientIp } from "@/lib/api/client-ip";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -23,10 +24,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const ipAddress =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      null;
+    const ipAddress = getClientIp(request);
     const userAgent = request.headers.get("user-agent") || null;
     const location = await detectLocationFromRequest(request, ipAddress);
 

@@ -6,6 +6,7 @@ import { createSession } from "@/lib/auth/session";
 import { detectLocationFromRequest } from "@/lib/auth/location";
 import { ApiError, jsonError, jsonSuccess, getRequestId } from "@/lib/api/response";
 import { incrementRateCounter, resetRateCounter } from "@/lib/api/rate-limit";
+import { getClientIp } from "@/lib/api/client-ip";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -68,10 +69,7 @@ export async function POST(request: Request) {
       return jsonError(ApiError.forbidden("Akun Anda telah dinonaktifkan"), { requestId });
     }
 
-    const ipAddress =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      null;
+    const ipAddress = getClientIp(request);
     const userAgent = request.headers.get("user-agent") || null;
     const location = await detectLocationFromRequest(request, ipAddress);
 
