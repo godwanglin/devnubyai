@@ -5,6 +5,7 @@ import { getDokuConfig } from "@/lib/doku/settings";
 import { createDokuCheckout, DokuApiError } from "@/lib/doku/client";
 import { dokuCheckoutRequestSchema, DEFAULT_CUSTOMER_PHONE } from "@/lib/doku/schemas";
 import { resolvePlanCheckout } from "@/lib/payments/plan-checkout";
+import { getPublicOrigin } from "@/lib/api/origin";
 import type { Prisma } from "@/generated/client";
 
 export async function POST(request: Request) {
@@ -36,11 +37,30 @@ export async function POST(request: Request) {
 
     const planCheckout = await resolvePlanCheckout(parsed.data.metadata, parsed.data.amount);
 
+    // DOKU redirects the payer to these URLs: only our own origin, never an arbitrary site
+    const appOrigin = request.headers.get("origin") || new URL(getPublicOrigin(request)).origin;
+    const sameOriginUrl = (url: string | undefined, fallback: string) => {
+      try {
+        return url && new URL(url).origin === appOrigin ? url : fallback;
+      } catch {
+        return fallback;
+      }
+    };
+    const invoiceParam = encodeURIComponent(parsed.data.invoiceNumber);
+
     // Auto-fill customer info if not explicitly provided
     const checkoutRequest = {
       ...parsed.data,
       amount: planCheckout.amount,
       items: [{ name: planCheckout.itemName, price: planCheckout.amount, quantity: 1 }],
+      callbackUrl: sameOriginUrl(
+        parsed.data.callbackUrl,
+        `${appOrigin}/plans?payment=success&invoice=${invoiceParam}`
+      ),
+      callbackUrlCancel: sameOriginUrl(
+        parsed.data.callbackUrlCancel,
+        `${appOrigin}/plans?payment=cancel&invoice=${invoiceParam}`
+      ),
       customer: {
         id: parsed.data.customer.id || user.id.toString(),
         name: parsed.data.customer.name || user.name || "Customer",
