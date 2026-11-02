@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { verifyPassword } from "@/lib/auth/password";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { detectLocationFromRequest } from "@/lib/auth/location";
 import { ApiError, jsonError, jsonSuccess, getRequestId } from "@/lib/api/response";
@@ -15,6 +15,12 @@ const loginSchema = z.object({
 // Failed attempts are counted per account (not per IP, which is spoofable via X-Forwarded-For)
 const MAX_FAILED_ATTEMPTS = 10;
 const FAILED_WINDOW_SECONDS = 15 * 60;
+
+let dummyPasswordHash: string | null = null;
+function getDummyPasswordHash(): string {
+  dummyPasswordHash ??= hashPassword(randomBytes(16).toString("hex"));
+  return dummyPasswordHash;
+}
 
 function failedLoginKey(normalizedEmail: string): string {
   return `rate:login-fail:${createHash("sha256").update(normalizedEmail).digest("hex")}`;
@@ -46,6 +52,8 @@ export async function POST(request: Request) {
     });
 
     if (!user || !user.passwordHash) {
+      // Spend the same scrypt time as a real check so response timing doesn't reveal accounts
+      verifyPassword(password, getDummyPasswordHash());
       return jsonError(ApiError.unauthorized("Email atau kata sandi salah"), { requestId });
     }
 
