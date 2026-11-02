@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { checkDokuOrderStatus } from "@/lib/doku/client";
 import { applyPaymentSettlement } from "@/lib/payments/settlement";
@@ -40,6 +41,14 @@ async function resolveUserId(rawId: string): Promise<bigint | null> {
 
 export async function GET(request: Request, context: RouteContext) {
   try {
+    // Invoices carry VA numbers and amounts: only their owner (or an admin) may read them
+    const session = (await getSession())?.user;
+    if (!session) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+    const canRead = (ownerId: bigint | null) =>
+      session.role === "admin" || (ownerId !== null && ownerId === session.id);
+
     const { slug } = await context.params;
     if (!slug || slug.length === 0) {
       return NextResponse.json({ error: "Missing tracking path" }, { status: 400 });
@@ -66,6 +75,9 @@ export async function GET(request: Request, context: RouteContext) {
 
       if (!userId) {
         return NextResponse.json({ invoices: [] });
+      }
+      if (!canRead(userId)) {
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
       }
 
       const pendingTxs = await db.paymentTransaction.findMany({
@@ -141,8 +153,8 @@ export async function GET(request: Request, context: RouteContext) {
         return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
       }
 
-      // Check ownership if userId is valid
-      if (userId && tx.userId && tx.userId !== userId) {
+      // The path's user id is only a hint; the session decides access
+      if (!canRead(tx.userId) || (userId && tx.userId !== userId)) {
         return NextResponse.json({ error: "Access denied" }, { status: 403 });
       }
 
