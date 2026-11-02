@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { markUserSessionsRevoked, requireSession } from "@/lib/auth/session";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
+import { getClientIp } from "@/lib/api/client-ip";
 import {
   CACHE_KEYS,
   CACHE_TTL,
@@ -52,6 +53,24 @@ export async function GET(request: Request) {
     }
 
     const currentSessionIdStr = ctx.sessionId.toString();
+    const clientIp = getClientIp(request);
+
+    // Self-healing: if current session lacks IP address, backfill it immediately
+    const currentSession = rawSessions.find((s) => s.id === currentSessionIdStr);
+    if (currentSession && !currentSession.ipAddress && clientIp) {
+      currentSession.ipAddress = clientIp;
+      await db.authSession
+        .update({
+          where: { id: ctx.sessionId },
+          data: { ipAddress: clientIp },
+        })
+        .catch(() => {});
+      await setCachedJson(
+        CACHE_KEYS.userSessions(ctx.user.id),
+        rawSessions,
+        CACHE_TTL.USER_SESSIONS
+      ).catch(() => {});
+    }
     const mapped = rawSessions.map((s) => ({
       ...s,
       isCurrent: s.id === currentSessionIdStr,

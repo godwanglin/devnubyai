@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
 import { resolveLocationFromIp } from "@/lib/auth/location";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import { getClientIp } from "@/lib/api/client-ip";
 
 export interface SecurityEventDto {
   id: string;
@@ -44,9 +45,12 @@ export async function GET(request: Request) {
       take: 30,
     });
 
+    const clientIp = getClientIp(request);
+
     const events: SecurityEventDto[] = await Promise.all(
       sessions.map(async (s) => {
-        const location = s.location || (await resolveLocationFromIp(s.ipAddress));
+        const effectiveIp = s.ipAddress || (s.id === ctx.sessionId ? clientIp : null);
+        const location = s.location || (await resolveLocationFromIp(effectiveIp));
         return {
           id: `sess-${s.id}`,
           type: "login",
@@ -55,7 +59,7 @@ export async function GET(request: Request) {
           timestamp: s.createdAt.toISOString(),
           location,
           userAgent: s.userAgent,
-          ipAddress: s.ipAddress,
+          ipAddress: effectiveIp,
         };
       })
     );
