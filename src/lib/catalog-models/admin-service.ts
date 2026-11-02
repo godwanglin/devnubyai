@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { partialUpdate } from "@/lib/api/zod-partial";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
@@ -99,7 +100,7 @@ export const createCatalogModelSchema = z.object({
   routes: z.array(routeInputSchema).default([]),
 });
 
-export const updateCatalogModelSchema = createCatalogModelSchema.partial();
+export const updateCatalogModelSchema = partialUpdate(createCatalogModelSchema);
 
 export type CreateCatalogModelInput = z.infer<typeof createCatalogModelSchema>;
 export type UpdateCatalogModelInput = z.infer<typeof updateCatalogModelSchema>;

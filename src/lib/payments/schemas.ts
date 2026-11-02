@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { partialUpdate } from "@/lib/api/zod-partial";
 
 export const paymentMethodCreateSchema = z.object({
   name: z.string().trim().min(2, "Nama metode minimal 2 karakter").max(120),
@@ -28,7 +29,7 @@ export const paymentMethodCreateSchema = z.object({
   sortOrder: z.number().int().min(0).max(9999).default(100),
 });
 
-export const paymentMethodUpdateSchema = paymentMethodCreateSchema.partial();
+export const paymentMethodUpdateSchema = partialUpdate(paymentMethodCreateSchema);
 
 export const paymentTransactionManualStatusSchema = z.object({
   status: z.enum([

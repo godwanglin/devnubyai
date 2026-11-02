@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { partialUpdate } from "@/lib/api/zod-partial";
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
@@ -50,7 +51,7 @@ export const createPlanSchema = z.object({
   features: planFeaturesSchema.optional(),
 });
 
-export const updatePlanSchema = createPlanSchema.partial();
+export const updatePlanSchema = partialUpdate(createPlanSchema);
 
 export type CreatePlanInput = z.infer<typeof createPlanSchema>;
 export type UpdatePlanInput = z.infer<typeof updatePlanSchema>;

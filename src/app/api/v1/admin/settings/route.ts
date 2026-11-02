@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/auth/session";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import { partialUpdate } from "@/lib/api/zod-partial";
 import { chatSettingsSchema, getChatSettings, updateChatSettings } from "@/lib/chat/settings";
 
 export async function GET(request: Request) {
@@ -27,7 +28,7 @@ export async function PATCH(request: Request) {
       throw ApiError.badRequest("Invalid JSON body");
     }
 
-    const parsed = chatSettingsSchema.partial().safeParse(body);
+    const parsed = partialUpdate(chatSettingsSchema).safeParse(body);
     if (!parsed.success) {
       throw ApiError.badRequest("Invalid settings payload", parsed.error.format());
     }

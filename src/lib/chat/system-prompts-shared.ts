@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { partialUpdate } from "@/lib/api/zod-partial";
 
 /** Client-safe part of the system prompt feature (no DB access). */
 
@@ -30,7 +31,7 @@ export const systemPromptInputSchema = z.object({
   sortOrder: z.number().int().min(0).max(65_535).default(100),
 });
 
-export const systemPromptUpdateSchema = systemPromptInputSchema.partial();
+export const systemPromptUpdateSchema = partialUpdate(systemPromptInputSchema);
 
 export type SystemPromptInput = z.infer<typeof systemPromptInputSchema>;
 
