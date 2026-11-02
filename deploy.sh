@@ -21,12 +21,22 @@ mkdir -p .git/info
 grep -qxF ".env" .git/info/exclude 2>/dev/null || printf "\n.env\n" >> .git/info/exclude
 grep -qxF "DEPLOY_RULE.md" .git/info/exclude 2>/dev/null || printf "DEPLOY_RULE.md\n" >> .git/info/exclude
 
+# Backup config/network-rules.json if it exists to preserve dynamic changes
+if [ -f "config/network-rules.json" ]; then
+    cp config/network-rules.json /tmp/network-rules-deploy.bak
+fi
+
 # 2. Sync latest code from GitHub
 echo "[1/6] Fetching latest changes from GitHub..."
 git remote set-url origin https://github.com/godwanglin/devnubyai.git
 git fetch origin main
 git reset --hard origin/main
 git clean -fd -e .env -e DEPLOY_RULE.md
+
+if [ -f "/tmp/network-rules-deploy.bak" ]; then
+    echo "Restoring dynamic network rules config..."
+    cp /tmp/network-rules-deploy.bak config/network-rules.json
+fi
 
 # 3. Install dependencies
 echo "[2/6] Installing dependencies..."
