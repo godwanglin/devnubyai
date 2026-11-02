@@ -1,5 +1,9 @@
 import net from "net";
 import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
+import zlib from "node:zlib";
+import { Readable } from "node:stream";
 
 /**
  * SSRF and Network Hardening Utilities.
@@ -111,12 +115,15 @@ export async function validateSafeUrlResolved(rawUrl: string): Promise<{
   safe: boolean;
   reason?: string;
   parsedUrl?: URL;
+  /** A validated address the connection should be pinned to */
+  address?: { address: string; family: number };
 }> {
   const result = validateSafeUrl(rawUrl);
   if (!result.safe || !result.parsedUrl) return result;
 
   const hostname = result.parsedUrl.hostname.replace(/^\[|\]$/g, "");
-  if (net.isIP(hostname)) return result;
+  const literalFamily = net.isIP(hostname);
+  if (literalFamily) return { ...result, address: { address: hostname, family: literalFamily } };
 
   try {
     const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
@@ -127,27 +134,99 @@ export async function validateSafeUrlResolved(rawUrl: string): Promise<{
         reason: `Host '${hostname}' resolves to a reserved or private network address.`,
       };
     }
+    return { ...result, address: addresses[0] };
   } catch {
     return { safe: false, reason: `Host '${hostname}' could not be resolved.` };
   }
-  return result;
+}
+
+interface PinnedRequestInit {
+  method?: string;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 /**
- * fetch() that validates (including DNS) the initial URL and every redirect
- * hop before sending it, instead of letting fetch follow redirects blindly.
+ * One HTTP(S) request whose socket connects to `pinned` instead of re-resolving
+ * the hostname, closing the DNS-rebinding gap between validation and connect.
+ * TLS still verifies the certificate against the URL's hostname.
+ */
+export function pinnedRequest(
+  url: URL,
+  pinned: { address: string; family: number },
+  init: PinnedRequestInit
+): Promise<Response> {
+  const client = url.protocol === "https:" ? https : http;
+  return new Promise((resolve, reject) => {
+    const req = client.request(
+      url,
+      {
+        method: init.method ?? "GET",
+        headers: { "Accept-Encoding": "gzip, deflate, br", ...init.headers },
+        signal: init.signal,
+        lookup: (_host, options, callback) => {
+          if ((options as { all?: boolean }).all) {
+            (callback as (e: Error | null, a: { address: string; family: number }[]) => void)(null, [pinned]);
+          } else {
+            callback(null, pinned.address, pinned.family);
+          }
+        },
+      },
+      (res) => {
+        const headers = new Headers();
+        for (const [key, value] of Object.entries(res.headers)) {
+          if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
+          else if (value !== undefined) headers.set(key, value);
+        }
+
+        const encoding = (res.headers["content-encoding"] || "").toLowerCase();
+        const decoder =
+          encoding === "gzip" || encoding === "x-gzip"
+            ? zlib.createGunzip()
+            : encoding === "br"
+              ? zlib.createBrotliDecompress()
+              : encoding === "deflate"
+                ? zlib.createInflate()
+                : null;
+        const stream = decoder ? res.pipe(decoder) : res;
+        if (decoder) {
+          headers.delete("content-encoding");
+          headers.delete("content-length");
+          res.on("error", (e) => decoder.destroy(e));
+        }
+
+        const status = res.statusCode ?? 502;
+        const nullBody = status === 204 || status === 205 || status === 304 || init.method === "HEAD";
+        if (nullBody) res.resume();
+        resolve(
+          new Response(nullBody ? null : (Readable.toWeb(stream as Readable) as ReadableStream), {
+            status,
+            statusText: res.statusMessage,
+            headers,
+          })
+        );
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/**
+ * fetch()-like request that validates (including DNS) the initial URL and every
+ * redirect hop before sending it, and pins each connection to the validated IP.
  */
 export async function safeFetch(
   rawUrl: string,
-  init: Omit<RequestInit, "redirect">
+  init: PinnedRequestInit
 ): Promise<{ response: Response; finalUrl: string } | { blocked: string }> {
   let current = rawUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const check = await validateSafeUrlResolved(current);
-    if (!check.safe || !check.parsedUrl) {
+    if (!check.safe || !check.parsedUrl || !check.address) {
       return { blocked: check.reason || "URL is not allowed." };
     }
-    const response = await fetch(check.parsedUrl.toString(), { ...init, redirect: "manual" });
+    const response = await pinnedRequest(check.parsedUrl, check.address, init);
     const location = response.headers.get("location");
     if (response.status >= 300 && response.status < 400 && location) {
       await response.body?.cancel().catch(() => {});
