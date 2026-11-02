@@ -3,6 +3,8 @@ import { getChatSession } from "@/lib/chat/service";
 import { db } from "@/lib/db";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { executeWithFallback } from "@/lib/routing/executor";
+import { assertUserQuota } from "@/lib/chat/quota";
+import { assertUserModelAccess } from "@/lib/chat/model-access";
 
 type RouteContext = { params: Promise<{ chatId: string }> };
 
@@ -76,6 +78,14 @@ export async function POST(request: Request, context: RouteContext) {
       }));
 
     if (!activeModel) {
+      return jsonSuccess({ title: session.title }, { requestId });
+    }
+
+    // Same gates as a chat turn: over-quota users or models outside the plan keep the old title
+    try {
+      await assertUserQuota(user.id);
+      await assertUserModelAccess(user.id, activeModel.id);
+    } catch {
       return jsonSuccess({ title: session.title }, { requestId });
     }
 

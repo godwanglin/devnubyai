@@ -214,7 +214,10 @@ export async function updateChatSession(
         where: { publicId: data.modelPublicId },
         select: { id: true },
       });
-      if (model) catalogModelId = model.id;
+      if (model) {
+        await assertUserModelAccess(userId, model.id);
+        catalogModelId = model.id;
+      }
     } else {
       catalogModelId = undefined;
     }
