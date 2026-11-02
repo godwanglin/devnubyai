@@ -9,6 +9,7 @@ import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
 import { DirectVaView, type DirectVaResult } from "./direct-va-view";
 import { QrisCheckoutView, type CheckoutResult } from "./qris-checkout-view";
+import { TripayQrisView, type TripayQrisResult } from "./tripay-qris-view";
 import { PaymentSuccessView } from "./payment-success-view";
 import type { PublicPlanItem } from "@/app/api/v1/plans/route";
 import type { PaymentMethodItem } from "@/lib/payments/types";
@@ -37,10 +38,13 @@ export function PlanCheckoutModal({
   const [error, setError] = useState<string | null>(null);
   const [vaResult, setVaResult] = useState<DirectVaResult | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
+  const [tripayResult, setTripayResult] = useState<TripayQrisResult | null>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [pendingInvoice, setPendingInvoice] = useState<{
     invoice: string;
+    type?: string;
     amount: number;
+    qrString?: string;
     vaNumber?: string;
     bank?: string;
     expiredAt?: string;
@@ -52,6 +56,7 @@ export function PlanCheckoutModal({
       setCycle(initialCycle);
       setVaResult(null);
       setCheckoutResult(null);
+      setTripayResult(null);
       setIsPaid(false);
       setError(null);
 
@@ -138,7 +143,24 @@ export function PlanCheckoutModal({
     const invoiceNumber = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     try {
-      if (selectedMethod.flowType === "direct" && selectedMethod.code) {
+      if (selectedMethod.provider === "tripay") {
+        // Tripay QRIS: the server mints the invoice and returns the QR payload
+        const res = await fetch("/api/v1/payments/tripay/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            methodId: selectedMethod.publicId,
+            amount: effectivePrice,
+            metadata: { planId: plan.id, cycle },
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          throw new Error(json.error?.message || "Gagal membuat QRIS");
+        }
+        setTripayResult(json.data);
+      } else if (selectedMethod.flowType === "direct" && selectedMethod.code) {
         // Direct VA flow (e.g. BRI, BCA, Mandiri)
         const res = await fetch("/api/v1/payments/doku/direct-va", {
           method: "POST",
@@ -226,14 +248,14 @@ export function PlanCheckoutModal({
 
   const getModalTitle = () => {
     if (isPaid) return "Pembayaran Berhasil";
-    if (checkoutResult) return "Pembayaran QRIS";
+    if (checkoutResult || tripayResult) return "Pembayaran QRIS";
     if (vaResult) return t("plans.paymentSuccess");
     return t("plans.checkoutTitle", { name: plan.name });
   };
 
   const getModalDescription = () => {
     if (isPaid) return "Status langganan akun Anda telah diperbarui.";
-    if (checkoutResult) return "Pindai kode QRIS di bawah ini untuk menyelesaikan pembayaran.";
+    if (checkoutResult || tripayResult) return "Pindai kode QRIS di bawah ini untuk menyelesaikan pembayaran.";
     if (vaResult) return t("plans.vaNotice");
     return t("plans.checkoutSubtitle");
   };
@@ -249,10 +271,19 @@ export function PlanCheckoutModal({
       {isPaid ? (
         <PaymentSuccessView
           planName={plan.name}
-          invoiceNumber={checkoutResult?.invoiceNumber || vaResult?.invoiceNumber || ""}
-          amount={checkoutResult?.amount || vaResult?.amount || effectivePrice}
+          invoiceNumber={
+            tripayResult?.invoiceNumber || checkoutResult?.invoiceNumber || vaResult?.invoiceNumber || ""
+          }
+          amount={tripayResult?.totalAmount || checkoutResult?.amount || vaResult?.amount || effectivePrice}
           formatRupiah={formatRupiah}
           onDone={onClose}
+        />
+      ) : tripayResult ? (
+        <TripayQrisView
+          result={tripayResult}
+          formatRupiah={formatRupiah}
+          onPaid={handlePaymentSuccess}
+          onClose={onClose}
         />
       ) : checkoutResult ? (
         <QrisCheckoutView
@@ -278,8 +309,14 @@ export function PlanCheckoutModal({
                 <span className="text-[10px] text-[var(--muted)] font-mono">{pendingInvoice.invoice}</span>
               </div>
               <p className="text-[11px] text-[var(--muted)] leading-relaxed">
-                Anda memiliki Virtual Account ({pendingInvoice.bank?.toUpperCase() || "VA"}) aktif:{" "}
-                <span className="text-[var(--ink)] font-mono font-semibold">{pendingInvoice.vaNumber}</span> sebesar{" "}
+                {pendingInvoice.qrString ? (
+                  <>Anda memiliki tagihan QRIS aktif sebesar </>
+                ) : (
+                  <>
+                    Anda memiliki Virtual Account ({pendingInvoice.bank?.toUpperCase() || "VA"}) aktif:{" "}
+                    <span className="text-[var(--ink)] font-mono font-semibold">{pendingInvoice.vaNumber}</span> sebesar{" "}
+                  </>
+                )}
                 <span className="text-[var(--ink)] font-semibold">{formatRupiah(pendingInvoice.amount)}</span>.
               </p>
               <div className="flex gap-2 pt-1">
@@ -287,6 +324,17 @@ export function PlanCheckoutModal({
                   variant="primary"
                   className="text-[11px] py-1 px-3 h-auto"
                   onClick={() => {
+                    if (pendingInvoice.qrString && pendingInvoice.expiredAt) {
+                      setTripayResult({
+                        invoiceNumber: pendingInvoice.invoice,
+                        qrString: pendingInvoice.qrString,
+                        amount: pendingInvoice.amount,
+                        fee: 0,
+                        totalAmount: pendingInvoice.amount,
+                        expiredAt: pendingInvoice.expiredAt,
+                      });
+                      return;
+                    }
                     setVaResult({
                       invoiceNumber: pendingInvoice.invoice,
                       amount: pendingInvoice.amount,
@@ -396,9 +444,9 @@ export function PlanCheckoutModal({
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-[var(--ink)] truncate">{m.name}</p>
                         <p className="text-[10px] text-[var(--placeholder)] truncate">
-                          {m.flowType === "direct"
-                            ? "Virtual Account Langsung"
-                            : "Pembayaran Instan QRIS"}
+                          {m.provider === "tripay" || m.flowType !== "direct"
+                            ? "Pembayaran Instan QRIS"
+                            : "Virtual Account Langsung"}
                         </p>
                       </div>
                       {isSelected && (
@@ -439,7 +487,8 @@ export function PlanCheckoutModal({
 
             <p className="text-[10px] text-[var(--placeholder)] text-center mt-2.5 flex items-center justify-center gap-1">
               <ShieldCheck className="w-3 h-3 text-[var(--accent)]" />
-              Pembayaran aman didukung oleh DOKU Payment Gateway
+              Pembayaran aman didukung oleh{" "}
+              {selectedMethod?.provider === "tripay" ? "Tripay" : "DOKU Payment Gateway"}
             </p>
           </div>
         </div>
