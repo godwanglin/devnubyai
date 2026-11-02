@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
+import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 import type {
   ProjectDto,
   ProjectDetailDto,
@@ -297,11 +298,17 @@ export async function deleteProject(
 
   if (cascade) {
     // Cascade delete: project & all chats inside it
+    const shared = await db.chatSession.findMany({
+      where: { projectId: existing.id, shareToken: { not: null } },
+      select: { shareToken: true },
+    });
     await db.$transaction([
       db.chatSession.deleteMany({ where: { projectId: existing.id } }),
       db.projectFile.deleteMany({ where: { projectId: existing.id } }),
       db.project.delete({ where: { id: existing.id } }),
     ]);
+    // Deleted chats must stop being served from the public share cache
+    await Promise.allSettled(shared.map((s) => invalidateSharedChatCache(s.shareToken)));
   } else {
     // Default safe option: unlink all chats so they become regular root chats
     await db.$transaction([

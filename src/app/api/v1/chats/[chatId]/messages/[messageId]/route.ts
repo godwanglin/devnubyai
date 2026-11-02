@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
 import { MAX_MESSAGE_CHARS } from "@/lib/chat/service-types";
+import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 
 const updateMessageSchema = z.object({
   content: z.string().trim().min(1, "Message content cannot be empty").max(MAX_MESSAGE_CHARS),
@@ -42,6 +43,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       where: {
         publicId: messageId,
         sessionId: session.id,
+        // Only the user's own turns are editable; rewriting AI replies would forge shared chats
+        role: "user",
       },
     });
 
@@ -78,6 +81,9 @@ export async function PATCH(request: Request, context: RouteContext) {
 
       return { updated, deletedCount };
     });
+
+    // A public share link must not keep serving the pre-edit conversation
+    await invalidateSharedChatCache(session.shareToken);
 
     return jsonSuccess(
       {
