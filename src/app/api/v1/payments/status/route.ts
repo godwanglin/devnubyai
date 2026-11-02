@@ -4,6 +4,9 @@ import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/respon
 import { getDokuConfig } from "@/lib/doku/settings";
 import { checkDokuOrderStatus } from "@/lib/doku/client";
 import { applyPaymentSettlement } from "@/lib/payments/settlement";
+import { getTripayConfig } from "@/lib/tripay/config";
+import { getTripayTransactionDetail } from "@/lib/tripay/client";
+import { mapTripayStatus } from "@/lib/tripay/schemas";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -33,8 +36,25 @@ export async function GET(request: Request) {
     let status = tx.status;
     let paidAt = tx.paidAt;
 
-    // If still PENDING, attempt real-time check against DOKU status API
-    if (status === "PENDING") {
+    // If still PENDING, attempt a real-time check against the gateway's status API
+    if (status === "PENDING" && tx.provider === "tripay" && tx.providerReference) {
+      const config = getTripayConfig();
+      if (config.isConfigured) {
+        try {
+          const detail = await getTripayTransactionDetail(config, tx.providerReference);
+          const next = mapTripayStatus(detail.status);
+          if (next !== "PENDING") {
+            const settled = await applyPaymentSettlement(invoiceNumber, next, detail);
+            if (settled) {
+              status = settled.status;
+              paidAt = settled.paidAt;
+            }
+          }
+        } catch {
+          // Fall back to the DB status; the callback settles it otherwise
+        }
+      }
+    } else if (status === "PENDING") {
       const { config } = await getDokuConfig();
       if (config.isEnabled && config.clientId && config.secretKey) {
         try {

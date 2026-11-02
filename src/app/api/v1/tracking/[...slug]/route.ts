@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { checkDokuOrderStatus } from "@/lib/doku/client";
 import { applyPaymentSettlement } from "@/lib/payments/settlement";
+import { getTripayConfig } from "@/lib/tripay/config";
+import { getTripayTransactionDetail } from "@/lib/tripay/client";
+import { mapTripayStatus } from "@/lib/tripay/schemas";
 
 const EXPIRATION_WINDOW_MS = 60 * 60 * 1000; // Flat 1 hour (60 minutes)
 
@@ -82,6 +85,7 @@ export async function GET(request: Request, context: RouteContext) {
         vaNumber?: string;
         bank?: string;
         checkoutUrl?: string;
+        qrString?: string;
         expiredAt?: string;
         createdAt: string;
       }> = [];
@@ -101,11 +105,12 @@ export async function GET(request: Request, context: RouteContext) {
           activeInvoices.push({
             invoice: tx.invoiceNumber,
             status: "pending",
-            type: "doku",
+            type: tx.provider,
             amount: tx.totalAmount,
             vaNumber: tx.paymentCode || undefined,
             bank: tx.paymentMethodCode || undefined,
             checkoutUrl: tx.checkoutUrl || undefined,
+            qrString: tx.qrContent || undefined,
             expiredAt: tx.expiredAt ? tx.expiredAt.toISOString() : undefined,
             createdAt: tx.createdAt.toISOString(),
           });
@@ -166,8 +171,28 @@ export async function GET(request: Request, context: RouteContext) {
         return NextResponse.json({ invoice: tx.invoiceNumber, status: "expired", type });
       }
 
-      // Real-time live status query to DOKU
-      if (type === "doku") {
+      // Real-time live status query to the gateway that issued the invoice
+      if (tx.provider === "tripay" && tx.providerReference) {
+        const config = getTripayConfig();
+        if (config.isConfigured) {
+          try {
+            const detail = await getTripayTransactionDetail(config, tx.providerReference);
+            const next = mapTripayStatus(detail.status);
+            if (next !== "PENDING") {
+              const settled = await applyPaymentSettlement(invoice, next, detail);
+              const settledStatus = settled?.status || next;
+              return NextResponse.json({
+                invoice: tx.invoiceNumber,
+                status:
+                  settledStatus === "PAID" ? "success" : settledStatus === "EXPIRED" ? "expired" : "failed",
+                type,
+              });
+            }
+          } catch (err) {
+            console.warn(`[Tracking] Tripay status check error for ${invoice}:`, err);
+          }
+        }
+      } else if (type === "doku") {
         const { config } = await getDokuConfig();
         if (config.isEnabled && config.clientId && config.secretKey) {
           try {
