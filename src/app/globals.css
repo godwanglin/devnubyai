@@ -831,7 +831,11 @@ body > iframe[id^="i-mermaid"] {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    /* Without this, every `infinite` animation would loop every 0.01ms and the
+       page looks like it is vibrating while the main thread chokes on repaints */
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

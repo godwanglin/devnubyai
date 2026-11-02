@@ -10,7 +10,7 @@ import { CardCrack, generateCrack, type CrackShape } from "./card-crack";
 import { TypewriterHeadline, type TypewriterState } from "./typewriter-headline";
 
 /** Safety net: send even if the punch animation never reports back */
-const PUNCH_TIMEOUT_MS = 2200;
+const PUNCH_TIMEOUT_MS = 1000;
 /** If sending failed and home is still shown, clear the cracked card after this long */
 const CRACK_RESET_MS = 3000;
 
@@ -33,11 +33,16 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
   async function handleSelectCard(index: number, prompt: string) {
     if (punchedIndex !== null) return;
     setPunchedIndex(index);
+    // Send as soon as the punch lands rather than after the whole recoil, so slow
+    // devices don't sit on a click that seems to do nothing
+    let notifyImpact: () => void = () => {};
+    const impact = new Promise<void>((resolve) => (notifyImpact = resolve));
     const punch =
-      mascotRef.current?.punch(index, (hit) =>
-        setCrack({ index, shape: generateCrack(hit.x, hit.y, hit.width, hit.height) })
-      ) ?? Promise.resolve();
-    await Promise.race([punch, new Promise((r) => setTimeout(r, PUNCH_TIMEOUT_MS))]);
+      mascotRef.current?.punch(index, (hit) => {
+        setCrack({ index, shape: generateCrack(hit.x, hit.y, hit.width, hit.height) });
+        notifyImpact();
+      }) ?? Promise.resolve();
+    await Promise.race([impact, punch, new Promise((r) => setTimeout(r, PUNCH_TIMEOUT_MS))]);
     onSelectPrompt(prompt);
     setTimeout(() => {
       setPunchedIndex(null);

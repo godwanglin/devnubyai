@@ -7,6 +7,8 @@ import type { TypewriterState } from "./typewriter-headline";
 import { cn } from "@/lib/cn";
 
 const TICK_MS = 80;
+/** Tick rate with reduced motion, where it never hops and only tracks its perch */
+const STILL_TICK_MS = 500;
 const HOP_MIN_MS = 620;
 const HOP_MAX_MS = 1000;
 /** Preferred minimum hop distance, so hops read as jumps and not shuffles */
@@ -387,6 +389,8 @@ export function PerchedMascot({ ref, stageRef, typewriterRef, onPushingChange, s
     }
 
     function tick() {
+      // Background tab: skip the layout reads entirely
+      if (document.hidden) return;
       const now = Date.now();
       const tw = typewriterRef.current;
 
@@ -557,7 +561,8 @@ export function PerchedMascot({ ref, stageRef, typewriterRef, onPushingChange, s
     }
 
     tick();
-    const interval = setInterval(tick, TICK_MS);
+    // Standing still (reduced motion) only needs to follow layout changes, not animate
+    const interval = setInterval(tick, reducedMotion ? STILL_TICK_MS : TICK_MS);
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
     return () => {

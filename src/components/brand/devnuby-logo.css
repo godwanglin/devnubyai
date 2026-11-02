@@ -463,3 +463,12 @@
   0% { transform: translateY(0) scale(1); }
   100% { transform: translateY(-4px) scale(1.18); }
 }
+
+/* Reduced motion: the mascot and wordmark hold a still pose instead of animating */
+@media (prefers-reduced-motion: reduce) {
+  .dn-logo,
+  .dn-logo * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
