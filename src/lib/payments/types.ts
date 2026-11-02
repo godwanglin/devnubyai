@@ -58,7 +58,7 @@ export interface PaymentTransactionItem {
   customerEmail: string;
   customerPhone: string | null;
   metadata: Record<string, unknown> | null;
-  dokuResponse: Record<string, unknown> | null;
+  gatewayResponse: Record<string, unknown> | null;
   manualNotes: string | null;
   manualUpdatedBy: {
     id: string;

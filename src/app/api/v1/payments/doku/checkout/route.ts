@@ -97,7 +97,7 @@ export async function POST(request: Request) {
           customerEmail: checkoutRequest.customer.email,
           customerPhone: checkoutRequest.customer.phone || null,
           metadata: planCheckout.metadata as Prisma.InputJsonValue,
-          dokuResponse: result.rawResponse ? (result.rawResponse as Prisma.InputJsonValue) : undefined,
+          gatewayResponse: result.rawResponse ? (result.rawResponse as Prisma.InputJsonValue) : undefined,
           expiredAt: new Date(Date.now() + 60 * 60 * 1000), // Strictly flat 1 hour
         },
       });

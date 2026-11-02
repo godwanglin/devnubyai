@@ -469,6 +469,7 @@ model PaymentMethod {
   name         String   @db.VarChar(120)
   code         String   @unique(map: "uq_payment_methods_code") @db.VarChar(64)
   category     String   @default("virtual_account") @db.VarChar(32)
+  provider     String   @default("doku") @db.VarChar(16)
   dokuCode     String?  @map("doku_code") @db.VarChar(64)
   flowType     String   @default("direct") @map("flow_type") @db.VarChar(16)
   imagePath    String?  @map("image_path") @db.VarChar(512)
@@ -497,7 +498,9 @@ model PaymentTransaction {
   paymentMethodId    BigInt?   @map("payment_method_id") 
   paymentMethodCode  String    @map("payment_method_code") @db.VarChar(64)
   paymentMethodName  String    @map("payment_method_name") @db.VarChar(120)
-  amount             Int       
+  provider           String    @default("doku") @db.VarChar(16)
+  providerReference  String?   @map("provider_reference") @db.VarChar(64)
+  amount             Int
   fee                Int       @default(0) 
   totalAmount        Int       @map("total_amount") 
   currency           String    @default("IDR") @db.VarChar(8)
@@ -510,7 +513,7 @@ model PaymentTransaction {
   customerEmail      String    @map("customer_email") @db.VarChar(320)
   customerPhone      String?   @map("customer_phone") @db.VarChar(32)
   metadata           Json?
-  dokuResponse       Json?     @map("doku_response")
+  gatewayResponse    Json?     @map("doku_response")
   manualNotes        String?   @map("manual_notes") @db.Text
   manualUpdatedBy    BigInt?   @map("manual_updated_by") 
   manualUpdatedAt    DateTime? @map("manual_updated_at") @db.Timestamptz(3)
@@ -526,6 +529,7 @@ model PaymentTransaction {
   @@index([userId, createdAt], map: "idx_transactions_user")
   @@index([status, createdAt], map: "idx_transactions_status")
   @@index([paymentMethodCode], map: "idx_transactions_method_code")
+  @@index([provider, providerReference], map: "idx_transactions_provider_ref")
   @@index([createdAt], map: "idx_transactions_created")
   @@map("payment_transactions")
 }

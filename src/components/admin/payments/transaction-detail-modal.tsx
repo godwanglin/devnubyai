@@ -195,7 +195,7 @@ export function TransactionDetailModal({
         )}
 
         {/* Raw DOKU Payload Accordion */}
-        {transaction.dokuResponse && (
+        {transaction.gatewayResponse && (
           <div className="border border-[var(--border)] rounded-[8px] overflow-hidden">
             <button
               type="button"
@@ -207,7 +207,7 @@ export function TransactionDetailModal({
             </button>
             {showRawJson && (
               <pre className="p-3 bg-[var(--panel)] font-mono text-[10px] text-[var(--ink)] overflow-x-auto max-h-48 border-t border-[var(--border)]">
-                {JSON.stringify(transaction.dokuResponse, null, 2)}
+                {JSON.stringify(transaction.gatewayResponse, null, 2)}
               </pre>
             )}
           </div>

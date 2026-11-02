@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { checkDokuOrderStatus } from "@/lib/doku/client";
-import { applyDokuSettlement } from "@/lib/payments/settlement";
+import { applyPaymentSettlement } from "@/lib/payments/settlement";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
           const dokuStatus = await checkDokuOrderStatus(config, invoiceNumber);
           const dokuTx = dokuStatus?.transaction as { status?: string } | undefined;
           if (dokuTx?.status === "SUCCESS" || dokuTx?.status === "FAILED") {
-            const settled = await applyDokuSettlement(
+            const settled = await applyPaymentSettlement(
               invoiceNumber,
               dokuTx.status === "SUCCESS" ? "PAID" : "FAILED",
               dokuStatus

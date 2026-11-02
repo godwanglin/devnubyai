@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { verifyDokuSignature } from "@/lib/doku/client";
-import { applyDokuSettlement } from "@/lib/payments/settlement";
+import { applyPaymentSettlement } from "@/lib/payments/settlement";
 import type { DokuNotificationPayload } from "@/lib/doku/types";
 
 export async function POST(request: Request) {
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   if (invoiceNumber) {
     const newStatus = status === "SUCCESS" ? "PAID" : status === "FAILED" ? "FAILED" : "PENDING";
-    await applyDokuSettlement(invoiceNumber, newStatus, payload);
+    await applyPaymentSettlement(invoiceNumber, newStatus, payload);
   }
 
   // DOKU expects 200 OK acknowledging receipt with correlation headers

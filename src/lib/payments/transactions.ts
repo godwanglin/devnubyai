@@ -30,7 +30,7 @@ function toTransactionItem(record: any): PaymentTransactionItem {
     customerEmail: record.customerEmail,
     customerPhone: record.customerPhone,
     metadata: (record.metadata as Record<string, unknown>) || null,
-    dokuResponse: (record.dokuResponse as Record<string, unknown>) || null,
+    gatewayResponse: (record.gatewayResponse as Record<string, unknown>) || null,
     manualNotes: record.manualNotes,
     manualUpdatedBy: record.manualUpdatedByUser
       ? {

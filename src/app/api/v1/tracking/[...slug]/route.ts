@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getDokuConfig } from "@/lib/doku/settings";
 import { checkDokuOrderStatus } from "@/lib/doku/client";
-import { applyDokuSettlement } from "@/lib/payments/settlement";
+import { applyPaymentSettlement } from "@/lib/payments/settlement";
 
 const EXPIRATION_WINDOW_MS = 60 * 60 * 1000; // Flat 1 hour (60 minutes)
 
@@ -180,14 +180,14 @@ export async function GET(request: Request, context: RouteContext) {
             ).toUpperCase();
 
             if (rawStatus === "SUCCESS") {
-              const settled = await applyDokuSettlement(invoice, "PAID", dokuStatus);
+              const settled = await applyPaymentSettlement(invoice, "PAID", dokuStatus);
               return NextResponse.json({
                 invoice: tx.invoiceNumber,
                 status: settled?.status === "PAID" ? "success" : "pending",
                 type,
               });
             } else if (rawStatus === "FAILED") {
-              await applyDokuSettlement(invoice, "FAILED", dokuStatus);
+              await applyPaymentSettlement(invoice, "FAILED", dokuStatus);
               return NextResponse.json({ invoice: tx.invoiceNumber, status: "failed", type });
             } else if (rawStatus === "EXPIRED") {
               await db.paymentTransaction.update({
