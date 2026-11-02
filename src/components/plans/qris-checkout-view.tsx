@@ -82,7 +82,8 @@ export function QrisCheckoutView({
         "https://sandbox.doku.com",
         "https://staging.doku.com",
       ];
-      if (allowedOrigins.some((origin) => e.origin.startsWith(origin))) {
+      // Exact match: a prefix check also accepts e.g. https://checkout.doku.com.evil.tld
+      if (allowedOrigins.includes(e.origin)) {
         // DOKU finished or closed modal
         checkStatus(false);
       }
