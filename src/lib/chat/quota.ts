@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/client";
 import { ApiError } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import {
@@ -6,22 +7,35 @@ import {
   CACHE_TTL,
   invalidateUserQuotaCache,
 } from "@/lib/redis/cache-keys";
+import { computeCostUsd, costLimit, toUsd } from "@/lib/billing/cost";
 import type { QuotaKind, QuotaNotice } from "./quota-shared";
+
+/**
+ * Quota is spend-based (USD). Every reply adds its cost to the five-hour, weekly
+ * and monthly windows at once, so spending inside a short window also eats into
+ * the longer ones: monthly is the budget, weekly / five-hour cap the pace.
+ */
 
 export interface QuotaCheckResult {
   periodStart: Date;
-  monthlyLimit: number | null;
-  usedTokens: number;
-  remainingTokens: number | null;
+  monthlyLimitUsd: number | null;
+  monthlyUsedUsd: number;
+  weeklyLimitUsd: number | null;
+  weeklyUsedUsd: number;
+  fiveHourLimitUsd: number | null;
+  fiveHourUsedUsd: number;
   requestCount: number;
   dailyRequestLimit: number | null;
-  weeklyLimit: number | null;
-  weeklyUsedTokens: number;
-  weeklyRemainingTokens: number | null;
-  fiveHourLimit: number | null;
-  fiveHourUsedTokens: number;
-  fiveHourRemainingTokens: number | null;
 }
+
+type PlanCostLimits = {
+  monthlyCostLimitUsd: Prisma.Decimal | null;
+  weeklyCostLimitUsd: Prisma.Decimal | null;
+  fiveHourCostLimitUsd: Prisma.Decimal | null;
+};
+
+const FIVE_HOURS_MS = 18_000_000;
+const WEEK_MS = 7 * 86_400_000;
 
 export function getCurrentPeriodStart(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -29,11 +43,6 @@ export function getCurrentPeriodStart(now = new Date()): Date {
 
 export function getNextPeriodStart(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-}
-
-function quotaDetails(kind: QuotaKind, used: number, limit: number, resetAt: Date) {
-  const quota: QuotaNotice = { kind, used, limit, resetAt: resetAt.toISOString() };
-  return { quota };
 }
 
 function getUtcWeekStart(now: Date): Date {
@@ -44,57 +53,20 @@ function getUtcWeekStart(now: Date): Date {
   return start;
 }
 
-function toSafeNumber(value: bigint): number {
-  const numberValue = Number(value);
-  return Number.isSafeInteger(numberValue) ? numberValue : Number.MAX_SAFE_INTEGER;
+function getFiveHourStart(now: Date): Date {
+  return new Date(Math.floor(now.getTime() / FIVE_HOURS_MS) * FIVE_HOURS_MS);
 }
 
-function positiveLimit(value: bigint | null | undefined): number | null {
-  if (value == null || value <= 0n) return null;
-  return toSafeNumber(value);
+function quotaDetails(kind: QuotaKind, used: number, limit: number, resetAt: Date) {
+  const quota: QuotaNotice = { kind, used, limit, resetAt: resetAt.toISOString() };
+  return { quota };
 }
 
-function usedTokens(period: { promptTokens: bigint; completionTokens: bigint } | null): number {
-  return period ? toSafeNumber(period.promptTokens + period.completionTokens) : 0;
-}
-
-export interface QuotaWindowStatus {
-  /** null when the plan sets 0/empty: tokens are still counted but never blocked */
-  limitTokens: number | null;
-  usedTokens: number;
-  usedPercent: number;
-  resetAt: string;
-}
-
-export interface UserQuotaWindows {
-  fiveHour: QuotaWindowStatus;
-  weekly: QuotaWindowStatus;
-  monthly: QuotaWindowStatus & { requestCount: number; promptTokens: number; completionTokens: number };
-}
-
-function windowStatus(used: number, limit: number | null, resetAt: Date): QuotaWindowStatus {
-  return {
-    limitTokens: limit,
-    usedTokens: used,
-    usedPercent: limit ? Math.min(100, Math.round((used / limit) * 100)) : 0,
-    resetAt: resetAt.toISOString(),
-  };
-}
-
-/** Read-only usage for every window, for display (no limits are enforced here). */
-export async function getUserQuotaWindows(
-  userId: bigint,
-  plan: { monthlyTokenLimit: bigint | null; weeklyTokenLimit: bigint | null; fiveHourTokenLimit: bigint | null } | null
-): Promise<UserQuotaWindows> {
-  const cached = await getCachedJson<UserQuotaWindows>(CACHE_KEYS.userQuota(userId));
-  if (cached) {
-    return cached;
-  }
-
-  const now = new Date();
+/** Current usage rows of the three windows. */
+async function loadWindows(userId: bigint, now: Date) {
   const periodStart = getCurrentPeriodStart(now);
   const weekStart = getUtcWeekStart(now);
-  const fiveHourStart = new Date(Math.floor(now.getTime() / 18_000_000) * 18_000_000);
+  const fiveHourStart = getFiveHourStart(now);
 
   const [monthly, weekly, fiveHour] = await Promise.all([
     db.userUsagePeriod.findUnique({ where: { userId_periodStart: { userId, periodStart } } }),
@@ -106,22 +78,60 @@ export async function getUserQuotaWindows(
     }),
   ]);
 
+  return {
+    periodStart,
+    monthly,
+    weekly,
+    fiveHour,
+    resets: {
+      monthly: getNextPeriodStart(now),
+      weekly: new Date(weekStart.getTime() + WEEK_MS),
+      fiveHour: new Date(fiveHourStart.getTime() + FIVE_HOURS_MS),
+    },
+  };
+}
+
+export interface QuotaWindowStatus {
+  /** null when the plan sets 0/empty: spend is still counted but never blocked */
+  limitUsd: number | null;
+  usedUsd: number;
+  usedPercent: number;
+  resetAt: string;
+}
+
+export interface UserQuotaWindows {
+  fiveHour: QuotaWindowStatus;
+  weekly: QuotaWindowStatus;
+  monthly: QuotaWindowStatus & { requestCount: number };
+}
+
+function windowStatus(used: number, limit: number | null, resetAt: Date): QuotaWindowStatus {
+  return {
+    limitUsd: limit,
+    usedUsd: used,
+    usedPercent: limit ? Math.min(100, Math.round((used / limit) * 100)) : 0,
+    resetAt: resetAt.toISOString(),
+  };
+}
+
+/** Read-only spend for every window, for display (no limits are enforced here). */
+export async function getUserQuotaWindows(
+  userId: bigint,
+  plan: PlanCostLimits | null
+): Promise<UserQuotaWindows> {
+  const cached = await getCachedJson<UserQuotaWindows>(CACHE_KEYS.userQuota(userId));
+  if (cached) {
+    return cached;
+  }
+
+  const w = await loadWindows(userId, new Date());
+
   const result: UserQuotaWindows = {
-    fiveHour: windowStatus(
-      usedTokens(fiveHour),
-      positiveLimit(plan?.fiveHourTokenLimit),
-      new Date(fiveHourStart.getTime() + 18_000_000)
-    ),
-    weekly: windowStatus(
-      usedTokens(weekly),
-      positiveLimit(plan?.weeklyTokenLimit),
-      new Date(weekStart.getTime() + 7 * 86_400_000)
-    ),
+    fiveHour: windowStatus(toUsd(w.fiveHour?.costUsd), costLimit(plan?.fiveHourCostLimitUsd), w.resets.fiveHour),
+    weekly: windowStatus(toUsd(w.weekly?.costUsd), costLimit(plan?.weeklyCostLimitUsd), w.resets.weekly),
     monthly: {
-      ...windowStatus(usedTokens(monthly), positiveLimit(plan?.monthlyTokenLimit), getNextPeriodStart(now)),
-      requestCount: monthly?.requestCount ?? 0,
-      promptTokens: monthly ? toSafeNumber(monthly.promptTokens) : 0,
-      completionTokens: monthly ? toSafeNumber(monthly.completionTokens) : 0,
+      ...windowStatus(toUsd(w.monthly?.costUsd), costLimit(plan?.monthlyCostLimitUsd), w.resets.monthly),
+      requestCount: w.monthly?.requestCount ?? 0,
     },
   };
 
@@ -130,7 +140,7 @@ export async function getUserQuotaWindows(
   return result;
 }
 
-/** Verify monthly, weekly, five-hour, RPM, and daily request limits. */
+/** Verify monthly, weekly, five-hour spend plus RPM and daily request limits. */
 export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult> {
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -138,9 +148,9 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
       id: true,
       plan: {
         select: {
-          monthlyTokenLimit: true,
-          weeklyTokenLimit: true,
-          fiveHourTokenLimit: true,
+          monthlyCostLimitUsd: true,
+          weeklyCostLimitUsd: true,
+          fiveHourCostLimitUsd: true,
           dailyRequestLimit: true,
           requestsPerMinute: true,
         },
@@ -151,44 +161,33 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
   if (!user) throw ApiError.unauthorized("User account not found");
 
   const now = new Date();
-  const periodStart = getCurrentPeriodStart(now);
-  const weekStart = getUtcWeekStart(now);
-  const fiveHourStart = new Date(Math.floor(now.getTime() / 18_000_000) * 18_000_000);
-  const fiveHourEnd = new Date(fiveHourStart.getTime() + 18_000_000);
+  const w = await loadWindows(userId, now);
 
-  const [monthly, weekly, fiveHour] = await Promise.all([
-    db.userUsagePeriod.findUnique({ where: { userId_periodStart: { userId, periodStart } } }),
-    db.userUsageWindow.findUnique({
-      where: { userId_windowType_windowKey: { userId, windowType: "weekly", windowKey: weekStart.toISOString() } },
-    }),
-    db.userUsageWindow.findUnique({
-      where: { userId_windowType_windowKey: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString() } },
-    }),
-  ]);
+  const monthlyLimit = costLimit(user.plan?.monthlyCostLimitUsd);
+  const weeklyLimit = costLimit(user.plan?.weeklyCostLimitUsd);
+  const fiveHourLimit = costLimit(user.plan?.fiveHourCostLimitUsd);
+  const monthlyUsed = toUsd(w.monthly?.costUsd);
+  const weeklyUsed = toUsd(w.weekly?.costUsd);
+  const fiveHourUsed = toUsd(w.fiveHour?.costUsd);
 
-  const monthlyLimit = positiveLimit(user.plan?.monthlyTokenLimit);
-  const weeklyLimit = positiveLimit(user.plan?.weeklyTokenLimit);
-  const fiveHourLimit = positiveLimit(user.plan?.fiveHourTokenLimit);
-  const monthlyUsed = usedTokens(monthly);
-  const weeklyUsed = usedTokens(weekly);
-  const fiveHourUsed = usedTokens(fiveHour);
+  const usd = (n: number) => `$${n.toFixed(2)}`;
 
   if (monthlyLimit !== null && monthlyUsed >= monthlyLimit) {
     throw ApiError.rateLimited(
-      `Monthly token quota exceeded (${monthlyUsed.toLocaleString()} / ${monthlyLimit.toLocaleString()} tokens). Upgrade your plan or wait until next month.`,
-      quotaDetails("monthly_tokens", monthlyUsed, monthlyLimit, getNextPeriodStart(now))
+      `Monthly usage limit reached (${usd(monthlyUsed)} / ${usd(monthlyLimit)}). Upgrade your plan or wait until next month.`,
+      quotaDetails("monthly_cost", monthlyUsed, monthlyLimit, w.resets.monthly)
     );
   }
   if (weeklyLimit !== null && weeklyUsed >= weeklyLimit) {
     throw ApiError.rateLimited(
-      `Weekly token quota exceeded (${weeklyUsed.toLocaleString()} / ${weeklyLimit.toLocaleString()} tokens).`,
-      quotaDetails("weekly_tokens", weeklyUsed, weeklyLimit, new Date(weekStart.getTime() + 7 * 86_400_000))
+      `Weekly usage limit reached (${usd(weeklyUsed)} / ${usd(weeklyLimit)}).`,
+      quotaDetails("weekly_cost", weeklyUsed, weeklyLimit, w.resets.weekly)
     );
   }
   if (fiveHourLimit !== null && fiveHourUsed >= fiveHourLimit) {
     throw ApiError.rateLimited(
-      `Five-hour token quota exceeded (${fiveHourUsed.toLocaleString()} / ${fiveHourLimit.toLocaleString()} tokens).`,
-      quotaDetails("five_hour_tokens", fiveHourUsed, fiveHourLimit, fiveHourEnd)
+      `Five-hour usage limit reached (${usd(fiveHourUsed)} / ${usd(fiveHourLimit)}).`,
+      quotaDetails("five_hour_cost", fiveHourUsed, fiveHourLimit, w.resets.fiveHour)
     );
   }
 
@@ -225,52 +224,89 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
   }
 
   return {
-    periodStart,
-    monthlyLimit,
-    usedTokens: monthlyUsed,
-    remainingTokens: monthlyLimit === null ? null : Math.max(0, monthlyLimit - monthlyUsed),
-    requestCount: monthly?.requestCount ?? 0,
+    periodStart: w.periodStart,
+    monthlyLimitUsd: monthlyLimit,
+    monthlyUsedUsd: monthlyUsed,
+    weeklyLimitUsd: weeklyLimit,
+    weeklyUsedUsd: weeklyUsed,
+    fiveHourLimitUsd: fiveHourLimit,
+    fiveHourUsedUsd: fiveHourUsed,
+    requestCount: w.monthly?.requestCount ?? 0,
     dailyRequestLimit: dailyLimit,
-    weeklyLimit,
-    weeklyUsedTokens: weeklyUsed,
-    weeklyRemainingTokens: weeklyLimit === null ? null : Math.max(0, weeklyLimit - weeklyUsed),
-    fiveHourLimit,
-    fiveHourUsedTokens: fiveHourUsed,
-    fiveHourRemainingTokens: fiveHourLimit === null ? null : Math.max(0, fiveHourLimit - fiveHourUsed),
   };
 }
 
-/** Record token and request usage for monthly, weekly, and five-hour windows. */
-export async function recordUserUsage(
-  userId: bigint,
-  tokens: { promptTokens: number; completionTokens: number }
-): Promise<void> {
+export interface RecordUsageInput {
+  promptTokens: number;
+  completionTokens: number;
+  model: {
+    id: bigint;
+    inputPricePerMillion: Prisma.Decimal;
+    outputPricePerMillion: Prisma.Decimal;
+  };
+  sessionId?: bigint | null;
+  messageId?: bigint | null;
+  requestId?: string | null;
+}
+
+/**
+ * Prices one reply from the model's catalog rates, logs it in `usage_logs` and
+ * adds the cost (plus token counts, for reference) to all three windows.
+ */
+export async function recordUserUsage(userId: bigint, input: RecordUsageInput): Promise<void> {
   const now = new Date();
-  const prompt = BigInt(Math.max(0, Math.floor(tokens.promptTokens)));
-  const completion = BigInt(Math.max(0, Math.floor(tokens.completionTokens)));
-  const total = prompt + completion;
+  const promptTokens = Math.max(0, Math.floor(input.promptTokens));
+  const completionTokens = Math.max(0, Math.floor(input.completionTokens));
+  const prompt = BigInt(promptTokens);
+  const completion = BigInt(completionTokens);
+  const cost = computeCostUsd(
+    promptTokens,
+    completionTokens,
+    input.model.inputPricePerMillion,
+    input.model.outputPricePerMillion
+  );
+
   const periodStart = getCurrentPeriodStart(now);
   const weekStart = getUtcWeekStart(now);
-  const fiveHourStart = new Date(Math.floor(now.getTime() / 18_000_000) * 18_000_000);
-  const fiveHourEnd = new Date(fiveHourStart.getTime() + 18_000_000);
+  const fiveHourStart = getFiveHourStart(now);
+  const increment = {
+    requestCount: { increment: 1 },
+    promptTokens: { increment: prompt },
+    completionTokens: { increment: completion },
+    costUsd: { increment: cost },
+  };
+  const initial = { requestCount: 1, promptTokens: prompt, completionTokens: completion, costUsd: cost };
 
   await db.$transaction([
+    db.usageLog.create({
+      data: {
+        userId,
+        sessionId: input.sessionId ?? null,
+        messageId: input.messageId ?? null,
+        catalogModelId: input.model.id,
+        requestId: input.requestId ?? null,
+        promptTokens,
+        completionTokens,
+        inputPricePerMillion: input.model.inputPricePerMillion,
+        outputPricePerMillion: input.model.outputPricePerMillion,
+        costUsd: cost,
+      },
+    }),
     db.userUsagePeriod.upsert({
       where: { userId_periodStart: { userId, periodStart } },
-      update: { requestCount: { increment: 1 }, promptTokens: { increment: prompt }, completionTokens: { increment: completion } },
-      create: { userId, periodStart, requestCount: 1, promptTokens: prompt, completionTokens: completion },
+      update: increment,
+      create: { userId, periodStart, ...initial },
     }),
     db.userUsageWindow.upsert({
       where: { userId_windowType_windowKey: { userId, windowType: "weekly", windowKey: weekStart.toISOString() } },
-      update: { requestCount: { increment: 1 }, promptTokens: { increment: prompt }, completionTokens: { increment: completion } },
-      create: { userId, windowType: "weekly", windowKey: weekStart.toISOString(), windowStart: weekStart, windowEnd: new Date(weekStart.getTime() + 7 * 86_400_000), requestCount: 1, promptTokens: prompt, completionTokens: completion },
+      update: increment,
+      create: { userId, windowType: "weekly", windowKey: weekStart.toISOString(), windowStart: weekStart, windowEnd: new Date(weekStart.getTime() + WEEK_MS), ...initial },
     }),
     db.userUsageWindow.upsert({
       where: { userId_windowType_windowKey: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString() } },
-      update: { requestCount: { increment: 1 }, promptTokens: { increment: prompt }, completionTokens: { increment: completion } },
-      create: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString(), windowStart: fiveHourStart, windowEnd: fiveHourEnd, requestCount: 1, promptTokens: prompt, completionTokens: completion },
+      update: increment,
+      create: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString(), windowStart: fiveHourStart, windowEnd: new Date(fiveHourStart.getTime() + FIVE_HOURS_MS), ...initial },
     }),
   ]);
   await invalidateUserQuotaCache(userId);
-  void total;
 }

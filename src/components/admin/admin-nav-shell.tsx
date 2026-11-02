@@ -13,6 +13,8 @@ import {
   CreditCard,
   Layers3,
   Users,
+  BarChart3,
+  Activity,
   Menu,
   X,
   ArrowLeft,
@@ -52,6 +54,21 @@ export function AdminNavShell({
   }, [pathname]);
 
   const navGroups: NavGroup[] = [
+    {
+      groupKey: "admin.groups.overview",
+      items: [
+        {
+          href: "/admin/metrics",
+          labelKey: "admin.tabs.metrics",
+          icon: <BarChart3 className="w-4 h-4 shrink-0" />,
+        },
+        {
+          href: "/admin/system-health",
+          labelKey: "admin.tabs.systemHealth",
+          icon: <Activity className="w-4 h-4 shrink-0" />,
+        },
+      ],
+    },
     {
       groupKey: "admin.groups.ai",
       items: [
@@ -170,7 +187,7 @@ export function AdminNavShell({
         {/* Brand / Logo Header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-[var(--border)] shrink-0">
           <Link
-            href="/admin/gateway"
+            href="/admin/metrics"
             className="flex items-center gap-2.5 group"
             aria-label={t("brand.name")}
           >
@@ -220,7 +237,7 @@ export function AdminNavShell({
             {/* Drawer Header */}
             <div className="h-14 px-4 flex items-center justify-between border-b border-[var(--border)] shrink-0">
               <Link
-                href="/admin/gateway"
+                href="/admin/metrics"
                 className="flex items-center gap-2"
                 aria-label={t("brand.name")}
               >

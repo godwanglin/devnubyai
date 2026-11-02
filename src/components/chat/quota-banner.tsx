@@ -6,6 +6,7 @@ import { Gauge, X } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/providers/i18n-provider";
 import type { QuotaNotice } from "@/lib/chat/quota-shared";
+import { formatUsd } from "@/lib/billing/format";
 
 interface QuotaBannerProps {
   notice: QuotaNotice;
@@ -38,24 +39,32 @@ export function QuotaBanner({ notice, onDismiss, onExpire }: QuotaBannerProps) {
     minute: "2-digit",
   }).format(new Date(resetMs));
   const seconds = String(Math.max(1, Math.ceil((resetMs - now) / 1000)));
-  const used = notice.used.toLocaleString();
-  const limit = notice.limit.toLocaleString();
+  const isCost =
+    notice.kind === "monthly_cost" || notice.kind === "weekly_cost" || notice.kind === "five_hour_cost";
+  // Spend limits are dollars, request limits are counts
+  const used = isCost ? formatUsd(notice.used) : notice.used.toLocaleString();
+  const limit = isCost ? formatUsd(notice.limit) : notice.limit.toLocaleString();
 
-  const content =
-    notice.kind === "monthly_tokens"
+  const costTitles = {
+    monthly_cost: "quota.monthlyTitle",
+    weekly_cost: "quota.weeklyTitle",
+    five_hour_cost: "quota.fiveHourTitle",
+  } as const;
+
+  const content = isCost
+    ? {
+        title: t(costTitles[notice.kind as keyof typeof costTitles]),
+        body: t("quota.costBody", { used, limit, date: resetDate }),
+      }
+    : notice.kind === "daily_requests"
       ? {
-          title: t("quota.monthlyTitle"),
-          body: t("quota.monthlyBody", { used, limit, date: resetDate }),
+          title: t("quota.dailyTitle"),
+          body: t("quota.dailyBody", { used, limit, date: resetDate }),
         }
-      : notice.kind === "daily_requests"
-        ? {
-            title: t("quota.dailyTitle"),
-            body: t("quota.dailyBody", { used, limit, date: resetDate }),
-          }
-        : {
-            title: t("quota.rateTitle"),
-            body: t("quota.rateBody", { limit, seconds }),
-          };
+      : {
+          title: t("quota.rateTitle"),
+          body: t("quota.rateBody", { limit, seconds }),
+        };
 
   // Same frosted surface as popovers (`.glass` tokens), kept to a single compact row
   return (

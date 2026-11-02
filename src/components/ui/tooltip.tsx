@@ -75,7 +75,7 @@ export function Tooltip({
             ref={positionTooltip}
             role="tooltip"
             style={{ top: 0, left: 0 }}
-            className="fixed z-[160] pointer-events-none glass tooltip-panel px-2.5 py-1.5 rounded-[6px] text-[12px] font-medium whitespace-nowrap text-[var(--ink)]"
+            className="fixed z-[10070] pointer-events-none glass tooltip-panel px-2.5 py-1.5 rounded-[6px] text-[12px] font-medium whitespace-nowrap text-[var(--ink)]"
           >
             {content}
           </span>,

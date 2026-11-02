@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { db } from "../db";
 import { uploadToR2 } from "../storage/r2";
+import { checkAgentUploadQuota } from "../files/upload-quota";
 import { MAX_FILE_BYTES } from "../files/policy";
 import type {
   ToolDefinition,
@@ -258,6 +259,15 @@ export const createSpreadsheetTool: ToolDefinition<
             code: "INVALID_PARAM",
             message: "Generated spreadsheet exceeds maximum allowed size of 10 MB.",
           },
+          metadata: { durationMs: Date.now() - startTime },
+        };
+      }
+
+      const quotaError = await checkAgentUploadQuota(context.userId, nodeBuffer.length);
+      if (quotaError) {
+        return {
+          success: false,
+          error: { code: "RATE_LIMITED", message: quotaError },
           metadata: { durationMs: Date.now() - startTime },
         };
       }

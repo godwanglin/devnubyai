@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { uploadToR2, sanitizeKey } from "@/lib/storage/r2";
 import { validateUploadCandidate } from "@/lib/files/policy";
+import { assertUploadQuota } from "@/lib/files/upload-quota";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -34,6 +35,7 @@ export async function POST(request: Request, context: RouteContext) {
       }
 
       const buffer = Buffer.from(text, "utf-8");
+      await assertUploadQuota({ userId: user.id }, "user", buffer.length);
       const uploadResult = await uploadToR2({
         userId: user.publicId,
         sessionId: projectPublicId,
@@ -82,6 +84,8 @@ export async function POST(request: Request, context: RouteContext) {
     if (!validation.valid) {
       throw ApiError.badRequest(validation.error || "File tidak diizinkan");
     }
+
+    await assertUploadQuota({ userId: user.id }, "user", file.size);
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);

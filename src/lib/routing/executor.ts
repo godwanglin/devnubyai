@@ -8,9 +8,11 @@ import type {
 import { dispatchGatewayStream } from "@/lib/gateways/dispatcher";
 import { markFailure, markSuccess } from "./circuit";
 import { GatewayError, classifyThrownError, shouldFallback } from "./errors";
-import { logAttempt, type AttemptLogParams } from "./logger";
+import { GLOBAL_DEFAULT_ERROR } from "./error-mapping";
+import { logAttempt, type AttemptLogParams, type CandidateAttemptLogEntry } from "./logger";
 import { resolveCandidates } from "./resolver";
 import { getRoutingSettings } from "./settings";
+import { markRouteCooldown } from "./strategy";
 
 export interface ExecuteWithFallbackOptions {
   publicModelId?: string | null;
@@ -37,6 +39,8 @@ export async function* executeWithFallback(
   if (resolved.candidates.length === 0) throw ApiError.modelUnavailable();
 
   const signal = options.request.signal;
+  const overallStartedAt = Date.now();
+  const candidateLogs: CandidateAttemptLogEntry[] = [];
 
   for (let index = 0; index < resolved.candidates.length; index += 1) {
     const candidate: CandidateRoute = resolved.candidates[index];
@@ -46,25 +50,58 @@ export async function* executeWithFallback(
     let completionTokens: number | null = null;
     let settled = false;
 
-    const log = (
-      outcome: AttemptLogParams["outcome"],
+    const recordCandidate = (
+      outcome: CandidateAttemptLogEntry["outcome"],
       error?: GatewayError
-    ) =>
-      logAttempt({
+    ): CandidateAttemptLogEntry => {
+      const entry: CandidateAttemptLogEntry = {
+        attemptNo: index + 1,
+        gatewayId: candidate.gateway.id.toString(),
+        gatewayName: candidate.gateway.name,
+        upstreamModelId: candidate.upstreamModelId.toString(),
+        upstreamModelKey: candidate.upstreamModelKey,
+        outcome,
+        errorRuleId: error?.errorRuleId ?? null,
+        errorClass: error?.errorClass ?? null,
+        httpStatus: error?.httpStatus ?? null,
+        providerError: error?.providerError ?? null,
+        latencyMs: Date.now() - startedAt,
+        ttftMs: firstEventAt === null ? null : firstEventAt - startedAt,
+      };
+      candidateLogs.push(entry);
+      return entry;
+    };
+
+    const flushConsolidatedLog = (
+      outcome: AttemptLogParams["outcome"],
+      error?: GatewayError,
+      clientErrorOverride?: string | null
+    ) => {
+      recordCandidate(outcome, error);
+      return logAttempt({
         requestId,
         userId: options.userId,
         messageId: options.messageId,
         catalogModelId: resolved.catalogModelId,
+        catalogModelPublicId: resolved.publicId,
+        inputPricePerMillion: resolved.inputPricePerMillion,
+        outputPricePerMillion: resolved.outputPricePerMillion,
         gatewayId: candidate.gateway.id,
+        gatewayName: candidate.gateway.name,
         upstreamModelId: candidate.upstreamModelId,
+        upstreamModelKey: candidate.upstreamModelKey,
         attemptNo: index + 1,
         outcome,
+        hadFallback: index > 0,
         error,
-        latencyMs: Date.now() - startedAt,
+        clientError: clientErrorOverride ?? error?.clientError ?? null,
+        latencyMs: Date.now() - overallStartedAt,
         ttftMs: firstEventAt === null ? null : firstEventAt - startedAt,
         promptTokens,
         completionTokens,
+        candidates: candidateLogs,
       });
+    };
 
     try {
       const stream = dispatchGatewayStream(candidate.gateway, {
@@ -95,7 +132,7 @@ export async function* executeWithFallback(
       }
 
       settled = true;
-      await log("success");
+      await flushConsolidatedLog("success");
       return;
     } catch (err) {
       settled = true;
@@ -105,29 +142,40 @@ export async function* executeWithFallback(
           : classifyThrownError(err, { timedOut: false, clientAborted: Boolean(signal?.aborted) });
 
       if (error.errorClass === "client_aborted") {
-        await log("aborted", error);
+        await flushConsolidatedLog("aborted", error);
         throw error;
       }
 
       markFailure(candidate.gateway.id, error, settings);
+      // Round robin: park this route so following requests pick the others first.
+      // Only for upstream-side failures (the ones configured to trigger fallback).
+      if (resolved.strategy === "round_robin" && shouldFallback(error, settings)) {
+        markRouteCooldown(candidate.candidateId, resolved.routeCooldownSeconds);
+      }
 
       if (firstEventAt !== null) {
         // Already committed to this gateway: no fallback mid-stream.
-        await log("failed", error);
+        await flushConsolidatedLog("failed", error);
         throw error;
       }
 
       const hasNext = index + 1 < resolved.candidates.length;
       const fallback = hasNext && shouldFallback(error, settings);
-      await log(fallback ? "fallback" : "failed", error);
-      if (!fallback) break;
+      if (fallback) {
+        recordCandidate("fallback", error);
+        continue;
+      }
+
+      const clientMsg = error.clientError || GLOBAL_DEFAULT_ERROR.clientMessage;
+      await flushConsolidatedLog("failed", error, clientMsg);
+      throw ApiError.modelUnavailable(clientMsg);
     } finally {
       // Consumer stopped iterating (e.g. client disconnected) after the first event.
       if (!settled && firstEventAt !== null) {
-        void log("aborted");
+        void flushConsolidatedLog("aborted");
       }
     }
   }
 
-  throw ApiError.modelUnavailable();
+  throw ApiError.modelUnavailable(GLOBAL_DEFAULT_ERROR.clientMessage);
 }

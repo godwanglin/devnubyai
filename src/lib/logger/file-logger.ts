@@ -31,6 +31,7 @@ export interface WriteLogEntryOptions {
   type: string;
   level?: "info" | "warn" | "error" | "debug";
   timestamp?: string | Date;
+  userId?: string | null;
   data: Record<string, unknown>;
 }
 
@@ -50,7 +51,7 @@ function getNextIndex(dateStr: string): number {
 /**
  * Appends a log entry inside an isolated `<log ...>...</log>` tag.
  * Format:
- * <log index="1" id="..." type="..." level="..." timestamp="...">
+ * <log index="1" id="..." type="..." level="..." timestamp="..." userid="...">
  * { ...json }
  * </log>
  */
@@ -65,10 +66,16 @@ export async function writeLogEntry(options: WriteLogEntryOptions): Promise<stri
   const index = getNextIndex(dateStr);
   const level = options.level || "info";
   const isoTime = now.toISOString();
+  const resolvedUserId =
+    options.userId ??
+    (typeof options.data.userId === "string" || typeof options.data.userId === "number"
+      ? String(options.data.userId)
+      : null);
+  const userIdAttr = resolvedUserId ? ` userid="${resolvedUserId}"` : "";
 
   const jsonContent = JSON.stringify(options.data, null, 2);
 
-  const entry = `<log index="${index}" id="${id}" type="${options.type}" level="${level}" timestamp="${isoTime}">\n${jsonContent}\n</log>\n\n`;
+  const entry = `<log index="${index}" id="${id}" type="${options.type}" level="${level}" timestamp="${isoTime}"${userIdAttr}>\n${jsonContent}\n</log>\n\n`;
 
   try {
     await fs.promises.appendFile(filePath, entry, "utf8");
@@ -85,6 +92,7 @@ export interface ParsedLogEntry {
   type: string;
   level: string;
   timestamp: string;
+  userId?: string | null;
   data: Record<string, unknown>;
 }
 
@@ -95,6 +103,7 @@ export interface ReadLogsFilter {
   search?: string;
   outcome?: string; // routing-specific filter
   gatewayId?: string; // routing-specific filter
+  userId?: string; // user-specific filter
   page?: number;
   pageSize?: number;
 }
@@ -163,16 +172,19 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
     type: string;
     level: string;
     timestamp: string;
+    userId: string | null;
   } | null = null;
   let bufferLines: string[] = [];
 
-  const logOpenRegex = /^<log\s+index="(\d+)"\s+id="([^"]+)"\s+type="([^"]+)"(?:\s+level="([^"]+)")?(?:\s+timestamp="([^"]+)")?>/;
+  const logOpenRegex =
+    /^<log\s+index="(\d+)"\s+id="([^"]+)"\s+type="([^"]+)"(?:\s+level="([^"]+)")?(?:\s+timestamp="([^"]+)")?(?:\s+userid="([^"]*)")?>/;
 
   const filterType = filter.type && filter.type !== "all" ? filter.type.toLowerCase() : null;
   const filterLevel = filter.level && filter.level !== "all" ? filter.level.toLowerCase() : null;
   const filterSearch = filter.search ? filter.search.trim().toLowerCase() : null;
   const filterOutcome = filter.outcome && filter.outcome !== "all" ? filter.outcome.toLowerCase() : null;
   const filterGatewayId = filter.gatewayId && filter.gatewayId !== "all" ? String(filter.gatewayId) : null;
+  const filterUserId = filter.userId && filter.userId !== "all" ? String(filter.userId).trim() : null;
 
   for await (const line of rl) {
     if (!currentTag) {
@@ -184,6 +196,7 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
           type: match[3],
           level: match[4] || "info",
           timestamp: match[5] || "",
+          userId: match[6] || null,
         };
         bufferLines = [];
       }
@@ -195,13 +208,16 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
 
         const matchType = !filterType || entryType === filterType;
         const matchLevel = !filterLevel || entryLevel === filterLevel;
+        // Fast-path reject if tag has userid attribute and it does not match filterUserId
+        const fastRejectUser =
+          filterUserId !== null && currentTag.userId !== null && currentTag.userId !== filterUserId;
 
-        if (matchType && matchLevel) {
+        if (matchType && matchLevel && !fastRejectUser) {
           const rawBody = bufferLines.join("\n");
           let matchSearch = true;
 
           if (filterSearch) {
-            const fullText = `${currentTag.id} ${currentTag.type} ${currentTag.level} ${rawBody}`.toLowerCase();
+            const fullText = `${currentTag.id} ${currentTag.type} ${currentTag.level} ${currentTag.userId ?? ""} ${rawBody}`.toLowerCase();
             matchSearch = fullText.includes(filterSearch);
           }
 
@@ -213,10 +229,23 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
               parsedData = { raw: rawBody };
             }
 
+            // User filter (handles both new logs with userid attr and older logs with data.userId)
+            if (filterUserId) {
+              const itemUserId = currentTag.userId || String(parsedData.userId ?? "");
+              if (itemUserId !== filterUserId) {
+                currentTag = null;
+                bufferLines = [];
+                continue;
+              }
+            }
+
             // Outcome filter (e.g. "failed", "success", "fallback")
             if (filterOutcome) {
               const itemOutcome = String(parsedData.outcome ?? "").toLowerCase();
-              if (itemOutcome !== filterOutcome) {
+              const hadFallback = Boolean(parsedData.hadFallback);
+              const matchesOutcome =
+                itemOutcome === filterOutcome || (filterOutcome === "fallback" && hadFallback);
+              if (!matchesOutcome) {
                 currentTag = null;
                 bufferLines = [];
                 continue;
@@ -239,6 +268,7 @@ export async function readLogs(filter: ReadLogsFilter = {}): Promise<PaginatedLo
               type: currentTag.type,
               level: currentTag.level,
               timestamp: currentTag.timestamp,
+              userId: currentTag.userId || (parsedData.userId ? String(parsedData.userId) : null),
               data: parsedData,
             });
           }

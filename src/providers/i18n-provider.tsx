@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from "react";
-import type { Locale } from "@/types";
+import { DEFAULT_LOCALE, isLocale, matchLocale, type Locale } from "@/lib/i18n/locales";
 import idDict from "@/messages/id.json";
 import enDict from "@/messages/en.json";
 
@@ -25,18 +25,13 @@ const I18nContext = createContext<I18nContextType | null>(null);
 const STORAGE_KEY = "devnuby-locale";
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("id");
+  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) as Locale | null;
-      if (saved === "id" || saved === "en") {
-        setLocaleState(saved);
-      } else {
-        const browser = navigator.language.toLowerCase().startsWith("id") ? "id" : "en";
-        setLocaleState(browser);
-      }
+      const saved = localStorage.getItem(STORAGE_KEY);
+      setLocaleState(isLocale(saved) ? saved : matchLocale(navigator.language));
     } catch {}
     setIsReady(true);
   }, []);
@@ -51,7 +46,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   const t = useCallback(
     (path: string, params?: Record<string, string | number>): string => {
-      const dict = dictionaries[locale] || dictionaries.id;
+      const dict = dictionaries[locale] || dictionaries[DEFAULT_LOCALE];
       const parts = path.split(".");
       let current: any = dict;
       for (const part of parts) {

@@ -20,8 +20,8 @@ export async function GET(request: Request) {
       {
         quota: {
           usedPercent: windows.monthly.usedPercent,
-          usedTokens: windows.monthly.usedTokens,
-          limitTokens: windows.monthly.limitTokens,
+          usedUsd: windows.monthly.usedUsd,
+          limitUsd: windows.monthly.limitUsd,
           resetInDays,
           resetAt: windows.monthly.resetAt,
           requestCount: windows.monthly.requestCount,

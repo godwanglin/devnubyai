@@ -17,7 +17,7 @@ import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { cn } from "@/lib/cn";
 import { classifyPreviewKind, formatFileSize } from "@/lib/files/policy";
 import {
-  AI_FILE_UPDATED_EVENT, AI_HIGHLIGHT_EVENT, type AIHighlightPayload, withCacheBuster,
+  AI_HIGHLIGHT_EVENT, type AIHighlightPayload, withCacheBuster,
 } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { SessionFileItem } from "@/types";
@@ -177,10 +177,8 @@ export function ChatFilesPanel({
     if (!effectiveOpen || !chatId || readOnly) return;
     const handleFilesUpdated = () => setEventRefreshTick((n) => n + 1);
     window.addEventListener("devnuby:files-updated", handleFilesUpdated);
-    window.addEventListener(AI_FILE_UPDATED_EVENT, handleFilesUpdated);
     return () => {
       window.removeEventListener("devnuby:files-updated", handleFilesUpdated);
-      window.removeEventListener(AI_FILE_UPDATED_EVENT, handleFilesUpdated);
     };
   }, [effectiveOpen, chatId, readOnly]);
 

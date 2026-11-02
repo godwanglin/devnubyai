@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { uploadToR2 } from "../storage/r2";
+import { checkAgentUploadQuota } from "../files/upload-quota";
 import {
   MAX_FILE_BYTES,
   BLOCKED_EXTENSIONS,
@@ -97,6 +98,15 @@ export const writeFileTool: ToolDefinition<WriteFileParams, WriteFileData> = {
           code: "INVALID_PARAM",
           message: "File content exceeds maximum allowed size of 10 MB.",
         },
+        metadata: { durationMs: Date.now() - startTime },
+      };
+    }
+
+    const quotaError = await checkAgentUploadQuota(context.userId, sizeBytes);
+    if (quotaError) {
+      return {
+        success: false,
+        error: { code: "RATE_LIMITED", message: quotaError },
         metadata: { durationMs: Date.now() - startTime },
       };
     }

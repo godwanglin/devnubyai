@@ -1,14 +1,15 @@
 /** Client-safe quota types shared by the API (429 `details.quota`) and the chat UI. */
 
 export type QuotaKind =
-  | "monthly_tokens"
-  | "weekly_tokens"
-  | "five_hour_tokens"
+  | "monthly_cost"
+  | "weekly_cost"
+  | "five_hour_cost"
   | "daily_requests"
   | "rate_per_minute";
 
 export interface QuotaNotice {
   kind: QuotaKind;
+  /** USD for the *_cost kinds, a request count otherwise */
   used: number;
   limit: number;
   /** ISO timestamp when this limit frees up again */

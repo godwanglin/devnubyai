@@ -5,6 +5,8 @@ import { Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
+import { LucideIcon } from "@/components/ui/lucide-icon";
+import { fillFeatureTemplate, normalizePlanFeatures, resolveLocalizedText, type PlanFeature } from "@/lib/plans/features";
 import type { PublicPlanItem } from "@/app/api/v1/plans/route";
 
 interface PlanCardProps {
@@ -44,23 +46,40 @@ export function PlanCard({
     }).format(val);
   };
 
-  const formatTokens = (num: number | null) => {
-    if (num === null || num === 0) return null;
-    if (num >= 1_000_000) {
-      const millions = num / 1_000_000;
-      return locale === "id"
-        ? `${millions} Juta`
-        : `${millions}M`;
+  /** Text for one "Capacity & Quotas" row; null hides it (hidden auto row, no limit set, or empty). */
+  const featureText = (feature: PlanFeature): string | null => {
+    if (feature.type === "custom") return resolveLocalizedText(feature.text, locale) || null;
+    if (!feature.visible) return null;
+    // Admin-written wording for an auto row; empty means the default i18n text
+    const override = feature.text ? resolveLocalizedText(feature.text, locale) : "";
+    switch (feature.key) {
+      case "usage": {
+        // Usage allowance relative to the base plan (no dollar amounts shown)
+        const { usage } = plan;
+        if (override) {
+          return fillFeatureTemplate(override, {
+            value: usage.kind === "multiple" ? String(usage.multiplier) : usage.kind === "base" ? "1" : "∞",
+            base: usage.kind === "multiple" ? usage.baseName : plan.name,
+          });
+        }
+        return usage.kind === "unlimited"
+          ? t("plans.unlimitedUsage")
+          : usage.kind === "base"
+            ? t("plans.baseUsage")
+            : t("plans.relativeUsage", { multiplier: String(usage.multiplier), base: usage.baseName });
+      }
+      case "dailyRequests": {
+        if (!plan.dailyRequestLimit) return null;
+        const value = plan.dailyRequestLimit.toLocaleString();
+        return override ? fillFeatureTemplate(override, { value }) : t("plans.dailyRequests", { count: value });
+      }
+      case "requestsPerMinute": {
+        if (!plan.requestsPerMinute) return null;
+        const value = plan.requestsPerMinute.toLocaleString();
+        return override ? fillFeatureTemplate(override, { value }) : t("plans.rateLimit", { count: value });
+      }
     }
-    if (num >= 1_000) {
-      const thousands = num / 1_000;
-      return locale === "id"
-        ? `${thousands} Ribu`
-        : `${thousands}K`;
-    }
-    return num.toLocaleString();
   };
-
   return (
     <div
       className={cn(
@@ -262,55 +281,16 @@ export function PlanCard({
           </p>
 
           <ul className="space-y-2.5 text-xs text-[var(--ink)]">
-            {/* Monthly token limit */}
-            <li className="flex items-center gap-2.5">
-              <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <span>
-                {plan.monthlyTokenLimit
-                  ? t("plans.monthlyTokens", { count: formatTokens(plan.monthlyTokenLimit) || "0" })
-                  : t("plans.unlimitedTokens")}
-              </span>
-            </li>
-
-            {/* 5-Hour token limit */}
-            {plan.fiveHourTokenLimit !== null && plan.fiveHourTokenLimit > 0 && (
-              <li className="flex items-center gap-2.5">
-                <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                <span>
-                  {t("plans.fiveHourTokens", { count: formatTokens(plan.fiveHourTokenLimit) || "0" })}
-                </span>
-              </li>
-            )}
-
-            {/* Weekly token limit */}
-            {plan.weeklyTokenLimit !== null && plan.weeklyTokenLimit > 0 && (
-              <li className="flex items-center gap-2.5">
-                <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                <span>
-                  {t("plans.weeklyTokens", { count: formatTokens(plan.weeklyTokenLimit) || "0" })}
-                </span>
-              </li>
-            )}
-
-            {/* Daily requests limit */}
-            {plan.dailyRequestLimit && (
-              <li className="flex items-center gap-2.5">
-                <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                <span>
-                  {t("plans.dailyRequests", { count: plan.dailyRequestLimit.toLocaleString() })}
-                </span>
-              </li>
-            )}
-
-            {/* Rate limit (RPM) */}
-            {plan.requestsPerMinute && (
-              <li className="flex items-center gap-2.5">
-                <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                <span>
-                  {t("plans.rateLimit", { count: plan.requestsPerMinute })}
-                </span>
-              </li>
-            )}
+            {normalizePlanFeatures(plan.features).map((feature) => {
+              const text = featureText(feature);
+              if (!text) return null;
+              return (
+                <li key={feature.id} className="flex items-center gap-2.5">
+                  <LucideIcon name={feature.icon} className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                  <span>{text}</span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>

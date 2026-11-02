@@ -12,6 +12,7 @@ import { createUIMessageStreamResponse } from "ai";
 import { downloadFromR2 } from "@/lib/storage/r2";
 import { MAX_IMAGE_BYTES } from "@/lib/files/policy";
 import { MAX_QUOTES_PER_MESSAGE, MAX_QUOTE_CHARS, withQuotedContext } from "@/lib/chat/quotes";
+import { MAX_SOURCE_MENTIONS_PER_MESSAGE, withSourceMentionNote } from "@/lib/chat/source-mentions";
 import type { ChatMessageInput, MultimodalContentPart } from "@/lib/gateways/types";
 
 const sendMessageSchema = z.object({
@@ -25,6 +26,8 @@ const sendMessageSchema = z.object({
     .array(z.string().trim().min(1).max(MAX_QUOTE_CHARS))
     .max(MAX_QUOTES_PER_MESSAGE)
     .optional(),
+  /** Project sources @mentioned in this message (ProjectFile publicIds) */
+  sourceIds: z.array(z.string().trim().min(1)).max(MAX_SOURCE_MENTIONS_PER_MESSAGE).optional(),
 });
 
 type RouteContext = { params: Promise<{ chatId: string }> };
@@ -93,6 +96,21 @@ export async function POST(request: Request, context: RouteContext) {
     const fileIds = parsed.data.fileIds ?? [];
     const quotes = parsed.data.quotes ?? [];
 
+    // Mentions must point at sources of this chat's own project
+    const requestedSourceIds = [...new Set(parsed.data.sourceIds ?? [])];
+    const mentionedSources =
+      requestedSourceIds.length > 0 && session.projectInternalId
+        ? await db.projectFile.findMany({
+            where: { publicId: { in: requestedSourceIds }, projectId: session.projectInternalId },
+            select: { publicId: true, filename: true },
+          })
+        : [];
+    const mentions = mentionedSources.map((s) => ({ id: s.publicId, filename: s.filename }));
+    const metaParts = [
+      ...quotes.map((text) => ({ type: "quote" as const, text })),
+      ...mentions.map((m) => ({ type: "source_mention" as const, ...m })),
+    ];
+
     const [userMessage, assistantMessage] = await db.$transaction(async (tx) => {
       const uMsg = await tx.chatMessage.create({
         data: {
@@ -100,9 +118,7 @@ export async function POST(request: Request, context: RouteContext) {
           role: "user",
           content: parsed.data.content,
           status: "completed",
-          ...(quotes.length > 0
-            ? { parts: quotes.map((text) => ({ type: "quote", text })) }
-            : {}),
+          ...(metaParts.length > 0 ? { parts: metaParts } : {}),
         },
       });
 
@@ -147,20 +163,6 @@ export async function POST(request: Request, context: RouteContext) {
       (m) => !(m.role === "assistant" && m.content === "")
     );
 
-    // If the chat session belongs to a project with custom instructions, inject them into context
-    if (session.projectInternalId) {
-      const proj = await db.project.findUnique({
-        where: { id: session.projectInternalId },
-        select: { name: true, customInstructions: true },
-      });
-      if (proj?.customInstructions?.trim()) {
-        conversationMessages.unshift({
-          role: "system",
-          content: `[Instruksi Khusus Proyek "${proj.name}"]:\n${proj.customInstructions.trim()}`,
-        });
-      }
-    }
-
     // If attachments exist and the resolved model supports vision, inject image multimodal parts into the user's turn
     if (fileIds.length > 0) {
       const attachedFiles = await db.sessionFile.findMany({
@@ -182,7 +184,7 @@ export async function POST(request: Request, context: RouteContext) {
       // Replace the last user message in conversationMessages with rich multimodal parts
       const lastUserIdx = conversationMessages.map((m) => m.role).lastIndexOf("user");
       if (lastUserIdx !== -1) {
-        let textPrompt = withQuotedContext(parsed.data.content, quotes);
+        let textPrompt = withSourceMentionNote(withQuotedContext(parsed.data.content, quotes), mentions);
         if (docFiles.length > 0) {
           const docList = docFiles
             .map((d) => `- ${d.filename} (${d.mimeType})`)
@@ -249,6 +251,7 @@ export async function POST(request: Request, context: RouteContext) {
       ),
       forceWebSearch: parsed.data.webSearch,
       conversationHistory: conversationMessages,
+      mentionedSourceIds: mentions.map((m) => m.id),
       clientTimeZone: resolveClientTimeZone(request),
       requestId,
     });

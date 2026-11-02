@@ -1,8 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import {
+  Check,
+  ChevronDown,
   Globe,
   LogOut,
   Settings as SettingsIcon,
@@ -14,6 +16,7 @@ import { DropdownSeparator } from "@/components/ui/dropdown";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 import { useQuota } from "@/hooks/use-quota";
+import { LOCALES } from "@/lib/i18n/locales";
 import type { Locale, UserProfile } from "@/types";
 
 interface SidebarAccountProps {
@@ -35,6 +38,8 @@ export function SidebarAccountCard({
 }: SidebarAccountProps) {
   const { t } = useI18n();
   const isFree = !user.plan || user.plan === "free";
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const currentLocale = LOCALES.find((l) => l.code === locale);
 
   return (
     <div
@@ -49,7 +54,7 @@ export function SidebarAccountCard({
       <Popover
         side="top"
         align="end"
-        className="w-[200px]"
+        className="w-[220px]"
         trigger={
           <button
             type="button"
@@ -92,7 +97,7 @@ export function SidebarAccountCard({
 
           {user.role === "admin" && (
             <Link
-              href="/admin/gateway"
+              href="/admin/metrics"
               onClick={onCloseMobile}
               className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)]"
             >
@@ -101,19 +106,56 @@ export function SidebarAccountCard({
             </Link>
           )}
 
+          {/* Language picker: expands in place so the list can grow with LOCALES */}
           <button
             type="button"
-            onClick={() => setLocale(locale === "id" ? "en" : "id")}
+            onClick={() => setLanguageOpen((v) => !v)}
+            aria-expanded={languageOpen}
             className="glass-hover flex items-center justify-between w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)] cursor-pointer"
           >
             <span className="flex items-center gap-2">
               <Globe className="w-3.5 h-3.5 text-[var(--muted)]" />
-              <span>{locale === "id" ? "Bahasa: ID" : "Language: EN"}</span>
+              <span>{t("nav.language")}</span>
             </span>
-            <span className="text-[10px] uppercase font-bold text-[var(--muted)]">
-              {locale}
+            <span className="flex items-center gap-1 text-[11px] text-[var(--muted)]">
+              <span className="truncate max-w-[90px]">{currentLocale?.nativeName}</span>
+              <ChevronDown
+                className={cn(
+                  "w-3.5 h-3.5 transition-transform duration-200 ease-[var(--ease-out)]",
+                  !languageOpen && "-rotate-90"
+                )}
+              />
             </span>
           </button>
+
+          <div
+            inert={!languageOpen}
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--ease-out)]",
+              languageOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
+            )}
+          >
+            <div className="overflow-hidden min-h-0">
+              <div role="listbox" aria-label={t("nav.language")} className="space-y-0.5 pl-5 py-0.5">
+                {LOCALES.map((l) => (
+                  <button
+                    key={l.code}
+                    type="button"
+                    role="option"
+                    aria-selected={l.code === locale}
+                    onClick={() => setLocale(l.code)}
+                    className="glass-hover flex items-center justify-between w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)] cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="w-5 text-[10px] uppercase font-bold text-[var(--muted)]">{l.code}</span>
+                      <span className="truncate">{l.nativeName}</span>
+                    </span>
+                    {l.code === locale ? <Check className="w-3.5 h-3.5 shrink-0 text-[var(--ink)]" /> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           <DropdownSeparator />
 
@@ -151,7 +193,7 @@ export function SidebarQuota({ onNavigate }: { onNavigate: () => void }) {
         { label: t("usage.fiveHour"), w: windows.fiveHour },
         { label: t("usage.weekly"), w: windows.weekly },
         { label: t("usage.monthly"), w: windows.monthly },
-      ].filter((c) => c.w.limitTokens !== null)
+      ].filter((c) => c.w.limitUsd !== null)
     : [];
   const tightest = candidates.reduce<(typeof candidates)[number] | null>(
     (best, c) => (best === null || c.w.usedPercent > best.w.usedPercent ? c : best),

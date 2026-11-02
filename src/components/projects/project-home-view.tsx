@@ -10,7 +10,7 @@ import { RenameModal } from "@/components/modals/rename-modal";
 import { DeleteProjectModal } from "@/components/modals/delete-project-modal";
 import { ShareProjectModal } from "@/components/modals/share-project-modal";
 import { AddProjectSourceModal } from "@/components/modals/add-project-source-modal";
-import { useProjects } from "@/hooks/use-projects";
+import { useProjects, dispatchProjectsUpdated } from "@/hooks/use-projects";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/providers/i18n-provider";
 
@@ -150,7 +150,8 @@ export function ProjectHomeView({ projectId, composer }: ProjectHomeViewProps) {
         isOpen={isAddSourceOpen}
         onClose={() => setIsAddSourceOpen(false)}
         projectId={project.id}
-        onSuccess={() => refresh()}
+        // Broadcast so every listener (this view, the composer's @mention list) refetches
+        onSuccess={() => dispatchProjectsUpdated()}
       />
     </div>
   );

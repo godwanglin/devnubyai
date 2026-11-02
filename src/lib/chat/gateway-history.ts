@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { extractQuotes, withQuotedContext } from "./quotes";
+import { extractSourceMentions, withSourceMentionNote } from "./source-mentions";
 
 /**
  * Retrieve recent message history formatted for LLM gateway execution.
@@ -24,6 +25,12 @@ export async function getRecentMessagesForGateway(
 
   return messages.reverse().map((m) => ({
     role: m.role as "system" | "user" | "assistant" | "tool",
-    content: m.role === "user" ? withQuotedContext(m.content, extractQuotes(m.parts)) : m.content,
+    content:
+      m.role === "user"
+        ? withSourceMentionNote(
+            withQuotedContext(m.content, extractQuotes(m.parts)),
+            extractSourceMentions(m.parts)
+          )
+        : m.content,
   }));
 }

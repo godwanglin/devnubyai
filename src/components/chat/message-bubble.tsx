@@ -6,12 +6,14 @@ import { cn } from "@/lib/cn";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Tooltip } from "@/components/ui/tooltip";
 import { FeedbackModal } from "@/components/modals/feedback-modal";
+import { AgentWorkAccordion } from "./agent-work-accordion";
 import { MessageAttachments } from "./message-attachments";
 import { ThinkingAccordion } from "./thinking-accordion";
 import { ToolActivityList } from "./tool-activity";
 import { TurnGeneratedFiles } from "./turn-generated-files";
 import { TypingIndicator } from "./typing-indicator";
 import { QuoteChip } from "./quote-chip";
+import { SourceMentionChips } from "./source-mention-chips";
 import { EditTargetChip, parseRequestEditMessage } from "./edit-target-chip";
 import { messageFeedbackMap } from "@/lib/chat/client-mappers";
 import { useI18n } from "@/providers/i18n-provider";
@@ -87,9 +89,7 @@ export const MessageBubble = memo(function MessageBubble({
       setDonePhase("showing");
       timers.show = setTimeout(() => {
         setDonePhase("exiting");
-        timers.exit = setTimeout(() => {
-          setDonePhase("idle");
-        }, 380);
+        timers.exit = setTimeout(() => setDonePhase("idle"), 380);
       }, 1000);
     }
 
@@ -99,9 +99,7 @@ export const MessageBubble = memo(function MessageBubble({
     };
   }, [isStreaming, hasContent, hasActivity]);
 
-  useEffect(() => {
-    if (!isEditing) setEditContent(message.content);
-  }, [message.content, isEditing]);
+  useEffect(() => { if (!isEditing) setEditContent(message.content); }, [message.content, isEditing]);
 
   useEffect(() => {
     if (isEditing) {
@@ -129,9 +127,7 @@ export const MessageBubble = memo(function MessageBubble({
     setPrevMessageId(message.id);
     setLocalFeedback(undefined);
   }
-  if (isStreaming && localFeedback !== undefined) {
-    setLocalFeedback(undefined);
-  }
+  if (isStreaming && localFeedback !== undefined) setLocalFeedback(undefined);
 
   const effectiveFeedback = localFeedback !== undefined ? localFeedback : (message.feedback ?? null);
 
@@ -175,26 +171,19 @@ export const MessageBubble = memo(function MessageBubble({
   ): Promise<boolean> {
     if (!chatId) return false;
     try {
-      const res = await fetch(
-        `/api/v1/chats/${chatId}/messages/${message.id}/feedback`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            rating: nextRating,
-            ...(details?.reason ? { reason: details.reason } : {}),
-            ...(details?.comment ? { comment: details.comment } : {}),
-          }),
-          credentials: "same-origin",
-        }
-      );
+      const res = await fetch(`/api/v1/chats/${chatId}/messages/${message.id}/feedback`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating: nextRating,
+          ...(details?.reason ? { reason: details.reason } : {}),
+          ...(details?.comment ? { comment: details.comment } : {}),
+        }),
+        credentials: "same-origin",
+      });
       if (!res.ok) return false;
-
-      if (nextRating) {
-        messageFeedbackMap.set(message.id, nextRating);
-      } else {
-        messageFeedbackMap.delete(message.id);
-      }
+      if (nextRating) messageFeedbackMap.set(message.id, nextRating);
+      else messageFeedbackMap.delete(message.id);
       return true;
     } catch {
       return false;
@@ -203,12 +192,10 @@ export const MessageBubble = memo(function MessageBubble({
 
   async function handleFeedback(type: "like" | "dislike") {
     if (!chatId) return;
-
     const prevRating = effectiveFeedback;
     const nextRating = prevRating === type ? null : type;
     setLocalFeedback(nextRating);
     if (nextRating === "dislike") setIsFeedbackModalOpen(true);
-
     const ok = await persistFeedback(nextRating);
     if (!ok) {
       setLocalFeedback(prevRating);
@@ -220,10 +207,7 @@ export const MessageBubble = memo(function MessageBubble({
     else if (nextRating === null) toast(t("message.feedbackRemoved"));
   }
 
-  async function handleSubmitDislikeDetails(details: {
-    reason?: string;
-    comment?: string;
-  }) {
+  async function handleSubmitDislikeDetails(details: { reason?: string; comment?: string }) {
     if (!chatId) return;
     setIsSubmittingFeedback(true);
     const ok = await persistFeedback("dislike", details);
@@ -235,15 +219,10 @@ export const MessageBubble = memo(function MessageBubble({
   if (isUser) {
     return (
       <div id={`message-${message.id}`} className="group flex flex-col items-end pl-6 sm:pl-14 py-4">
-        {message.attachments?.length ? (
-          <MessageAttachments attachments={message.attachments} chatId={chatId} />
-        ) : null}
-
+        {message.attachments?.length ? <MessageAttachments attachments={message.attachments} chatId={chatId} /> : null}
         {message.quotes?.length ? <QuoteChip quotes={message.quotes} /> : null}
-
-        {parsedEdit?.isEditRequest ? (
-          <EditTargetChip targets={parsedEdit.targets} />
-        ) : null}
+        {message.sourceMentions?.length ? <SourceMentionChips mentions={message.sourceMentions} /> : null}
+        {parsedEdit?.isEditRequest ? <EditTargetChip targets={parsedEdit.targets} /> : null}
 
         {isEditing ? (
           <div className="w-full max-w-[80%] flex flex-col gap-2">
@@ -282,43 +261,22 @@ export const MessageBubble = memo(function MessageBubble({
             </div>
           </div>
         ) : userDisplayText ? (
-          <div
-            className={cn(
-              "max-w-[80%] px-4 py-3 rounded-[16px] rounded-br-[6px]",
-              "bg-[var(--bubble-user)] text-[var(--bubble-user-text)]",
-              "border border-[var(--border)] shadow-xs select-text",
-              "text-[15px] leading-relaxed whitespace-pre-wrap break-words"
-            )}
-          >
+          <div className="max-w-[80%] px-4 py-3 rounded-[16px] rounded-br-[6px] bg-[var(--bubble-user)] text-[var(--bubble-user-text)] border border-[var(--border)] shadow-xs select-text text-[15px] leading-relaxed whitespace-pre-wrap break-words">
             {userDisplayText}
           </div>
         ) : null}
         {!isEditing ? (
           <div className="mt-1 flex items-center justify-end gap-1 select-none opacity-0 group-hover:opacity-100 transition-opacity">
-            {formattedTime ? (
-              <span className="text-[11px] text-[var(--muted)] px-0.5">
-                {formattedTime}
-              </span>
-            ) : null}
+            {formattedTime ? <span className="text-[11px] text-[var(--muted)] px-0.5">{formattedTime}</span> : null}
             {onEditSubmit ? (
               <>
                 <Tooltip content={t("message.copy")} side="top">
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className="grid place-items-center w-6 h-6 rounded-[5px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer transition-colors"
-                    aria-label={t("message.copy")}
-                  >
+                  <button type="button" onClick={handleCopy} className="grid place-items-center w-6 h-6 rounded-[5px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer transition-colors" aria-label={t("message.copy")}>
                     {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </Tooltip>
                 <Tooltip content={t("message.edit")} side="top">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(true)}
-                    className="grid place-items-center w-6 h-6 rounded-[5px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer transition-colors"
-                    aria-label={t("message.edit")}
-                  >
+                  <button type="button" onClick={() => setIsEditing(true)} className="grid place-items-center w-6 h-6 rounded-[5px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer transition-colors" aria-label={t("message.edit")}>
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                 </Tooltip>
@@ -342,54 +300,71 @@ export const MessageBubble = memo(function MessageBubble({
   // Balasan yang dibatalkan sebelum ada teks/aktivitas: biarkan kosong tanpa action bar
   if (!isStreaming && !hasContent && !hasActivity && donePhase === "idle") return null;
 
+  const hasTools = Boolean(message.toolCalls && message.toolCalls.length > 0);
+  let lastWorkIdx = -1;
+  if (hasTools && message.segments?.length) {
+    for (let i = message.segments.length - 1; i >= 0; i--) {
+      if (message.segments[i].type === "tools" || message.segments[i].type === "reasoning") {
+        lastWorkIdx = i;
+        break;
+      }
+    }
+  }
+
   return (
     <div id={`message-${message.id}`} className="py-4 group min-w-0">
       {message.segments?.length ? (
-        // Agent timeline: each step's prose, reasoning (thought), or tools it ran, in order
-        message.segments.map((segment, idx) => {
-          const isLast = idx === message.segments!.length - 1;
-          if (segment.type === "tools") {
-            return (
-              <ToolActivityList
-                key={`tools-${segment.tools[0]?.id ?? idx}`}
-                tools={segment.tools}
-                messageId={message.id}
-                chatId={chatId}
-                isMessageStreaming={isStreaming}
-              />
-            );
-          }
-          if (segment.type === "reasoning") {
-            return (
-              <ThinkingAccordion
-                key={`reasoning-${idx}`}
-                content={segment.text}
-                durationSec={segment.durationSec}
-                isStreaming={isStreaming && idx === message.segments!.length - 1 && !hasContent}
-              />
-            );
-          }
-          // text segment
-          return (
-            <div
-              key={`text-${idx}`}
-              className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}
-            >
-              <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
-            </div>
-          );
-        })
-      ) : (
-        <>
-          {message.toolCalls?.length ? (
-            <ToolActivityList
+        lastWorkIdx >= 0 && message.toolCalls ? (
+          <>
+            <AgentWorkAccordion
+              segments={message.segments.slice(0, lastWorkIdx + 1)}
               tools={message.toolCalls}
               messageId={message.id}
               chatId={chatId}
               isMessageStreaming={isStreaming}
+              isWorkActive={Boolean(
+                isStreaming &&
+                  (isToolRunning ||
+                    message.isReasoningStreaming ||
+                    lastWorkIdx === message.segments.length - 1)
+              )}
+              sourcesMap={sourcesMap}
             />
+            {message.segments.slice(lastWorkIdx + 1).map((segment, idx, arr) => {
+              if (segment.type !== "text") return null;
+              const isLast = idx === arr.length - 1;
+              return (
+                <div
+                  key={`final-text-${idx}`}
+                  className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}
+                >
+                  <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
+                </div>
+              );
+            })}
+          </>
+        ) : (
+          // No tools used: render reasoning & text segments directly
+          message.segments.map((segment, idx) => {
+            const isLast = idx === message.segments!.length - 1;
+            if (segment.type === "reasoning") {
+              return <ThinkingAccordion key={`reasoning-${idx}`} content={segment.text} durationSec={segment.durationSec} isStreaming={isStreaming && isLast && !hasContent} />;
+            }
+            if (segment.type === "tools") {
+              return <ToolActivityList key={`tools-${segment.tools[0]?.id ?? idx}`} tools={segment.tools} messageId={message.id} chatId={chatId} isMessageStreaming={isStreaming} />;
+            }
+            return (
+              <div key={`text-${idx}`} className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}>
+                <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
+              </div>
+            );
+          })
+        )
+      ) : (
+        <>
+          {message.toolCalls?.length ? (
+            <ToolActivityList tools={message.toolCalls} messageId={message.id} chatId={chatId} isMessageStreaming={isStreaming} />
           ) : null}
-
           {hasContent ? (
             <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
               <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
@@ -414,18 +389,11 @@ export const MessageBubble = memo(function MessageBubble({
         </div>
       ) : donePhase !== "idle" ? (
         <div className="mt-2.5">
-          <TypingIndicator
-            state="done"
-            size="md"
-            showLabel={true}
-            isExiting={donePhase === "exiting"}
-          />
+          <TypingIndicator state="done" size="md" showLabel={true} isExiting={donePhase === "exiting"} />
         </div>
       ) : (
         <div className="flex items-center gap-2 mt-2.5 animate-fade-in">
-          {/* Action buttons (icon-only with tooltips) */}
           <div className="flex items-center gap-0.5">
-            {/* Copy button */}
             <Tooltip content={copied ? t("message.copied") : t("message.copy")} side="top">
               <button
                 type="button"
@@ -436,8 +404,6 @@ export const MessageBubble = memo(function MessageBubble({
                 {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </Tooltip>
-
-            {/* Read aloud / voice button */}
             <Tooltip content={t("message.readAloud")} side="top">
               <button
                 type="button"
@@ -448,8 +414,6 @@ export const MessageBubble = memo(function MessageBubble({
                 <Volume2 className="w-3.5 h-3.5" />
               </button>
             </Tooltip>
-
-            {/* Regenerate button */}
             {onRegenerate ? (
               <Tooltip content={t("message.regenerate")} side="top">
                 <button
@@ -462,12 +426,9 @@ export const MessageBubble = memo(function MessageBubble({
                 </button>
               </Tooltip>
             ) : null}
-
             {chatId ? (
               <>
                 <span className="w-px h-3.5 bg-[var(--border)] mx-1" aria-hidden="true" />
-
-                {/* Feedback: Like button */}
                 <Tooltip content={t("message.like")} side="top">
                   <button
                     type="button"
@@ -484,8 +445,6 @@ export const MessageBubble = memo(function MessageBubble({
                     <ThumbsUp className={cn("w-3.5 h-3.5", effectiveFeedback === "like" && "fill-current")} />
                   </button>
                 </Tooltip>
-
-                {/* Feedback: Dislike button */}
                 <Tooltip content={t("message.dislike")} side="top">
                   <button
                     type="button"
@@ -505,8 +464,6 @@ export const MessageBubble = memo(function MessageBubble({
               </>
             ) : null}
           </div>
-
-          {/* Timestamp right beside icons - only visible on bubble hover */}
           {formattedTime ? (
             <span className="text-[11px] text-[var(--muted)] select-none px-1 opacity-0 group-hover:opacity-100 transition-opacity">
               {formattedTime}
@@ -518,10 +475,7 @@ export const MessageBubble = memo(function MessageBubble({
       <FeedbackModal
         isOpen={isFeedbackModalOpen}
         loading={isSubmittingFeedback}
-        onClose={() => {
-          setIsFeedbackModalOpen(false);
-          toast(t("message.feedbackRecorded"));
-        }}
+        onClose={() => { setIsFeedbackModalOpen(false); toast(t("message.feedbackRecorded")); }}
         onSubmit={handleSubmitDislikeDetails}
       />
     </div>

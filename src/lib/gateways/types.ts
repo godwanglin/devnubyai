@@ -91,6 +91,7 @@ export interface DecryptedGatewayConfig {
 export interface CandidateRoute {
   candidateId: bigint;
   priority: number;
+  weight: number;
   paramOverrides: Record<string, unknown> | null;
   upstreamModelKey: string;
   upstreamModelId: bigint;
@@ -112,6 +113,9 @@ export interface GatewayErrorDetails {
   errorClass: RoutingErrorClass;
   httpStatus: number | null;
   message: string;
+  errorRuleId?: string | null;
+  providerError?: string | null;
+  clientError?: string | null;
   isRetryable: boolean;
   cause?: unknown;
 }

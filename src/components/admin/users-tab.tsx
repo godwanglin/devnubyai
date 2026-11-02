@@ -14,7 +14,10 @@ import type { AdminUserListItemDto } from "@/lib/users/types";
 import { UserEditModal } from "@/components/admin/user-edit-modal";
 import { CreateUserModal } from "@/components/admin/create-user-modal";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
+import { UserLogsModal } from "@/components/admin/user-logs-modal";
 import { UserTableRow } from "@/components/admin/user-table-row";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
@@ -49,6 +52,7 @@ export function UsersTab() {
   const [editingUser, setEditingUser] = useState<AdminUserListItemDto | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
+  const [logsUser, setLogsUser] = useState<AdminUserListItemDto | null>(null);
   const [deletingUser, setDeletingUser] = useState<AdminUserListItemDto | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -184,45 +188,48 @@ export function UsersTab() {
           <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.users.description")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => void loadUsers()}
             disabled={loading}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-[var(--border)] px-3 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)] disabled:opacity-50"
           >
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             <span className="hidden sm:inline">{t("admin.users.refresh")}</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={handleExportCsv}
             disabled={users.length === 0}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-[var(--border)] px-3 text-sm font-medium text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)] disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">{t("admin.users.exportCsv")}</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => setIsCreateOpen(true)}
-            className="inline-flex h-9 items-center gap-2 rounded-[8px] bg-[var(--primary)] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             <UserPlus className="h-4 w-4" />
             <span>{t("admin.users.addUser")}</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
       <div className="flex flex-col gap-3 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] p-3.5 sm:flex-row sm:items-center sm:justify-between">
         <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--muted)]" />
-          <input
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--muted)] z-10 pointer-events-none" />
+          <Input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder={t("admin.users.searchPlaceholder")}
-            className="w-full rounded-[8px] border border-[var(--border)] bg-transparent py-2 pl-9 pr-3 text-xs text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--primary)] focus:outline-none"
+            className="h-9 pl-9 pr-3 text-xs"
           />
         </form>
 
@@ -317,6 +324,7 @@ export function UsersTab() {
                   key={u.id}
                   user={u}
                   onDetail={(id) => setDetailUserId(id)}
+                  onViewLogs={(user) => setLogsUser(user)}
                   onEdit={(user) => setEditingUser(user)}
                   onDelete={(user) => setDeletingUser(user)}
                   t={t}
@@ -367,6 +375,13 @@ export function UsersTab() {
           userId={detailUserId}
           onClose={() => setDetailUserId(null)}
           onRefreshParent={() => void loadUsers()}
+        />
+      )}
+
+      {logsUser && (
+        <UserLogsModal
+          user={logsUser}
+          onClose={() => setLogsUser(null)}
         />
       )}
 

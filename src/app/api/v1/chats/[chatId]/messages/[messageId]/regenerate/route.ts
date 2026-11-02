@@ -9,6 +9,7 @@ import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/gene
 import { createUIMessageStreamResponse } from "ai";
 import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
 import { resolveClientTimeZone } from "@/lib/chat/timezone";
+import { extractSourceMentions } from "@/lib/chat/source-mentions";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const regenerateSchema = z.object({
@@ -67,6 +68,7 @@ export async function POST(request: Request, context: RouteContext) {
         publicId: true,
         role: true,
         content: true,
+        parts: true,
       },
     });
 
@@ -117,6 +119,8 @@ export async function POST(request: Request, context: RouteContext) {
       sessionModelPublicId: session.catalogModelPublicId,
       reasoningEffort: mapReasoningEffort(parsed.data.reasoningLevel),
       conversationHistory: conversationMessages,
+      // Re-answering the same turn: the sources it mentioned are inlined again
+      mentionedSourceIds: extractSourceMentions(lastUserMsg?.parts).map((m) => m.id),
       clientTimeZone: resolveClientTimeZone(request),
       requestId,
     });

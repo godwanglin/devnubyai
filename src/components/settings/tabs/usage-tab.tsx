@@ -84,7 +84,7 @@ export function UsageTab() {
         { key: "fiveHour", title: t("usage.fiveHour"), window: windows.fiveHour },
         { key: "weekly", title: t("usage.weekly"), window: windows.weekly },
         { key: "monthly", title: t("usage.monthly"), window: windows.monthly },
-      ].filter((row) => row.window.limitTokens !== null)
+      ].filter((row) => row.window.limitUsd !== null)
     : [];
 
   return (

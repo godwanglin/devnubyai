@@ -3,9 +3,11 @@ import {
   extractUIMessageText,
   messageAttachmentsMap,
   messageQuotesMap,
+  messageSourceMentionsMap,
 } from "./client-mappers";
 import { CLIENT_TZ_HEADER, getBrowserTimeZone } from "./timezone";
 import type { MessageAttachment } from "@/types";
+import type { SourceMention } from "./source-mentions";
 
 function clientTimeZoneHeaders(): Record<string, string> {
   const tz = getBrowserTimeZone();
@@ -35,6 +37,7 @@ export const chatTransport = new DefaultChatTransport({
       extendedThinking?: boolean;
       fileIds?: string[];
       quotes?: string[];
+      sourceIds?: string[];
       _attachments?: MessageAttachment[];
     };
     const effectiveChatId = reqBody.chatId || id;
@@ -59,6 +62,11 @@ export const chatTransport = new DefaultChatTransport({
     if (lastUser && reqBody.quotes?.length) {
       messageQuotesMap.set(lastUser.id, reqBody.quotes);
     }
+    const lastUserMentions = (lastUser as { metadata?: { sourceMentions?: SourceMention[] } } | undefined)
+      ?.metadata?.sourceMentions;
+    if (lastUser && lastUserMentions?.length) {
+      messageSourceMentionsMap.set(lastUser.id, lastUserMentions);
+    }
 
     return {
       api: `/api/v1/chats/${effectiveChatId}/messages`,
@@ -71,6 +79,7 @@ export const chatTransport = new DefaultChatTransport({
         extendedThinking: reqBody.extendedThinking,
         fileIds: reqBody.fileIds,
         quotes: reqBody.quotes,
+        sourceIds: reqBody.sourceIds,
       },
     };
   },

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Globe,
   Lock,
@@ -8,13 +9,37 @@ import {
   Link2,
   Info,
   X,
+  Mail,
+  Loader2,
 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Popover } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
 import { useToast } from "@/providers/toast-provider";
 import type { ProjectDto } from "@/lib/projects/types";
+
+interface InviteLookupUser {
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const LOOKUP_DEBOUNCE_MS = 300;
+
+function initialsOf(name: string): string {
+  return (
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? "")
+      .join("") || "U"
+  );
+}
 
 export interface ShareProjectModalProps {
   isOpen: boolean;
@@ -35,12 +60,87 @@ export function ShareProjectModal({
 
   const [emailInput, setEmailInput] = useState("");
   const [access, setAccess] = useState<"anyone" | "invited">(
-    project.shareAccess || "anyone"
+    project.shareAccess || "invited"
   );
   const [invitedList, setInvitedList] = useState<string[]>(
     project.invitedEmails || []
   );
   const [accessDropdownOpen, setAccessDropdownOpen] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+
+  // The email being typed (last comma-separated token), once it is complete and new
+  const inviteCandidate = useMemo(() => {
+    const last = emailInput.split(/[,;\s]+/).pop()?.trim().toLowerCase() ?? "";
+    return EMAIL_PATTERN.test(last) && !invitedList.includes(last) ? last : null;
+  }, [emailInput, invitedList]);
+
+  const lookupCache = useRef(new Map<string, InviteLookupUser | null>());
+  const [lookup, setLookup] = useState<{ email: string; user: InviteLookupUser | null } | null>(
+    null
+  );
+
+  /** Registered user for an email, or null when there is none (or the lookup failed). */
+  const lookupEmail = useCallback(async (email: string): Promise<InviteLookupUser | null> => {
+    const cached = lookupCache.current.get(email);
+    if (cached !== undefined) return cached;
+    try {
+      const res = await fetch(`/api/v1/users/lookup?email=${encodeURIComponent(email)}`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const found = (json?.data?.user as InviteLookupUser | null) ?? null;
+      // Only real answers are cached; a rate-limit or network error retries later
+      lookupCache.current.set(email, found);
+      return found;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!inviteCandidate) return;
+    const timer = setTimeout(
+      async () => {
+        const found = await lookupEmail(inviteCandidate);
+        setLookup({ email: inviteCandidate, user: found });
+      },
+      lookupCache.current.has(inviteCandidate) ? 0 : LOOKUP_DEBOUNCE_MS
+    );
+    return () => clearTimeout(timer);
+  }, [inviteCandidate, lookupEmail]);
+
+  // Ignore answers for an email the user has since changed
+  const resolvedLookup = lookup && lookup.email === inviteCandidate ? lookup : null;
+  const showInviteSuggestion = inputFocused && inviteCandidate !== null;
+  const ownEmail = user?.email?.toLowerCase() ?? "";
+  const candidateIsSelf = inviteCandidate !== null && inviteCandidate === ownEmail;
+  // Only a registered user other than yourself can be added from the suggestion
+  const canAddCandidate = !candidateIsSelf && Boolean(resolvedLookup?.user);
+
+  // The suggestion is portaled to <body>: nested inside the modal's own
+  // backdrop-filter, `.glass` would not blur what is behind it.
+  const inviteFormRef = useRef<HTMLFormElement>(null);
+  const [suggestionCoords, setSuggestionCoords] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!showInviteSuggestion) return;
+    const update = () => {
+      const rect = inviteFormRef.current?.getBoundingClientRect();
+      if (rect) setSuggestionCoords({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [showInviteSuggestion]);
   const [copied, setCopied] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -72,6 +172,10 @@ export function ShareProjectModal({
       });
       if (!res.ok) throw new Error("Failed to update share settings");
       const json = await res.json();
+      // The server drops self / unregistered emails: mirror what was actually saved
+      if (Array.isArray(json.data?.invitedEmails)) {
+        setInvitedList(json.data.invitedEmails);
+      }
       if (json.data && onProjectUpdated) {
         onProjectUpdated({
           ...project,
@@ -85,22 +189,43 @@ export function ShareProjectModal({
     }
   }
 
-  function handleAddEmails(e?: React.FormEvent) {
+  /** Only registered users can be invited; unknown emails stay in the input. */
+  async function handleAddEmails(e?: React.FormEvent) {
     if (e) e.preventDefault();
     const raw = emailInput.trim();
     if (!raw) return;
 
-    const emails = raw
-      .split(/[,;\s]+/)
-      .map((x) => x.trim().toLowerCase())
-      .filter((x) => x && x.includes("@") && !invitedList.includes(x));
+    const parsed = [
+      ...new Set(
+        raw
+          .split(/[,;\s]+/)
+          .map((x) => x.trim().toLowerCase())
+          .filter((x) => EMAIL_PATTERN.test(x) && !invitedList.includes(x))
+      ),
+    ];
+    // You own the project already: never add yourself as a collaborator
+    if (ownEmail && parsed.includes(ownEmail)) {
+      toast(t("projects.inviteSelf"));
+    }
+    const emails = parsed.filter((x) => x !== ownEmail);
+    if (emails.length === 0) {
+      setEmailInput("");
+      return;
+    }
 
-    if (emails.length === 0) return;
+    const users = await Promise.all(emails.map(lookupEmail));
+    const registered = emails.filter((_, i) => users[i]);
+    const unregistered = emails.filter((_, i) => !users[i]);
 
-    const updated = [...invitedList, ...emails];
-    setInvitedList(updated);
-    setEmailInput("");
-    void handleSaveShare(access, updated);
+    setEmailInput(unregistered.join(", "));
+    if (unregistered.length > 0) {
+      toast(t("projects.inviteOnlyRegistered", { emails: unregistered.join(", ") }));
+    }
+    if (registered.length > 0) {
+      const updated = [...invitedList, ...registered];
+      setInvitedList(updated);
+      void handleSaveShare(access, updated);
+    }
   }
 
   function handleRemoveEmail(emailToRemove: string) {
@@ -153,20 +278,92 @@ export function ShareProjectModal({
     >
       <div className="space-y-4 pt-1">
         {/* Email invite input */}
-        <form onSubmit={handleAddEmails} className="relative flex items-center">
-          <input
-            type="text"
+        <form ref={inviteFormRef} onSubmit={handleAddEmails} className="relative flex items-center">
+          <Input
             value={emailInput}
             onChange={(e) => setEmailInput(e.target.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                handleAddEmails();
+                void handleAddEmails();
               }
             }}
             placeholder={t("projects.emailInvitePlaceholder")}
-            className="w-full h-10 px-3.5 rounded-[10px] border border-[var(--border)] bg-[var(--panel-elevated)] text-xs text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--accent)] outline-none"
+            className="text-xs"
           />
+
+          {/* Suggestion for the completed email: registered users show their name */}
+          {showInviteSuggestion && suggestionCoords ? createPortal(
+            <div
+              style={{
+                top: suggestionCoords.top,
+                left: suggestionCoords.left,
+                width: suggestionCoords.width,
+              }}
+              // Above the modal (9999), same layer as popovers
+              className="popover-panel fixed z-[10060] p-1.5 rounded-[12px] glass shadow-xl"
+            >
+              <button
+                type="button"
+                // Keep focus in the input so the click doesn't close the suggestion first
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void handleAddEmails()}
+                // Unregistered emails and your own email are shown but can't be added
+                disabled={!canAddCandidate}
+                className={cn(
+                  "flex items-center gap-2.5 w-full px-2 py-1.5 rounded-[8px] text-left",
+                  canAddCandidate ? "glass-hover cursor-pointer" : "cursor-not-allowed"
+                )}
+              >
+                {!resolvedLookup ? (
+                  <span className="grid place-items-center w-7 h-7 shrink-0 rounded-full bg-[var(--hover)] text-[var(--muted)]">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  </span>
+                ) : resolvedLookup.user?.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={resolvedLookup.user.avatarUrl}
+                    alt=""
+                    className="w-7 h-7 shrink-0 rounded-full object-cover"
+                  />
+                ) : resolvedLookup.user ? (
+                  <span className="grid place-items-center w-7 h-7 shrink-0 rounded-full bg-[var(--accent)] text-[var(--accent-text)] text-[10px] font-bold">
+                    {initialsOf(resolvedLookup.user.name)}
+                  </span>
+                ) : (
+                  <span className="grid place-items-center w-7 h-7 shrink-0 rounded-full bg-[var(--hover)] text-[var(--muted)]">
+                    <Mail className="w-3.5 h-3.5" />
+                  </span>
+                )}
+                <span className="flex flex-col min-w-0">
+                  {resolvedLookup?.user ? (
+                    <>
+                      <span className="text-xs font-medium text-[var(--ink)] truncate">
+                        {resolvedLookup.user.name}
+                      </span>
+                      <span className="text-[11px] text-[var(--muted)] truncate">
+                        {candidateIsSelf ? t("projects.inviteSelfLabel") : resolvedLookup.user.email}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs font-medium text-[var(--ink)] truncate">
+                        {inviteCandidate}
+                      </span>
+                      {resolvedLookup ? (
+                        <span className="text-[11px] text-[var(--muted)] truncate">
+                          {t("projects.inviteNotRegistered")}
+                        </span>
+                      ) : null}
+                    </>
+                  )}
+                </span>
+              </button>
+            </div>,
+            document.body
+          ) : null}
         </form>
 
         {/* Access dropdown row */}
@@ -204,7 +401,7 @@ export function ShareProjectModal({
               <button
                 type="button"
                 onClick={() => handleChangeAccess("invited")}
-                className="flex items-center justify-between w-full px-2.5 py-2 rounded-[6px] text-xs text-left hover:bg-[var(--hover)] text-[var(--ink)] transition-colors"
+                className="glass-hover flex items-center justify-between w-full px-2.5 py-2 rounded-[6px] text-xs text-left text-[var(--ink)] cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <Lock className="w-3.5 h-3.5 text-[var(--muted)]" />
@@ -216,7 +413,7 @@ export function ShareProjectModal({
               <button
                 type="button"
                 onClick={() => handleChangeAccess("anyone")}
-                className="flex items-center justify-between w-full px-2.5 py-2 rounded-[6px] text-xs text-left hover:bg-[var(--hover)] text-[var(--ink)] transition-colors"
+                className="glass-hover flex items-center justify-between w-full px-2.5 py-2 rounded-[6px] text-xs text-left text-[var(--ink)] cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <Globe className="w-3.5 h-3.5 text-[var(--muted)]" />

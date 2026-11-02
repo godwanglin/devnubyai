@@ -46,6 +46,8 @@ export interface Message {
   attachments?: MessageAttachment[];
   /** Excerpts the user selected from the chat and asked about ("Tanya Devnuby") */
   quotes?: string[];
+  /** Project sources the user @mentioned in this message */
+  sourceMentions?: { id: string; filename: string }[];
   feedback?: "like" | "dislike" | null;
 }
 
@@ -104,8 +106,9 @@ export interface QuickPrompt {
 }
 
 export interface QuotaWindowInfo {
-  limitTokens: number | null;
-  usedTokens: number;
+  /** Spend cap in USD; null when the window has no limit */
+  limitUsd: number | null;
+  usedUsd: number;
   usedPercent: number;
   resetAt: string;
 }
@@ -126,22 +129,18 @@ export interface UserProfile {
 export interface UserQuota {
   usedPercent: number;
   resetInDays: number;
-  /** ISO timestamp when the monthly token quota resets */
+  /** ISO timestamp when the monthly usage limit resets */
   resetAt: string;
-  usedTokens: number;
-  limitTokens: number | null;
+  usedUsd: number;
+  limitUsd: number | null;
   requestCount: number;
   windows: {
     fiveHour: QuotaWindowInfo;
     weekly: QuotaWindowInfo;
-    monthly: QuotaWindowInfo & {
-      requestCount: number;
-      promptTokens: number;
-      completionTokens: number;
-    };
+    monthly: QuotaWindowInfo & { requestCount: number };
   };
 }
 
-export type Locale = "id" | "en";
+export type { Locale } from "@/lib/i18n/locales";
 export type Theme = "light" | "dark" | "system";
 export type ReasoningLevel = "0" | "1" | "2" | "3" | "4";

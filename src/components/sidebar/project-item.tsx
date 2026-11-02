@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Folder,
-  ChevronDown,
+  FolderOpen,
   MoreHorizontal,
   SquarePen,
   Pencil,
@@ -90,33 +90,29 @@ export function ProjectItem({
               : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
         )}
       >
-        {/* Toggle Expand Arrow */}
+        {/* Project name toggles expand/collapse; the pen button opens the project home */}
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsExpanded(!isExpanded);
-          }}
-          className="grid place-items-center w-6 h-7 shrink-0 text-[var(--placeholder)] hover:text-[var(--ink)] transition-transform"
-          aria-label={isExpanded ? "Collapse" : "Expand"}
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+          className="flex-1 flex items-center gap-2 min-w-0 py-2 pl-2 pr-1 text-left text-[13.5px] truncate cursor-pointer"
         >
-          <ChevronDown
-            className={cn(
-              "w-3.5 h-3.5 transition-transform duration-200",
-              !isExpanded && "-rotate-90"
-            )}
-          />
-        </button>
-
-        {/* Project Link with Folder Icon */}
-        <Link
-          href={`/project/${project.id}`}
-          onClick={onNavigate}
-          className="flex-1 flex items-center gap-2 min-w-0 py-2 pr-1 text-[13.5px] truncate"
-        >
-          <Folder className="w-4 h-4 shrink-0 text-[var(--accent)]" />
+          <span className="relative w-4 h-4 shrink-0 text-[var(--accent)]">
+            <Folder
+              className={cn(
+                "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-[var(--ease-out)]",
+                isExpanded ? "opacity-0 scale-75" : "opacity-100 scale-100"
+              )}
+            />
+            <FolderOpen
+              className={cn(
+                "absolute inset-0 w-4 h-4 transition-[opacity,transform] duration-200 ease-[var(--ease-out)]",
+                isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-75"
+              )}
+            />
+          </span>
           <span className="truncate">{project.name}</span>
-        </Link>
+        </button>
 
         {/* Hover Actions: (...) and (New Chat / SquarePen) */}
         <div
@@ -219,39 +215,47 @@ export function ProjectItem({
       </div>
 
       {/* Nested Chats List (max 5) */}
-      {isExpanded && (
-        <div className="space-y-0.5">
-          {recentChats.map((chat) => (
-            <ProjectSessionItem
-              key={chat.id}
-              chat={chat}
-              project={project}
-              allProjects={allProjects}
-              active={pathname === `/project/${project.id}/c/${chat.id}`}
-              onNavigate={onNavigate}
-              onRename={onRenameChat}
-              onTogglePin={onTogglePinChat}
-              onShare={onShareChat}
-              onArchive={onArchiveChat}
-              onDelete={onDeleteChat}
-              onMoveToProject={onMoveChatToProject}
-              onCreateNewProjectForChat={onCreateNewProjectForChat}
-              onLockChat={onLockChat}
-            />
-          ))}
+      <div
+        inert={!isExpanded}
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--ease-out)]",
+          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
+        )}
+      >
+        <div className="overflow-hidden min-h-0">
+          <div className="space-y-0.5">
+            {recentChats.map((chat) => (
+              <ProjectSessionItem
+                key={chat.id}
+                chat={chat}
+                project={project}
+                allProjects={allProjects}
+                active={pathname === `/project/${project.id}/c/${chat.id}`}
+                onNavigate={onNavigate}
+                onRename={onRenameChat}
+                onTogglePin={onTogglePinChat}
+                onShare={onShareChat}
+                onArchive={onArchiveChat}
+                onDelete={onDeleteChat}
+                onMoveToProject={onMoveChatToProject}
+                onCreateNewProjectForChat={onCreateNewProjectForChat}
+                onLockChat={onLockChat}
+              />
+            ))}
 
-          {/* "Lihat selengkapnya" button if has more than 5 chats or user wants to view project home */}
-          {hasMoreChats && (
-            <Link
-              href={`/project/${project.id}`}
-              onClick={onNavigate}
-              className="block pl-7 py-1 text-[11px] font-medium text-[var(--placeholder)] hover:text-[var(--accent)] transition-colors"
-            >
-              {t("projects.seeMoreChats")} ({project.chatCount})
-            </Link>
-          )}
+            {/* "Lihat selengkapnya" button if has more than 5 chats or user wants to view project home */}
+            {hasMoreChats && (
+              <Link
+                href={`/project/${project.id}`}
+                onClick={onNavigate}
+                className="block pl-7 py-1 text-[11px] font-medium text-[var(--placeholder)] hover:text-[var(--accent)] transition-colors"
+              >
+                {t("projects.seeMoreChats")} ({project.chatCount})
+              </Link>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

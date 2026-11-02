@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { invalidateActiveCatalogCache } from "@/lib/catalog/cache";
+import { costLimit, toUsd } from "@/lib/billing/cost";
+import { validateCostLimits } from "./cost-limits";
+import { normalizePlanFeatures, planFeaturesSchema, type PlanFeature } from "./features";
 import {
   PLAN_DISCOUNT_TYPES,
   applyPlanDiscount,
@@ -29,16 +32,21 @@ export const createPlanSchema = z.object({
   discountMonthlyValue: z.number().int().min(0).optional().nullable(),
   discountYearlyType: z.enum(PLAN_DISCOUNT_TYPES).optional().nullable(),
   discountYearlyValue: z.number().int().min(0).optional().nullable(),
-  // 0 or null means the window has no limit.
-  monthlyTokenLimit: z.number().int().min(0).optional().nullable(),
-  weeklyTokenLimit: z.number().int().min(0).optional().nullable(),
-  fiveHourTokenLimit: z.number().int().min(0).optional().nullable(),
+  // Spend caps in USD; 0 or null means the window has no limit.
+  monthlyCostLimitUsd: z.number().finite().min(0).max(100000).optional().nullable(),
+  weeklyCostLimitUsd: z.number().finite().min(0).max(100000).optional().nullable(),
+  fiveHourCostLimitUsd: z.number().finite().min(0).max(100000).optional().nullable(),
   dailyRequestLimit: z.number().int().positive().optional().nullable(),
   requestsPerMinute: z.number().int().positive().optional().nullable(),
+  // Rolling 24h upload size caps in MB; 0 or null means unlimited.
+  dailyUploadLimitMb: z.number().int().min(0).max(1000000).optional().nullable(),
+  dailyAgentUploadLimitMb: z.number().int().min(0).max(1000000).optional().nullable(),
   badge: z.string().trim().max(32).optional().nullable(),
   isActive: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(65535).default(100),
   allowedModelIds: z.array(z.string()).default([]),
+  // "Capacity & Quotas" rows on the plan card (auto + manual, per-language text)
+  features: planFeaturesSchema.optional(),
 });
 
 export const updatePlanSchema = createPlanSchema.partial();
@@ -60,16 +68,19 @@ export interface PlanDto {
   discountYearlyValue: number | null;
   effectivePriceMonthly: number;
   effectivePriceYearly: number;
-  monthlyTokenLimit: number | null;
-  weeklyTokenLimit: number | null;
-  fiveHourTokenLimit: number | null;
+  monthlyCostLimitUsd: number | null;
+  weeklyCostLimitUsd: number | null;
+  fiveHourCostLimitUsd: number | null;
   dailyRequestLimit: number | null;
   requestsPerMinute: number | null;
+  dailyUploadLimitMb: number | null;
+  dailyAgentUploadLimitMb: number | null;
   badge: string | null;
   isActive: boolean;
   sortOrder: number;
   userCount: number;
   allowedModelIds: string[];
+  features: PlanFeature[];
   createdAt: string;
   updatedAt: string;
 }
@@ -117,6 +128,22 @@ function assertPlanDiscounts(
   if (error) throw ApiError.badRequest(error);
 }
 
+// lucide-react/dynamic is a client module (its iconNames isn't usable on the server), so only the
+// name format is checked here; the client renders a check mark for any name it doesn't know.
+const ICON_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Validated, normalized feature rows ready for the plans.features JSON column. */
+function toFeaturesJson(features: PlanFeature[] | undefined): Prisma.InputJsonValue {
+  const unknownIcon = features?.find((f) => !ICON_NAME.test(f.icon));
+  if (unknownIcon) throw ApiError.badRequest(`Unknown icon '${unknownIcon.icon}'`);
+  return normalizePlanFeatures(features ?? []) as unknown as Prisma.InputJsonValue;
+}
+
+function assertCostLimits(limits: { monthly: number | null; weekly: number | null; fiveHour: number | null }) {
+  const error = validateCostLimits(limits);
+  if (error) throw ApiError.badRequest(error);
+}
+
 function mapPlanToDto(
   plan: Prisma.PlanGetPayload<{
     include: {
@@ -141,16 +168,19 @@ function mapPlanToDto(
     discountYearlyValue: yearly.discountValue,
     effectivePriceMonthly: applyPlanDiscount(plan.priceMonthly, monthly),
     effectivePriceYearly: applyPlanDiscount(plan.priceYearly, yearly),
-    monthlyTokenLimit: plan.monthlyTokenLimit != null ? Number(plan.monthlyTokenLimit) : null,
-    weeklyTokenLimit: plan.weeklyTokenLimit != null ? Number(plan.weeklyTokenLimit) : null,
-    fiveHourTokenLimit: plan.fiveHourTokenLimit != null ? Number(plan.fiveHourTokenLimit) : null,
+    monthlyCostLimitUsd: plan.monthlyCostLimitUsd != null ? toUsd(plan.monthlyCostLimitUsd) : null,
+    weeklyCostLimitUsd: plan.weeklyCostLimitUsd != null ? toUsd(plan.weeklyCostLimitUsd) : null,
+    fiveHourCostLimitUsd: plan.fiveHourCostLimitUsd != null ? toUsd(plan.fiveHourCostLimitUsd) : null,
     dailyRequestLimit: plan.dailyRequestLimit,
     requestsPerMinute: plan.requestsPerMinute,
+    dailyUploadLimitMb: plan.dailyUploadLimitMb,
+    dailyAgentUploadLimitMb: plan.dailyAgentUploadLimitMb,
     badge: plan.badge,
     isActive: plan.isActive,
     sortOrder: plan.sortOrder,
     userCount: plan._count.users,
     allowedModelIds: plan.modelAccesses.map((m) => m.catalogModelId.toString()),
+    features: normalizePlanFeatures(plan.features),
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
   };
@@ -187,6 +217,11 @@ export async function createAdminPlan(input: CreatePlanInput, actorUserId: bigin
   }
 
   assertPlanDiscounts(input, input.priceMonthly, input.priceYearly);
+  assertCostLimits({
+    monthly: input.monthlyCostLimitUsd || null,
+    weekly: input.weeklyCostLimitUsd || null,
+    fiveHour: input.fiveHourCostLimitUsd || null,
+  });
 
   const created = await db.$transaction(async (tx) => {
     const plan = await tx.plan.create({
@@ -201,12 +236,15 @@ export async function createAdminPlan(input: CreatePlanInput, actorUserId: bigin
         discountMonthlyValue: input.discountMonthlyValue ?? null,
         discountYearlyType: input.discountYearlyType ?? null,
         discountYearlyValue: input.discountYearlyValue ?? null,
-        monthlyTokenLimit: input.monthlyTokenLimit ? BigInt(input.monthlyTokenLimit) : null,
-        weeklyTokenLimit: input.weeklyTokenLimit ? BigInt(input.weeklyTokenLimit) : null,
-        fiveHourTokenLimit: input.fiveHourTokenLimit ? BigInt(input.fiveHourTokenLimit) : null,
+        monthlyCostLimitUsd: input.monthlyCostLimitUsd || null,
+        weeklyCostLimitUsd: input.weeklyCostLimitUsd || null,
+        fiveHourCostLimitUsd: input.fiveHourCostLimitUsd || null,
         dailyRequestLimit: input.dailyRequestLimit ?? null,
         requestsPerMinute: input.requestsPerMinute ?? null,
+        dailyUploadLimitMb: input.dailyUploadLimitMb || null,
+        dailyAgentUploadLimitMb: input.dailyAgentUploadLimitMb || null,
         badge: input.badge ?? null,
+        features: toFeaturesJson(input.features),
         isActive: input.isActive,
         sortOrder: input.sortOrder,
       },
@@ -292,6 +330,20 @@ export async function updateAdminPlan(
     input.priceMonthly ?? existing.priceMonthly,
     input.priceYearly ?? existing.priceYearly
   );
+  assertCostLimits({
+    monthly:
+      input.monthlyCostLimitUsd !== undefined
+        ? input.monthlyCostLimitUsd || null
+        : costLimit(existing.monthlyCostLimitUsd),
+    weekly:
+      input.weeklyCostLimitUsd !== undefined
+        ? input.weeklyCostLimitUsd || null
+        : costLimit(existing.weeklyCostLimitUsd),
+    fiveHour:
+      input.fiveHourCostLimitUsd !== undefined
+        ? input.fiveHourCostLimitUsd || null
+        : costLimit(existing.fiveHourCostLimitUsd),
+  });
 
   const updated = await db.$transaction(async (tx) => {
     const plan = await tx.plan.update({
@@ -307,18 +359,23 @@ export async function updateAdminPlan(
         ...(input.discountMonthlyValue !== undefined ? { discountMonthlyValue: input.discountMonthlyValue } : {}),
         ...(input.discountYearlyType !== undefined ? { discountYearlyType: input.discountYearlyType } : {}),
         ...(input.discountYearlyValue !== undefined ? { discountYearlyValue: input.discountYearlyValue } : {}),
-        ...(input.monthlyTokenLimit !== undefined
-          ? { monthlyTokenLimit: input.monthlyTokenLimit ? BigInt(input.monthlyTokenLimit) : null }
+        ...(input.monthlyCostLimitUsd !== undefined
+          ? { monthlyCostLimitUsd: input.monthlyCostLimitUsd || null }
           : {}),
-        ...(input.weeklyTokenLimit !== undefined
-          ? { weeklyTokenLimit: input.weeklyTokenLimit ? BigInt(input.weeklyTokenLimit) : null }
+        ...(input.weeklyCostLimitUsd !== undefined
+          ? { weeklyCostLimitUsd: input.weeklyCostLimitUsd || null }
           : {}),
-        ...(input.fiveHourTokenLimit !== undefined
-          ? { fiveHourTokenLimit: input.fiveHourTokenLimit ? BigInt(input.fiveHourTokenLimit) : null }
+        ...(input.fiveHourCostLimitUsd !== undefined
+          ? { fiveHourCostLimitUsd: input.fiveHourCostLimitUsd || null }
           : {}),
         ...(input.dailyRequestLimit !== undefined ? { dailyRequestLimit: input.dailyRequestLimit } : {}),
         ...(input.requestsPerMinute !== undefined ? { requestsPerMinute: input.requestsPerMinute } : {}),
+        ...(input.dailyUploadLimitMb !== undefined ? { dailyUploadLimitMb: input.dailyUploadLimitMb || null } : {}),
+        ...(input.dailyAgentUploadLimitMb !== undefined
+          ? { dailyAgentUploadLimitMb: input.dailyAgentUploadLimitMb || null }
+          : {}),
         ...(input.badge !== undefined ? { badge: input.badge } : {}),
+        ...(input.features !== undefined ? { features: toFeaturesJson(input.features) } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
       },

@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api/response";
 import { recordAdminAudit } from "@/lib/admin/audit";
 import { bumpRoutingVersion } from "@/lib/routing/settings";
 import { invalidateActiveCatalogCache } from "@/lib/catalog/cache";
+import { ROUTING_STRATEGIES } from "@/lib/routing/strategy";
 import type { Prisma } from "@/generated/client";
 
 export interface SanitizedProviderSummaryDto {
@@ -23,6 +24,7 @@ export interface SanitizedRouteDto {
   gatewayIsPrimary: boolean;
   gatewayIsEnabled: boolean;
   priority: number;
+  weight: number;
   isEnabled: boolean;
   paramOverrides: Record<string, unknown> | null;
 }
@@ -47,6 +49,8 @@ export interface SanitizedCatalogModelDto {
   inputPricePerMillion: number;
   outputPricePerMillion: number;
   pricingCurrency: string;
+  routingStrategy: string;
+  routeCooldownSeconds: number;
   createdAt: string;
   updatedAt: string;
   routes: SanitizedRouteDto[];
@@ -67,6 +71,7 @@ export interface UpstreamModelOptionDto {
 export const routeInputSchema = z.object({
   upstreamModelId: z.string(),
   priority: z.number().int().min(1).max(65535),
+  weight: z.number().int().min(1).max(100).default(1),
   isEnabled: z.boolean().default(true),
   paramOverrides: z.record(z.string(), z.unknown()).optional().nullable(),
 });
@@ -89,6 +94,8 @@ export const createCatalogModelSchema = z.object({
   pricingCurrency: z.string().trim().length(3).default("USD"),
   status: z.enum(["active", "draft", "deprecated"]).default("active"),
   sortOrder: z.number().int().min(0).max(65535).default(100),
+  routingStrategy: z.enum(ROUTING_STRATEGIES).default("priority"),
+  routeCooldownSeconds: z.number().int().min(0).max(3600).default(30),
   routes: z.array(routeInputSchema).default([]),
 });
 
@@ -239,6 +246,7 @@ export async function createCatalogModel(
   const parsedRoutes: Array<{
     upstreamModelId: bigint;
     priority: number;
+    weight: number;
     isEnabled: boolean;
     paramOverrides: Prisma.InputJsonValue | undefined;
   }> = [];
@@ -254,6 +262,7 @@ export async function createCatalogModel(
       parsedRoutes.push({
         upstreamModelId: BigInt(r.upstreamModelId),
         priority: r.priority,
+        weight: r.weight,
         isEnabled: r.isEnabled,
         paramOverrides: r.paramOverrides ? (r.paramOverrides as Prisma.InputJsonValue) : undefined,
       });
@@ -282,6 +291,8 @@ export async function createCatalogModel(
         pricingCurrency: input.pricingCurrency,
         status: input.status,
         sortOrder: input.sortOrder,
+        routingStrategy: input.routingStrategy,
+        routeCooldownSeconds: input.routeCooldownSeconds,
       },
     });
 
@@ -292,6 +303,7 @@ export async function createCatalogModel(
             catalogModelId: model.id,
             upstreamModelId: r.upstreamModelId,
             priority: r.priority,
+            weight: r.weight,
             isEnabled: r.isEnabled,
             paramOverrides: r.paramOverrides,
           },
@@ -309,6 +321,7 @@ export async function createCatalogModel(
           publicId: model.publicId,
           displayName: model.displayName,
           routesCount: parsedRoutes.length,
+          routingStrategy: model.routingStrategy,
           status: model.status,
         },
       },
@@ -394,6 +407,8 @@ export async function updateCatalogModel(
         pricingCurrency: input.pricingCurrency !== undefined ? input.pricingCurrency : existing.pricingCurrency,
         status: input.status,
         sortOrder: input.sortOrder,
+        routingStrategy: input.routingStrategy,
+        routeCooldownSeconds: input.routeCooldownSeconds,
       },
     });
 
@@ -422,6 +437,7 @@ export async function updateCatalogModel(
             catalogModelId: id,
             upstreamModelId,
             priority: r.priority,
+            weight: r.weight,
             isEnabled: r.isEnabled,
             paramOverrides: r.paramOverrides ? (r.paramOverrides as Prisma.InputJsonValue) : undefined,
           },
@@ -439,11 +455,13 @@ export async function updateCatalogModel(
           publicId: existing.publicId,
           displayName: existing.displayName,
           status: existing.status,
+          routingStrategy: existing.routingStrategy,
         },
         afterState: {
           publicId: model.publicId,
           displayName: model.displayName,
           status: model.status,
+          routingStrategy: model.routingStrategy,
         },
       },
       tx
@@ -571,6 +589,8 @@ function mapCatalogModelToDto(
     inputPricePerMillion: Number(model.inputPricePerMillion),
     outputPricePerMillion: Number(model.outputPricePerMillion),
     pricingCurrency: model.pricingCurrency,
+    routingStrategy: model.routingStrategy,
+    routeCooldownSeconds: model.routeCooldownSeconds,
     createdAt: model.createdAt.toISOString(),
     updatedAt: model.updatedAt.toISOString(),
     routes: model.routes.map((r) => ({
@@ -583,6 +603,7 @@ function mapCatalogModelToDto(
       gatewayIsPrimary: Boolean(r.upstreamModel.gateway.isPrimary),
       gatewayIsEnabled: Boolean(r.upstreamModel.gateway.isEnabled),
       priority: r.priority,
+      weight: r.weight,
       isEnabled: Boolean(r.isEnabled),
       paramOverrides: r.paramOverrides && typeof r.paramOverrides === "object" ? (r.paramOverrides as Record<string, unknown>) : null,
     })),

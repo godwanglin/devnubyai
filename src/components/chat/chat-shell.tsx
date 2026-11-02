@@ -34,6 +34,7 @@ import {
   mapUIMessagesToDomain,
   messageAttachmentsMap,
   messageQuotesMap,
+  messageSourceMentionsMap,
   messageFeedbackMap,
 } from "@/lib/chat/client-mappers";
 import { chatTransport, errorMessage } from "@/lib/chat/transport";
@@ -51,6 +52,8 @@ import {
   type EditRequestChip,
 } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
+import { useProjectDetail } from "@/hooks/use-project-detail";
+import type { SourceMention } from "@/lib/chat/source-mentions";
 import { useAccount } from "@/providers/account-provider";
 import { useQuota } from "@/hooks/use-quota";
 import { useToast } from "@/providers/toast-provider";
@@ -244,6 +247,16 @@ export function ChatShell() {
     return { currentChatId: null, currentProjectId: null, isProjectHome: false };
   }, [pathname]);
 
+  // Project sources the composer can @mention (refetched on projects-updated)
+  const { project: currentProject } = useProjectDetail(currentProjectId);
+  const projectSources = useMemo(
+    () =>
+      currentProject?.id === currentProjectId
+        ? currentProject.files.map((f) => ({ id: f.id, filename: f.filename, mimeType: f.mimeType }))
+        : [],
+    [currentProject, currentProjectId]
+  );
+
   const currentModelId =
     models.length === 0 || models.some((m) => m.id === storedModelId && !m.isLocked)
       ? storedModelId
@@ -261,14 +274,14 @@ export function ChatShell() {
     const { monthly, weekly, fiveHour } = quota.windows;
     const exhausted = (
       [
-        ["monthly_tokens", monthly],
-        ["weekly_tokens", weekly],
-        ["five_hour_tokens", fiveHour],
+        ["monthly_cost", monthly],
+        ["weekly_cost", weekly],
+        ["five_hour_cost", fiveHour],
       ] as const
-    ).find(([, w]) => w.limitTokens !== null && w.usedTokens >= w.limitTokens);
+    ).find(([, w]) => w.limitUsd !== null && w.usedUsd >= w.limitUsd);
     if (!exhausted) return null;
     const [kind, w] = exhausted;
-    return { kind, used: w.usedTokens, limit: w.limitTokens!, resetAt: w.resetAt };
+    return { kind, used: w.usedUsd, limit: w.limitUsd!, resetAt: w.resetAt };
   }, [quota]);
   const quotaNotice = rejectedQuota ?? accountQuota;
   const quotaKey = quotaNotice ? `${quotaNotice.kind}:${quotaNotice.resetAt}` : null;
@@ -449,6 +462,7 @@ export function ChatShell() {
       filesToUpload?: { file: File; name: string; localPreviewUrl?: string }[];
       quotes?: string[];
       editChips?: EditRequestChip[];
+      sourceMentions?: SourceMention[];
     }
   ) {
     // Quick prompts bypass the composer, so the quota block is enforced here too
@@ -578,6 +592,7 @@ export function ChatShell() {
             return;
           }
         }
+        window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
       }
 
       lastTargetChatIdRef.current = targetChatId;
@@ -591,6 +606,9 @@ export function ChatShell() {
       if (options?.quotes?.length) {
         messageQuotesMap.set(optimisticMessageId, options.quotes);
       }
+      if (options?.sourceMentions?.length) {
+        messageSourceMentionsMap.set(optimisticMessageId, options.sourceMentions);
+      }
 
       await sendMessage(
         {
@@ -600,6 +618,7 @@ export function ChatShell() {
           metadata: {
             attachments: finalAttachments.length ? finalAttachments : undefined,
             quotes: options?.quotes,
+            sourceMentions: options?.sourceMentions,
           },
         } as never,
         {
@@ -611,6 +630,9 @@ export function ChatShell() {
             extendedThinking: options?.extendedThinking || undefined,
             fileIds: finalFileIds.length ? finalFileIds : undefined,
             quotes: options?.quotes?.length ? options.quotes : undefined,
+            sourceIds: options?.sourceMentions?.length
+              ? options.sourceMentions.map((m) => m.id)
+              : undefined,
             _attachments: finalAttachments.length ? finalAttachments : undefined,
           },
         }
@@ -701,6 +723,7 @@ export function ChatShell() {
       if (activePreviewFile && activePreviewFile.id === fileId) {
         setActivePreviewFile((prev) => (prev ? { ...prev, url: withCacheBuster(prev.url) } : prev));
       }
+      window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
       setPendingUndo(null);
       toast(t("chatFiles.undoDone"));
     } catch (err) {
@@ -748,6 +771,7 @@ export function ChatShell() {
   const renderComposer = (customPlaceholder?: string) => (
     <Composer
       placeholder={customPlaceholder}
+      sources={projectSources}
       notice={
         quotaNotice && quotaKey !== dismissedQuotaKey ? (
           <QuotaBanner
@@ -807,7 +831,7 @@ export function ChatShell() {
           <ProjectHomeView
             projectId={currentProjectId!}
             composer={(projectName) =>
-              renderComposer(`+ Obrolan baru di ${projectName}`)
+              renderComposer(t("projects.newChatPlaceholder", { name: projectName }))
             }
           />
         ) : (
@@ -907,7 +931,6 @@ export function ChatShell() {
       <ChatFilesPanel
         isOpen={showFilesPanel}
         chatId={activeChatId}
-        refreshKey={uiMessages.length}
         activeFile={activePreviewFile}
         onSelectFile={setActivePreviewFile}
         isFullscreen={isFilesFullscreen}

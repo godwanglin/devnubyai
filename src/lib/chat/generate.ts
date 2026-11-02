@@ -15,6 +15,7 @@ import { recordToolExecutionLog } from "@/lib/chat/tool-log";
 import { DEFAULT_TIME_ZONE } from "@/lib/chat/timezone";
 import { buildSystemPrompt } from "@/lib/chat/system-prompts";
 import { formatFileSize } from "@/lib/files/policy";
+import { buildProjectContextPrompt, loadSessionProject } from "@/lib/projects/source-context";
 import type {
   ChatMessageInput,
   ReasoningEffortVariant,
@@ -22,9 +23,6 @@ import type {
 } from "@/lib/gateways/types";
 import {
   createUIMessageStream,
-  smoothStream,
-  toUIMessageChunk,
-  type TextStreamPart,
   type UIMessageChunk,
 } from "ai";
 
@@ -41,6 +39,8 @@ export interface StreamGenerationOptions {
   reasoningEffort?: ReasoningEffortVariant;
   forceWebSearch?: boolean;
   conversationHistory: ChatMessageInput[];
+  /** Project sources the user @mentioned in the current message (ProjectFile publicIds) */
+  mentionedSourceIds?: string[];
   /** Validated IANA zone of the user (see `resolveClientTimeZone`) */
   clientTimeZone?: string;
   requestId: string;
@@ -74,8 +74,13 @@ function buildCurrentDatePrompt(timeZone: string, now = new Date()): string {
 
 interface AccumulatedToolCall {
   callId: string;
+  effectiveCallId: string;
   name: string;
   args: string;
+  startedAt: number;
+  hasEmittedStart: boolean;
+  pendingDelta: string;
+  lastDeltaFlushAt: number;
 }
 
 /**
@@ -94,6 +99,8 @@ const resolvedModelSelect = {
   supportsTools: true,
   supportsVision: true,
   supportsReasoning: true,
+  inputPricePerMillion: true,
+  outputPricePerMillion: true,
   provider: { select: { name: true } },
 } as const;
 
@@ -145,45 +152,25 @@ export async function resolveCatalogModel(
 }
 
 /**
- * Adapts raw TextStreamParts into a smoothed word-by-word stream using AI SDK's smoothStream helper.
- * Buffers are flushed with a sentinel step finish chunk on completion.
+ * Slices a large burst text chunk into word-aligned sub-chunks so even bursty upstream
+ * gateways render smoothly without blocking the SSE event loop or trapping trailing words.
  */
-async function* createSmoothedTextPipeline(
-  source: AsyncIterable<TextStreamPart<Record<string, never>>>
-): AsyncIterable<TextStreamPart<Record<string, never>>> {
-  const smoother = smoothStream<Record<string, never>>({
-    delayInMs: 10,
-    chunking: "word",
-  })({ tools: {} });
+function sliceBurstText(text: string): string[] {
+  if (text.length <= 20) return [text];
+  const tokens = text.match(/\S+\s*|\s+/g) ?? [text];
+  if (tokens.length <= 2) return [text];
 
-  const writer = smoother.writable.getWriter();
-  const reader = smoother.readable.getReader();
-
-  const feeder = (async () => {
-    try {
-      for await (const chunk of source) {
-        await writer.write(chunk);
-      }
-      await writer.close();
-    } catch (err) {
-      try {
-        await writer.abort(err);
-      } catch {}
+  const slices: string[] = [];
+  let current = "";
+  for (const tok of tokens) {
+    current += tok;
+    if (current.length >= 14) {
+      slices.push(current);
+      current = "";
     }
-  })();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      yield value;
-    }
-  } finally {
-    try {
-      await reader.cancel();
-    } catch {}
-    await feeder.catch(() => {});
   }
+  if (current) slices.push(current);
+  return slices;
 }
 
 /**
@@ -208,6 +195,7 @@ export function createChatGenerationStream(
     reasoningEffort,
     forceWebSearch,
     conversationHistory,
+    mentionedSourceIds,
     clientTimeZone,
     requestId,
   } = options;
@@ -259,7 +247,7 @@ export function createChatGenerationStream(
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
 
         // Parallelize initial DB lookups (sessionFiles, user, chatSettings) to minimize TTFT
-        const [sessionFiles, user, chatSettings] = await Promise.all([
+        const [sessionFiles, user, chatSettings, sessionProject] = await Promise.all([
           resolvedModel.supportsTools
             ? db.sessionFile.findMany({
                 where: { sessionId },
@@ -276,7 +264,26 @@ export function createChatGenerationStream(
           resolvedModel.supportsTools
             ? getChatSettings()
             : Promise.resolve({ maxToolRounds: 0, toolDebug: false }),
+          loadSessionProject(sessionId),
         ]);
+
+        // Project chats: custom instructions + shared sources sit right before the conversation
+        if (sessionProject) {
+          const projectPrompt = await buildProjectContextPrompt({
+            project: sessionProject,
+            mentionedSourceIds,
+            contextWindow: resolvedModel.contextWindow,
+            supportsTools: resolvedModel.supportsTools,
+          });
+          if (projectPrompt) {
+            currentMessages.unshift({ role: "system", content: projectPrompt });
+          }
+        }
+
+        // `read_project_source` only makes sense inside a project that has sources
+        const availableTools = sessionProject?.files.length
+          ? devnubyTools
+          : devnubyTools.filter((t) => t.name !== "read_project_source");
 
         // If tools are supported, inject comprehensive tool guidelines and active session files
         if (resolvedModel.supportsTools) {
@@ -409,123 +416,212 @@ export function createChatGenerationStream(
             request: {
               messages: currentMessages,
               reasoningEffort,
-              tools: resolvedModel.supportsTools ? devnubyTools : undefined,
+              tools: resolvedModel.supportsTools ? availableTools : undefined,
               toolChoice,
               signal: combinedSignal,
             },
           });
 
           const toolCallsByIndex = new Map<number | string, AccumulatedToolCall>();
+          let lastToolCallKey: number | string | null = null;
           let turnContent = "";
+          let turnReasoning = "";
+          let stepReasoningStartTime: number | null = null;
+          let stepReasoningDurationSec: number | null = null;
 
           const textPartId = `text_${assistantMessagePublicId}_${stepIndex}`;
           const reasoningPartId = `reasoning_${assistantMessagePublicId}_${stepIndex}`;
           let hasEmittedTextStart = false;
+          let hasEndedText = false;
           let hasEmittedReasoningStart = false;
           let hasEndedReasoning = false;
 
-          // Bridge gateway events to TextStreamParts for smoothStream
-          async function* rawTextPartsGenerator(): AsyncIterable<
-            TextStreamPart<Record<string, never>>
-          > {
-            for await (const event of gatewayStream) {
-              if (combinedSignal.aborted) {
-                throw new Error("CLIENT_ABORTED");
-              }
-
-              if (event.type === "delta") {
-                // Each tool step's prose is its own paragraph in the stored content
-                if (!turnContent && fullContent.trim()) {
-                  fullContent += "\n\n";
-                }
-                turnContent += event.text;
-                fullContent += event.text;
-
-                if (isUpstreamRateLimitText(turnContent) || isUpstreamRateLimitText(fullContent)) {
-                  throw new GatewayError({
-                    errorClass: "rate_limited",
-                    httpStatus: 429,
-                    message: "Anda sudah mencapai batas pada model ini. Silakan coba lagi nanti.",
-                  });
-                }
-                // Jawaban mulai keluar → fase berpikir selesai, tutup reasoning part sekarang
-                if (hasEmittedReasoningStart && !hasEndedReasoning) {
-                  hasEndedReasoning = true;
-                  if (reasoningStartTime) {
-                    reasoningDurationSec = Math.max(1, Math.round((Date.now() - reasoningStartTime) / 1000));
-                  }
-                  yield { type: "reasoning-end", id: reasoningPartId };
-                }
-                if (!hasEmittedTextStart) {
-                  hasEmittedTextStart = true;
-                  yield { type: "text-start", id: textPartId };
-                }
-                yield { type: "text-delta", id: textPartId, text: event.text };
-              } else if (event.type === "reasoning") {
-                if (reasoningStartTime === null) {
-                  reasoningStartTime = Date.now();
-                }
-                fullReasoning += event.text;
-                if (!hasEmittedReasoningStart) {
-                  hasEmittedReasoningStart = true;
-                  yield { type: "reasoning-start", id: reasoningPartId };
-                }
-                yield {
-                  type: "reasoning-delta",
-                  id: reasoningPartId,
-                  text: event.text,
-                };
-              } else if (event.type === "tool_call") {
-                const key =
-                  event.index !== undefined ? event.index : event.callId || "call_0";
-                const existing = toolCallsByIndex.get(key) || {
-                  callId: event.callId || "",
-                  name: event.name || "",
-                  args: "",
-                };
-                if (event.callId && !existing.callId) existing.callId = event.callId;
-                if (event.name && !existing.name) existing.name = event.name;
-                existing.args += event.argumentsDelta;
-                toolCallsByIndex.set(key, existing);
-              } else if (event.type === "usage") {
-                promptTokens += event.promptTokens;
-                completionTokens += event.completionTokens;
-              }
-            }
-
+          const closeActiveReasoning = () => {
             if (hasEmittedReasoningStart && !hasEndedReasoning) {
-              if (reasoningStartTime) {
-                reasoningDurationSec = Math.max(1, Math.round((Date.now() - reasoningStartTime) / 1000));
+              hasEndedReasoning = true;
+              if (stepReasoningStartTime) {
+                stepReasoningDurationSec = Math.max(
+                  1,
+                  Math.round((Date.now() - stepReasoningStartTime) / 1000)
+                );
+                reasoningDurationSec = (reasoningDurationSec ?? 0) + stepReasoningDurationSec;
               }
-              yield { type: "reasoning-end", id: reasoningPartId };
+              writer.write({ type: "reasoning-end", id: reasoningPartId });
             }
-            if (hasEmittedTextStart) {
-              yield { type: "text-end", id: textPartId };
+          };
+
+          const closeActiveText = () => {
+            if (hasEmittedTextStart && !hasEndedText) {
+              hasEndedText = true;
+              writer.write({ type: "text-end", id: textPartId });
             }
-          }
+          };
 
-          // Persist reasoning for this step if it happened
-          if (!hasPushedReasoningForStep && fullReasoning.trim()) {
-            executedToolParts.push({
-              type: "reasoning",
-              text: fullReasoning,
-              state: "done",
-              durationSec: reasoningDurationSec ?? undefined,
-            });
-            hasPushedReasoningForStep = true;
-          }
-
-          // Consume smoothed text/reasoning parts and emit AI SDK UI chunks
-          for await (const smoothedPart of createSmoothedTextPipeline(
-            rawTextPartsGenerator()
-          )) {
+          for await (const event of gatewayStream) {
             if (combinedSignal.aborted) {
               throw new Error("CLIENT_ABORTED");
             }
-            const chunk = toUIMessageChunk(smoothedPart, { sendReasoning: true });
-            if (chunk) {
-              writer.write(chunk);
+
+            if (event.type === "delta") {
+              // Each tool step's prose is its own paragraph in the stored content
+              if (!turnContent && fullContent.trim()) {
+                fullContent += "\n\n";
+              }
+              turnContent += event.text;
+              fullContent += event.text;
+
+              if (isUpstreamRateLimitText(turnContent) || isUpstreamRateLimitText(fullContent)) {
+                throw new GatewayError({
+                  errorClass: "rate_limited",
+                  httpStatus: 429,
+                  message: "Anda sudah mencapai batas pada model ini. Silakan coba lagi nanti.",
+                });
+              }
+
+              // Jawaban mulai keluar → fase berpikir selesai, tutup reasoning part sekarang
+              closeActiveReasoning();
+
+              if (!hasEmittedTextStart) {
+                hasEmittedTextStart = true;
+                writer.write({ type: "text-start", id: textPartId });
+              }
+
+              const slices = sliceBurstText(event.text);
+              for (let i = 0; i < slices.length; i += 1) {
+                writer.write({ type: "text-delta", id: textPartId, delta: slices[i] });
+                if (slices.length > 1 && i < slices.length - 1 && i < 6) {
+                  await new Promise((r) => setTimeout(r, 3));
+                }
+              }
+            } else if (event.type === "reasoning") {
+              if (reasoningStartTime === null) {
+                reasoningStartTime = Date.now();
+              }
+              if (stepReasoningStartTime === null) {
+                stepReasoningStartTime = Date.now();
+              }
+              turnReasoning += event.text;
+              fullReasoning += event.text;
+              if (!hasEmittedReasoningStart) {
+                hasEmittedReasoningStart = true;
+                writer.write({ type: "reasoning-start", id: reasoningPartId });
+              }
+              writer.write({
+                type: "reasoning-delta",
+                id: reasoningPartId,
+                delta: event.text,
+              });
+            } else if (event.type === "tool_call") {
+              // Immediately flush & close any active reasoning/text block BEFORE streaming tool call
+              closeActiveReasoning();
+              closeActiveText();
+
+              const key: number | string =
+                event.index !== undefined
+                  ? event.index
+                  : event.callId || lastToolCallKey || "call_0";
+              lastToolCallKey = key;
+
+              let existing = toolCallsByIndex.get(key);
+              if (!existing) {
+                const fallbackId = `call_${stepIndex}_${toolCallsByIndex.size}`;
+                existing = {
+                  callId: event.callId || "",
+                  effectiveCallId: event.callId || fallbackId,
+                  name: event.name || "",
+                  args: "",
+                  startedAt: Date.now(),
+                  hasEmittedStart: false,
+                  pendingDelta: "",
+                  lastDeltaFlushAt: 0,
+                };
+                toolCallsByIndex.set(key, existing);
+              } else {
+                if (event.callId && !existing.callId) {
+                  existing.callId = event.callId;
+                  if (!existing.hasEmittedStart) {
+                    existing.effectiveCallId = event.callId;
+                  }
+                }
+                if (event.name && !existing.name) {
+                  existing.name = event.name;
+                }
+              }
+
+              // Emit tool-input-start immediately as soon as tool name is known
+              if (existing.name && !existing.hasEmittedStart) {
+                existing.hasEmittedStart = true;
+                existing.startedAt = Date.now();
+                writer.write({
+                  type: "tool-input-start",
+                  toolCallId: existing.effectiveCallId,
+                  toolName: existing.name,
+                  dynamic: true,
+                  toolMetadata: {
+                    startedAt: existing.startedAt,
+                  },
+                });
+              }
+
+              if (event.argumentsDelta) {
+                existing.args += event.argumentsDelta;
+                existing.pendingDelta += event.argumentsDelta;
+              }
+
+              // Stream tool-input-delta live so filename & line counts (+10, +50, +390) update in real time
+              if (existing.hasEmittedStart && existing.pendingDelta.length > 0) {
+                const now = Date.now();
+                const isHeaderPhase = existing.args.length < 260;
+                if (isHeaderPhase || now - existing.lastDeltaFlushAt >= 80) {
+                  writer.write({
+                    type: "tool-input-delta",
+                    toolCallId: existing.effectiveCallId,
+                    inputTextDelta: existing.pendingDelta,
+                  });
+                  existing.pendingDelta = "";
+                  existing.lastDeltaFlushAt = now;
+                }
+              }
+            } else if (event.type === "usage") {
+              promptTokens += event.promptTokens;
+              completionTokens += event.completionTokens;
             }
+          }
+
+          closeActiveReasoning();
+          closeActiveText();
+
+          // Flush any remaining tool-input-delta chunks
+          for (const tc of toolCallsByIndex.values()) {
+            if (tc.hasEmittedStart && tc.pendingDelta.length > 0) {
+              writer.write({
+                type: "tool-input-delta",
+                toolCallId: tc.effectiveCallId,
+                inputTextDelta: tc.pendingDelta,
+              });
+              tc.pendingDelta = "";
+            }
+          }
+
+          // Persist reasoning for this step if it happened (merge if consecutive with previous reasoning)
+          if (!hasPushedReasoningForStep && turnReasoning.trim()) {
+            const prevPart = executedToolParts[executedToolParts.length - 1];
+            if (prevPart && prevPart.type === "reasoning") {
+              prevPart.text = `${String(prevPart.text ?? "")}\n\n${turnReasoning}`;
+              if (stepReasoningDurationSec !== null) {
+                prevPart.durationSec =
+                  (typeof prevPart.durationSec === "number" ? prevPart.durationSec : 0) +
+                  stepReasoningDurationSec;
+              }
+            } else {
+              executedToolParts.push({
+                type: "reasoning",
+                text: turnReasoning,
+                state: "done",
+                durationSec: stepReasoningDurationSec ?? undefined,
+              });
+            }
+            hasPushedReasoningForStep = true;
           }
 
           // Persist each step's prose in order with its tool parts so a reload
@@ -548,17 +644,24 @@ export function createChatGenerationStream(
             remainingToolRounds -= 1;
             stepIndex += 1;
 
-            const toolInputs: ToolCallInput[] = assembledCalls.map((c, idx) => ({
-              id: c.callId || `call_${idx}`,
-              name: c.name,
-              arguments: c.args,
-            }));
+            const toolInputs: Array<ToolCallInput & { startedAt: number }> = assembledCalls.map(
+              (c, idx) => ({
+                id: c.effectiveCallId || c.callId || `call_${idx}`,
+                name: c.name,
+                arguments: c.args,
+                startedAt: c.startedAt || Date.now(),
+              })
+            );
 
             // Push assistant turn with its toolCalls before the tool results
             currentMessages.push({
               role: "assistant",
               content: turnContent,
-              toolCalls: toolInputs,
+              toolCalls: toolInputs.map(({ id, name, arguments: args }) => ({
+                id,
+                name,
+                arguments: args,
+              })),
             });
 
             for (const tool of toolInputs) {
@@ -578,7 +681,7 @@ export function createChatGenerationStream(
                   `valid JSON; for large content, send less per call.`;
               }
 
-              const toolStart = Date.now();
+              const toolStart = tool.startedAt;
 
               writer.write({
                 type: "tool-input-available",
@@ -618,6 +721,11 @@ export function createChatGenerationStream(
                 });
               }
 
+              const clientErrorText =
+                !result.success && chatSettings.toolDebug
+                  ? result.error?.message || "Tool execution failed"
+                  : undefined;
+
               executedToolParts.push({
                 type: "dynamic-tool",
                 toolCallId: effectiveCallId,
@@ -630,7 +738,7 @@ export function createChatGenerationStream(
                 output: result.success
                   ? sanitizeToolOutputForStorage(tool.name, result.data)
                   : undefined,
-                errorText: result.success ? undefined : result.error?.message,
+                errorText: clientErrorText,
               });
 
               if (result.success) {
@@ -649,7 +757,7 @@ export function createChatGenerationStream(
                 writer.write({
                   type: "tool-output-error",
                   toolCallId: effectiveCallId,
-                  errorText: result.error?.message || "Tool execution failed",
+                  errorText: clientErrorText ?? "",
                   dynamic: true,
                   toolMetadata: {
                     durationSec: toolDurationSec,
@@ -737,8 +845,19 @@ export function createChatGenerationStream(
           },
         });
 
-        // Always record usage to increment requestCount even if token metrics were zero
-        await recordUserUsage(userId, { promptTokens, completionTokens }).catch((err) => {
+        // Always record usage (priced from the model's catalog rates) so requestCount moves even at $0
+        await recordUserUsage(userId, {
+          promptTokens,
+          completionTokens,
+          model: {
+            id: resolvedModel.id,
+            inputPricePerMillion: resolvedModel.inputPricePerMillion,
+            outputPricePerMillion: resolvedModel.outputPricePerMillion,
+          },
+          sessionId,
+          messageId: assistantMessageId,
+          requestId,
+        }).catch((err) => {
           console.error("[USAGE_RECORD_ERROR]", err);
         });
 

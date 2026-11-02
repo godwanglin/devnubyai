@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import {
   ArrowUp,
   Mic,
@@ -15,6 +15,7 @@ import {
   FileText,
   Loader2,
   MessageSquareQuote,
+  AtSign,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Popover } from "@/components/ui/popover";
@@ -29,7 +30,17 @@ import {
   MIME_BY_EXTENSION,
 } from "@/lib/files/policy";
 import type { EditRequestChip } from "@/lib/files/preview-events";
+import { MAX_SOURCE_MENTIONS_PER_MESSAGE, type SourceMention } from "@/lib/chat/source-mentions";
 import type { MessageAttachment, ReasoningLevel } from "@/types";
+
+/** A project source the user can @mention */
+export interface MentionableSource {
+  id: string;
+  filename: string;
+  mimeType: string;
+}
+
+const MAX_MENTION_SUGGESTIONS = 8;
 
 interface PendingAttachment {
   localId: string;
@@ -55,6 +66,7 @@ interface ComposerProps {
       filesToUpload?: { file: File; name: string; localPreviewUrl?: string }[];
       quotes?: string[];
       editChips?: EditRequestChip[];
+      sourceMentions?: SourceMention[];
     }
   ) => void;
   onStop?: () => void;
@@ -75,6 +87,8 @@ interface ComposerProps {
   sendBlocked?: boolean;
   /** Custom placeholder for input */
   placeholder?: string;
+  /** Project sources that can be @mentioned (chats inside a project) */
+  sources?: MentionableSource[];
 }
 
 export function Composer({
@@ -93,6 +107,7 @@ export function Composer({
   notice,
   sendBlocked,
   placeholder,
+  sources = [],
 }: ComposerProps) {
   const { t, locale } = useI18n();
   const { toast } = useToast();
@@ -101,6 +116,28 @@ export function Composer({
   const [thinkingActive, setThinkingActive] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [mentions, setMentions] = useState<SourceMention[]>([]);
+  /** Text typed after an active "@" trigger (null when the picker is closed) */
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  /** Picker opens above the composer, or below it when there is no room above */
+  const [mentionPlacement, setMentionPlacement] = useState<"top" | "bottom">("top");
+  const formRef = useRef<HTMLFormElement>(null);
+  const mentionPickerRef = useRef<HTMLDivElement>(null);
+
+  // Mentions only count while their source still belongs to the current project
+  const activeMentions = mentions.filter((m) => sources.some((s) => s.id === m.id));
+  const mentionSuggestions =
+    mentionQuery === null
+      ? []
+      : sources
+          .filter(
+            (s) =>
+              !activeMentions.some((m) => m.id === s.id) &&
+              s.filename.toLowerCase().includes(mentionQuery.toLowerCase())
+          )
+          .slice(0, MAX_MENTION_SUGGESTIONS);
 
   const speechLang = locale === "id" ? "id-ID" : "en-US";
   const { isListening, isSupported, toggle } = useSpeechRecognition({
@@ -211,6 +248,7 @@ export function Composer({
               : item
           )
         );
+        window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to upload file";
         setAttachments((prev) =>
@@ -361,6 +399,76 @@ export function Composer({
     });
   }
 
+  // Measured before paint so the picker never flashes in the clipped position
+  const isMentionPickerOpen = mentionQuery !== null;
+  const mentionSuggestionCount = mentionSuggestions.length;
+  useLayoutEffect(() => {
+    if (!isMentionPickerOpen) return;
+    const form = formRef.current;
+    const picker = mentionPickerRef.current;
+    if (!form || !picker) return;
+    const rect = form.getBoundingClientRect();
+    const needed = picker.offsetHeight + 8;
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setMentionPlacement(spaceAbove >= needed || spaceAbove >= spaceBelow ? "top" : "bottom");
+  }, [isMentionPickerOpen, mentionSuggestionCount]);
+
+  /** Opens the source picker while the caret sits right after "@word". */
+  function updateMentionQuery(text: string, caret: number) {
+    if (sources.length === 0) {
+      setMentionQuery(null);
+      return;
+    }
+    const match = /(^|\s)@([^\s@]*)$/.exec(text.slice(0, caret));
+    if (!match) {
+      setMentionQuery(null);
+      return;
+    }
+    if (match[2] !== mentionQuery) setMentionIndex(0);
+    setMentionQuery(match[2]);
+    setMentionStart(caret - match[2].length - 1);
+  }
+
+  function selectMention(source: MentionableSource) {
+    if (activeMentions.length >= MAX_SOURCE_MENTIONS_PER_MESSAGE) {
+      toast(t("composer.mentionLimit", { count: String(MAX_SOURCE_MENTIONS_PER_MESSAGE) }));
+      setMentionQuery(null);
+      return;
+    }
+    // Drop the "@query" token from the text: the chip carries the mention
+    const tokenEnd = mentionStart + 1 + (mentionQuery?.length ?? 0);
+    const next = value.slice(0, mentionStart) + value.slice(tokenEnd);
+    setValue(next);
+    setMentions((prev) => [
+      ...prev.filter((m) => sources.some((s) => s.id === m.id)),
+      { id: source.id, filename: source.filename },
+    ]);
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(mentionStart, mentionStart);
+    });
+  }
+
+  /** "Mention source" menu item: types an "@" at the caret to open the picker. */
+  function insertMentionTrigger() {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? value.length;
+    const needsSpace = caret > 0 && !/\s/.test(value[caret - 1]);
+    const insert = `${needsSpace ? " " : ""}@`;
+    const next = value.slice(0, caret) + insert + value.slice(caret);
+    const pos = caret + insert.length;
+    setValue(next);
+    updateMentionQuery(next, pos);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = value.trim();
@@ -405,13 +513,40 @@ export function Composer({
       filesToUpload: filesToUpload.length > 0 ? filesToUpload : undefined,
       quotes: quotes.length > 0 ? quotes : undefined,
       editChips: editChips.length > 0 ? editChips : undefined,
+      sourceMentions: activeMentions.length > 0 ? activeMentions : undefined,
     });
 
     setValue("");
     setAttachments([]);
+    setMentions([]);
+    setMentionQuery(null);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Source picker owns the arrows / Enter / Tab / Escape while it is open
+    if (mentionQuery !== null) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+      if (mentionSuggestions.length > 0) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const step = e.key === "ArrowDown" ? 1 : -1;
+          setMentionIndex(
+            (i) => (i + step + mentionSuggestions.length) % mentionSuggestions.length
+          );
+          return;
+        }
+        if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+          e.preventDefault();
+          selectMention(mentionSuggestions[Math.min(mentionIndex, mentionSuggestions.length - 1)]);
+          return;
+        }
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -453,6 +588,7 @@ export function Composer({
       {notice ? <div className="max-w-[768px] mx-auto mb-2 pointer-events-auto">{notice}</div> : null}
 
       <form
+        ref={formRef}
         // The home mascot can land on top of the composer
         data-perch="composer"
         onSubmit={handleSubmit}
@@ -466,6 +602,46 @@ export function Composer({
           isDragging ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/15" : "focus-within:border-[var(--border)] focus-within:shadow-md"
         )}
       >
+        {/* @mention source picker */}
+        {mentionQuery !== null ? (
+          <div
+            ref={mentionPickerRef}
+            role="listbox"
+            aria-label={t("composer.mentionSourcesTitle")}
+            className={cn(
+              "absolute left-2 right-2 z-30 max-w-[420px] p-1.5 rounded-[12px] glass shadow-xl",
+              mentionPlacement === "top" ? "bottom-full mb-2" : "top-full mt-2"
+            )}
+          >
+            <div className="flex items-center gap-1.5 px-2 pt-1 pb-1.5 text-[11px] font-semibold text-[var(--placeholder)]">
+              <AtSign className="w-3 h-3" />
+              {t("composer.mentionSourcesTitle")}
+            </div>
+            {mentionSuggestions.length === 0 ? (
+              <p className="px-2 py-1.5 text-xs text-[var(--muted)]">{t("composer.mentionNoMatch")}</p>
+            ) : (
+              mentionSuggestions.map((source, idx) => (
+                <button
+                  key={source.id}
+                  type="button"
+                  role="option"
+                  aria-selected={idx === mentionIndex}
+                  // Keep focus in the textarea so typing continues after picking
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setMentionIndex(idx)}
+                  onClick={() => selectMention(source)}
+                  // Keyboard-highlighted row gets the same frosted state as hover
+                  data-highlighted={idx === mentionIndex}
+                  className="glass-hover flex items-center gap-2 w-full px-2 py-1.5 rounded-[8px] text-left text-xs text-[var(--ink)] cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 shrink-0 text-[var(--muted)]" />
+                  <span className="truncate">{source.filename}</span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+
         {/* Drop zone overlay indicator */}
         {isDragging ? (
           <div className="absolute inset-0 z-20 rounded-[16px] bg-[var(--surface)]/90 backdrop-blur-xs flex flex-col items-center justify-center gap-1.5 pointer-events-none border-2 border-dashed border-[var(--accent)]">
@@ -520,6 +696,30 @@ export function Composer({
                   &ldquo;{quote}&rdquo;
                 </p>
               </Popover>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Mentioned project sources */}
+        {activeMentions.length > 0 ? (
+          <div className="flex items-center gap-2 p-2.5 pb-1 overflow-x-auto">
+            {activeMentions.map((mention) => (
+              <div
+                key={mention.id}
+                className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-[10px] border border-[var(--border)] bg-[var(--hover)] shrink-0 max-w-[240px] select-none"
+                title={mention.filename}
+              >
+                <AtSign className="w-3.5 h-3.5 shrink-0 text-[var(--primary)]" />
+                <span className="truncate text-xs font-medium text-[var(--ink)]">{mention.filename}</span>
+                <button
+                  type="button"
+                  onClick={() => setMentions((prev) => prev.filter((m) => m.id !== mention.id))}
+                  className="grid place-items-center w-5 h-5 shrink-0 rounded-full text-[var(--muted)] hover:bg-[var(--border)] hover:text-[var(--ink)] transition-colors cursor-pointer"
+                  aria-label={t("composer.mentionRemove")}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             ))}
           </div>
         ) : null}
@@ -632,7 +832,18 @@ export function Composer({
         <textarea
           ref={textareaRef}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            updateMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length);
+          }}
+          // Caret moves (click, arrow keys) open or close the picker too
+          onSelect={(e) =>
+            updateMentionQuery(
+              e.currentTarget.value,
+              e.currentTarget.selectionStart ?? e.currentTarget.value.length
+            )
+          }
+          onBlur={() => setMentionQuery(null)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           rows={1}
@@ -674,6 +885,16 @@ export function Composer({
                   <Paperclip className="w-3.5 h-3.5 text-[var(--muted)]" />
                   <span>{t("composer.attachFile")}</span>
                 </button>
+                {sources.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={insertMentionTrigger}
+                    className="glass-hover flex items-center gap-2 w-full px-2.5 py-1.5 rounded-[6px] text-xs font-medium text-[var(--ink)] cursor-pointer"
+                  >
+                    <AtSign className="w-3.5 h-3.5 text-[var(--muted)]" />
+                    <span>{t("composer.mentionSource")}</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {

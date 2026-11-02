@@ -14,6 +14,7 @@ import {
 } from "docx";
 import { db } from "../db";
 import { uploadToR2 } from "../storage/r2";
+import { checkAgentUploadQuota } from "../files/upload-quota";
 import { MAX_FILE_BYTES } from "../files/policy";
 import type {
   ToolDefinition,
@@ -438,6 +439,15 @@ export const createDocumentTool: ToolDefinition<
             code: "INVALID_PARAM",
             message: "Generated document exceeds maximum allowed size of 10 MB.",
           },
+          metadata: { durationMs: Date.now() - startTime },
+        };
+      }
+
+      const quotaError = await checkAgentUploadQuota(context.userId, buffer.length);
+      if (quotaError) {
+        return {
+          success: false,
+          error: { code: "RATE_LIMITED", message: quotaError },
           metadata: { durationMs: Date.now() - startTime },
         };
       }

@@ -1,5 +1,6 @@
 import type { GatewayErrorDetails, RoutingErrorClass } from "@/lib/gateways/types";
 import type { RoutingSettings } from "./settings";
+import { mapProviderError } from "./error-mapping";
 
 /**
  * Raised by wire adapters for any failure before the first stream event.
@@ -9,14 +10,33 @@ import type { RoutingSettings } from "./settings";
 export class GatewayError extends Error implements GatewayErrorDetails {
   readonly errorClass: RoutingErrorClass;
   readonly httpStatus: number | null;
+  readonly errorRuleId: string;
+  readonly providerError: string;
+  readonly clientError: string;
   readonly isRetryable: boolean;
   override readonly cause?: unknown;
 
-  constructor(details: Omit<GatewayErrorDetails, "isRetryable"> & { isRetryable?: boolean }) {
-    super(details.message);
+  constructor(
+    details: Omit<GatewayErrorDetails, "isRetryable"> & {
+      isRetryable?: boolean;
+      rawProviderText?: string | null;
+    }
+  ) {
+    const mapped = mapProviderError({
+      httpStatus: details.httpStatus,
+      rawText: details.rawProviderText ?? details.message,
+      clientAborted: details.errorClass === "client_aborted",
+      timedOut: details.errorClass === "timeout",
+      fallbackErrorClass: details.errorClass,
+    });
+
+    super(details.clientError ?? mapped.clientMessage);
     this.name = "GatewayError";
     this.errorClass = details.errorClass;
     this.httpStatus = details.httpStatus;
+    this.errorRuleId = details.errorRuleId ?? mapped.ruleId;
+    this.providerError = details.providerError ?? mapped.providerMessage;
+    this.clientError = details.clientError ?? mapped.clientMessage;
     this.isRetryable = details.isRetryable ?? false;
     this.cause = details.cause;
   }

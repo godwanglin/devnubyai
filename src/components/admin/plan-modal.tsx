@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { applyPlanDiscount, validatePlanDiscount, type PlanDiscountType } from "@/lib/plans/pricing";
+import { parseCostLimit, parseCountLimit, validateCostLimits } from "@/lib/plans/cost-limits";
+import { hasAnyText, normalizePlanFeatures, type PlanFeature } from "@/lib/plans/features";
+import { PlanFeaturesEditor } from "./plan-features-editor";
 import { PlanAllowedModelsPicker, type ModelItem } from "./plan-allowed-models-picker";
 
 export interface AdminPlan {
@@ -22,11 +25,14 @@ export interface AdminPlan {
   discountYearlyValue: number | null;
   effectivePriceMonthly: number;
   effectivePriceYearly: number;
-  monthlyTokenLimit: number | null;
-  weeklyTokenLimit: number | null;
-  fiveHourTokenLimit: number | null;
+  monthlyCostLimitUsd: number | null;
+  weeklyCostLimitUsd: number | null;
+  fiveHourCostLimitUsd: number | null;
+  features: PlanFeature[];
   dailyRequestLimit: number | null;
   requestsPerMinute: number | null;
+  dailyUploadLimitMb: number | null;
+  dailyAgentUploadLimitMb: number | null;
   badge: string | null;
   isActive: boolean;
   sortOrder: number;
@@ -66,15 +72,26 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
   const [yearlyDiscValue, setYearlyDiscValue] = useState<string>(
     plan?.discountYearlyValue != null ? String(plan.discountYearlyValue) : ""
   );
-  const [monthlyTokenLimit, setMonthlyTokenLimit] = useState<string>(
-    plan?.monthlyTokenLimit != null ? String(plan.monthlyTokenLimit) : ""
+  const [monthlyCostLimit, setMonthlyCostLimit] = useState<string>(
+    plan?.monthlyCostLimitUsd != null ? String(plan.monthlyCostLimitUsd) : ""
   );
-  const [weeklyTokenLimit, setWeeklyTokenLimit] = useState<string>(
-    plan?.weeklyTokenLimit != null ? String(plan.weeklyTokenLimit) : ""
+  const [weeklyCostLimit, setWeeklyCostLimit] = useState<string>(
+    plan?.weeklyCostLimitUsd != null ? String(plan.weeklyCostLimitUsd) : ""
   );
-  const [fiveHourTokenLimit, setFiveHourTokenLimit] = useState<string>(
-    plan?.fiveHourTokenLimit != null ? String(plan.fiveHourTokenLimit) : ""
+  const [fiveHourCostLimit, setFiveHourCostLimit] = useState<string>(
+    plan?.fiveHourCostLimitUsd != null ? String(plan.fiveHourCostLimitUsd) : ""
   );
+  const [dailyRequestLimit, setDailyRequestLimit] = useState<string>(
+    plan?.dailyRequestLimit != null ? String(plan.dailyRequestLimit) : ""
+  );
+  const [requestsPerMinute, setRequestsPerMinute] = useState<string>(
+    plan?.requestsPerMinute != null ? String(plan.requestsPerMinute) : ""
+  );
+  const [uploadLimitMb, setUploadLimitMb] = useState<string>(plan?.dailyUploadLimitMb != null ? String(plan.dailyUploadLimitMb) : "");
+  const [agentUploadLimitMb, setAgentUploadLimitMb] = useState<string>(
+    plan?.dailyAgentUploadLimitMb != null ? String(plan.dailyAgentUploadLimitMb) : ""
+  );
+  const [features, setFeatures] = useState<PlanFeature[]>(() => normalizePlanFeatures(plan?.features));
   const [badge, setBadge] = useState(plan?.badge ?? "");
   const [sortOrder, setSortOrder] = useState(plan?.sortOrder ?? 100);
   const [isActive, setIsActive] = useState(plan?.isActive ?? true);
@@ -108,13 +125,18 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
   );
   const monthlyDiscountError = validatePlanDiscount(monthlyDiscount, Number(priceMonthly) || 0, "monthly");
   const yearlyDiscountError = validatePlanDiscount(yearlyDiscount, Number(priceYearly) || 0, "yearly");
+  const costLimitError = validateCostLimits({
+    monthly: parseCostLimit(monthlyCostLimit),
+    weekly: parseCostLimit(weeklyCostLimit),
+    fiveHour: parseCostLimit(fiveHourCostLimit),
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
 
-    const discountError = monthlyDiscountError ?? yearlyDiscountError;
+    const discountError = monthlyDiscountError ?? yearlyDiscountError ?? costLimitError;
     if (discountError) {
       setError(discountError);
       setSaving(false);
@@ -132,9 +154,15 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
       discountMonthlyValue: monthlyDiscount.discountValue,
       discountYearlyType: yearlyDiscount.discountType,
       discountYearlyValue: yearlyDiscount.discountValue,
-      monthlyTokenLimit: monthlyTokenLimit.trim() ? Number(monthlyTokenLimit) : null,
-      weeklyTokenLimit: weeklyTokenLimit.trim() ? Number(weeklyTokenLimit) : null,
-      fiveHourTokenLimit: fiveHourTokenLimit.trim() ? Number(fiveHourTokenLimit) : null,
+      monthlyCostLimitUsd: parseCostLimit(monthlyCostLimit),
+      weeklyCostLimitUsd: parseCostLimit(weeklyCostLimit),
+      fiveHourCostLimitUsd: parseCostLimit(fiveHourCostLimit),
+      dailyRequestLimit: parseCountLimit(dailyRequestLimit),
+      requestsPerMinute: parseCountLimit(requestsPerMinute),
+      dailyUploadLimitMb: parseCountLimit(uploadLimitMb),
+      dailyAgentUploadLimitMb: parseCountLimit(agentUploadLimitMb),
+      // Manual rows left without any text are dropped instead of saved empty
+      features: features.filter((f) => f.type === "auto" || hasAnyText(f.text)),
       badge: badge.trim() || null,
       sortOrder: Number(sortOrder) || 100,
       isActive,
@@ -378,43 +406,71 @@ export function PlanModal({ plan, onClose, onSaved }: PlanModalProps) {
 
           <div className="border-t border-[var(--border)] pt-4">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-              Token Limits (0 or empty = Unlimited)
+              {t("admin.plans.usageLimitsTitle")}
             </h4>
+            <p className="mt-1 text-[11px] text-[var(--muted)]">{t("admin.plans.usageLimitsHint")}</p>
             <div className="mt-3 grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-[var(--muted)]">Monthly Tokens</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={monthlyTokenLimit}
-                  onChange={(e) => setMonthlyTokenLimit(e.target.value)}
-                  placeholder="e.g. 50000000"
-                  className="mt-1 h-9 w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--ink)] outline-none focus:border-[var(--primary)]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-[var(--muted)]">Weekly Tokens</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={weeklyTokenLimit}
-                  onChange={(e) => setWeeklyTokenLimit(e.target.value)}
-                  placeholder="e.g. 15000000"
-                  className="mt-1 h-9 w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--ink)] outline-none focus:border-[var(--primary)]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-[var(--muted)]">5-Hour Tokens</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={fiveHourTokenLimit}
-                  onChange={(e) => setFiveHourTokenLimit(e.target.value)}
-                  placeholder="e.g. 5000000"
-                  className="mt-1 h-9 w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--ink)] outline-none focus:border-[var(--primary)]"
-                />
-              </div>
+              {(
+                [
+                  ["monthly", t("admin.plans.limitMonthly"), monthlyCostLimit, setMonthlyCostLimit, "5.00"],
+                  ["weekly", t("admin.plans.limitWeekly"), weeklyCostLimit, setWeeklyCostLimit, "1.50"],
+                  ["fiveHour", t("admin.plans.limitFiveHour"), fiveHourCostLimit, setFiveHourCostLimit, "0.40"],
+                ] as const
+              ).map(([key, label, value, setValue, example]) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-[var(--muted)]">{label}</label>
+                  <div className="relative mt-1">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--muted)]">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder={example}
+                      className="h-9 w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] pl-6 pr-3 text-sm text-[var(--ink)] tabular-nums outline-none focus:border-[var(--primary)]"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
+            {costLimitError ? (
+              <p className="mt-2 text-[11px] text-red-500">{costLimitError}</p>
+            ) : null}
+
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              {(
+                [
+                  ["daily", t("admin.plans.limitDailyRequests"), dailyRequestLimit, setDailyRequestLimit, "200"],
+                  ["rpm", t("admin.plans.limitRequestsPerMinute"), requestsPerMinute, setRequestsPerMinute, "20"],
+                  ["upload", t("admin.plans.limitUploadMb"), uploadLimitMb, setUploadLimitMb, "50"],
+                  ["agentUpload", t("admin.plans.limitAgentUploadMb"), agentUploadLimitMb, setAgentUploadLimitMb, "100"],
+                ] as const
+              ).map(([key, label, value, setValue, example]) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-[var(--muted)]">{label}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder={example}
+                    className="mt-1 h-9 w-full rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--ink)] tabular-nums outline-none focus:border-[var(--primary)]"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--border)] pt-4">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+              {t("admin.plans.featuresTitle")}
+            </h4>
+            <p className="mt-1 mb-3 text-[11px] text-[var(--muted)]">{t("admin.plans.featuresHint")}</p>
+            <PlanFeaturesEditor features={features} onChange={setFeatures} />
           </div>
 
           <div className="grid grid-cols-3 gap-3">

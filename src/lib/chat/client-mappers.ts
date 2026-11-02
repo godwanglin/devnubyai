@@ -7,6 +7,7 @@ import type {
   ToolActivity,
 } from "@/types";
 import { isQuotePart } from "./quotes";
+import { isSourceMentionPart, type SourceMention } from "./source-mentions";
 import { isFeedbackPart, type FeedbackRating } from "./feedback";
 
 export interface ApiSessionItem {
@@ -98,6 +99,7 @@ export function extractUIMessageText(msg: UIMessage): string {
 export const messageTimestamps = new Map<string, string>();
 export const messageAttachmentsMap = new Map<string, MessageAttachment[]>();
 export const messageQuotesMap = new Map<string, string[]>();
+export const messageSourceMentionsMap = new Map<string, SourceMention[]>();
 export const messageFeedbackMap = new Map<string, FeedbackRating>();
 
 /**
@@ -112,7 +114,9 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         createdAt = new Date().toISOString();
         messageTimestamps.set(m.id, createdAt);
       }
-      const msgMeta = (m as { metadata?: { attachments?: MessageAttachment[]; quotes?: string[] } }).metadata;
+      const msgMeta = (m as {
+        metadata?: { attachments?: MessageAttachment[]; quotes?: string[]; sourceMentions?: SourceMention[] };
+      }).metadata;
       const attachments = messageAttachmentsMap.get(m.id) || msgMeta?.attachments;
       const quotes = messageQuotesMap.get(m.id) || msgMeta?.quotes;
       if (msgMeta?.attachments && !messageAttachmentsMap.has(m.id)) {
@@ -120,6 +124,10 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
       }
       if (msgMeta?.quotes && !messageQuotesMap.has(m.id)) {
         messageQuotesMap.set(m.id, msgMeta.quotes);
+      }
+      const sourceMentions = messageSourceMentionsMap.get(m.id) || msgMeta?.sourceMentions;
+      if (msgMeta?.sourceMentions && !messageSourceMentionsMap.has(m.id)) {
+        messageSourceMentionsMap.set(m.id, msgMeta.sourceMentions);
       }
       const feedback = messageFeedbackMap.get(m.id) ?? null;
       let isReasoningStreaming = false;
@@ -137,22 +145,39 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
             segments.push({ type: "text", text: part.text });
           }
         } else if (part.type === "reasoning") {
-          // Push each reasoning block as its own segment to enable per-step accordion rendering
+          const partDuration =
+            typeof (part as { durationSec?: number }).durationSec === "number"
+              ? (part as { durationSec?: number }).durationSec
+              : part.state === "streaming"
+                ? undefined
+                : currentReasoningDurationSec;
           if (part.text.trim()) {
-            segments.push({
-              type: "reasoning",
-              text: part.text,
-              durationSec: part.state === "streaming" ? undefined : currentReasoningDurationSec,
-            });
+            const last = segments[segments.length - 1];
+            // Merge consecutive reasoning blocks into a single Thought process accordion;
+            // only split when separated by normal text or tool usage.
+            if (last?.type === "reasoning") {
+              if (!last.text.includes(part.text.trim())) {
+                last.text = `${last.text}\n\n${part.text}`;
+              }
+              if (partDuration !== undefined) {
+                last.durationSec = (last.durationSec ?? 0) + partDuration;
+              }
+            } else {
+              segments.push({
+                type: "reasoning",
+                text: part.text,
+                durationSec: partDuration,
+              });
+            }
           }
           if (part.state === "streaming") isReasoningStreaming = true;
         } else if ((part as { type?: string }).type === "reasoning-meta") {
           const meta = part as { type: string; durationSec?: number };
           if (typeof meta.durationSec === "number") {
             currentReasoningDurationSec = meta.durationSec;
-            // If the last segment was reasoning, update its duration
+            // If the last segment was reasoning and had no duration yet, set its duration
             const lastSeg = segments[segments.length - 1];
-            if (lastSeg && lastSeg.type === "reasoning") {
+            if (lastSeg && lastSeg.type === "reasoning" && lastSeg.durationSec === undefined) {
               lastSeg.durationSec = currentReasoningDurationSec;
             }
           }
@@ -217,6 +242,7 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         segments: segments.length > 0 ? segments : undefined,
         attachments: attachments && attachments.length > 0 ? attachments : undefined,
         quotes: quotes && quotes.length > 0 ? quotes : undefined,
+        sourceMentions: sourceMentions && sourceMentions.length > 0 ? sourceMentions : undefined,
         feedback,
       };
     });
@@ -244,11 +270,18 @@ export function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[]
         parsedSavedParts = m.parts as UIMessage["parts"];
       }
 
-      // Quote & feedback parts are UI metadata, not AI SDK parts: keep them in side maps
+      // Quote, mention & feedback parts are UI metadata, not AI SDK parts: keep them in side maps
       const rawParts = parsedSavedParts as unknown[];
       const quotes = rawParts.filter(isQuotePart).map((p) => p.text);
       if (quotes.length > 0) {
         messageQuotesMap.set(m.id, quotes);
+      }
+
+      const sourceMentions = rawParts
+        .filter(isSourceMentionPart)
+        .map(({ id, filename }) => ({ id, filename }));
+      if (sourceMentions.length > 0) {
+        messageSourceMentionsMap.set(m.id, sourceMentions);
       }
 
       const feedbackPart = rawParts.find(isFeedbackPart);
@@ -259,18 +292,19 @@ export function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[]
       }
 
       parsedSavedParts = parsedSavedParts.filter(
-        (p) => !isQuotePart(p) && !isFeedbackPart(p)
+        (p) => !isQuotePart(p) && !isFeedbackPart(p) && !isSourceMentionPart(p)
       );
 
-      // Newer replies store each step's text in order among the tool parts; older
-      // ones (and failed/aborted replies) only have `content`, appended at the end.
+      // Newer replies store each step's text & reasoning in order among the tool parts; older
+      // ones (and failed/aborted replies) only have `content` / `reasoning` on the row.
       const hasOrderedText = parsedSavedParts.some((p) => p.type === "text");
+      const hasOrderedReasoning = parsedSavedParts.some((p) => p.type === "reasoning");
 
       return {
         id: m.id,
         role: m.role as "user" | "assistant",
         parts: [
-          ...(m.reasoning
+          ...(m.reasoning && !hasOrderedReasoning
             ? [{ type: "reasoning" as const, text: m.reasoning, state: "done" as const }]
             : []),
           ...parsedSavedParts,

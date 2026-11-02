@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AlertCircle, Download, Loader2 } from "lucide-react";
 import {
   ImagePreviewModal,
@@ -69,6 +69,10 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
         tool.output && typeof tool.output === "object"
           ? (tool.output as Record<string, unknown>)
           : {};
+      // While arguments are just starting to stream, wait until filename is parsed so we never flash "document.txt"
+      if (tool.state === "streaming" && !outObj.filename && !inObj.filename) {
+        continue;
+      }
       const key = String(outObj.id || outObj.filename || inObj.filename || tool.id);
       if (!seen.has(key)) {
         seen.add(key);
@@ -78,38 +82,53 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
     return result;
   }, [tools]);
 
-  const completedCount = fileTools.filter((tool) => tool.state === "completed").length;
+  // Track which tool IDs have already been completed/notified.
+  // Seeded on initial mount with any tools that were ALREADY completed in history
+  // so opening an existing chat never spams /api/v1/chats/:id/files.
+  const notifiedCompletedIdsRef = useRef<Set<string> | null>(null);
+  if (notifiedCompletedIdsRef.current === null) {
+    notifiedCompletedIdsRef.current = new Set(
+      fileTools.filter((t) => t.state === "completed").map((t) => t.id)
+    );
+  }
 
   useEffect(() => {
-    if (completedCount > 0 && typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
-      for (const tool of fileTools) {
-        if (tool.state === "completed") {
-          const outObj =
-            tool.output && typeof tool.output === "object"
-              ? (tool.output as Record<string, unknown>)
-              : {};
-          const inObj =
-            tool.input && typeof tool.input === "object"
-              ? (tool.input as Record<string, unknown>)
-              : {};
-          const fileId = String(outObj.id || tool.id || "");
-          const filename = String(outObj.filename || inObj.filename || "");
-          if (fileId || filename) {
-            window.dispatchEvent(
-              new CustomEvent<AIFileUpdatedPayload>(AI_FILE_UPDATED_EVENT, {
-                detail: {
-                  fileId,
-                  filename,
-                  reason: "ai-edit",
-                },
-              })
-            );
-          }
-        }
+    if (typeof window === "undefined" || !notifiedCompletedIdsRef.current) return;
+
+    const newlyCompleted = fileTools.filter(
+      (tool) =>
+        tool.state === "completed" && !notifiedCompletedIdsRef.current!.has(tool.id)
+    );
+
+    if (newlyCompleted.length === 0) return;
+
+    for (const tool of newlyCompleted) {
+      notifiedCompletedIdsRef.current.add(tool.id);
+      const outObj =
+        tool.output && typeof tool.output === "object"
+          ? (tool.output as Record<string, unknown>)
+          : {};
+      const inObj =
+        tool.input && typeof tool.input === "object"
+          ? (tool.input as Record<string, unknown>)
+          : {};
+      const fileId = String(outObj.id || tool.id || "");
+      const filename = String(outObj.filename || inObj.filename || "");
+      if (fileId || filename) {
+        window.dispatchEvent(
+          new CustomEvent<AIFileUpdatedPayload>(AI_FILE_UPDATED_EVENT, {
+            detail: {
+              fileId,
+              filename,
+              reason: "ai-edit",
+            },
+          })
+        );
       }
     }
-  }, [completedCount, fileTools]);
+
+    window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
+  }, [fileTools]);
 
   if (fileTools.length === 0) return null;
 

@@ -29,11 +29,14 @@ model Plan {
   discountMonthlyValue Int?     @map("discount_monthly_value") 
   discountYearlyType   String?  @map("discount_yearly_type") @db.VarChar(16)
   discountYearlyValue  Int?     @map("discount_yearly_value") 
-  monthlyTokenLimit  BigInt?  @map("monthly_token_limit") 
-  weeklyTokenLimit   BigInt?  @map("weekly_token_limit") 
-  fiveHourTokenLimit BigInt?  @map("five_hour_token_limit") 
+  // Spend caps in USD per window; null or 0 means no limit for that window
+  monthlyCostLimitUsd  Decimal? @map("monthly_cost_limit_usd") @db.Decimal(12, 4)
+  weeklyCostLimitUsd   Decimal? @map("weekly_cost_limit_usd") @db.Decimal(12, 4)
+  fiveHourCostLimitUsd Decimal? @map("five_hour_cost_limit_usd") @db.Decimal(12, 4)
   dailyRequestLimit  Int?     @map("daily_request_limit") 
   requestsPerMinute  Int?     @map("requests_per_minute") 
+  dailyUploadLimitMb      Int?     @map("daily_upload_limit_mb")
+  dailyAgentUploadLimitMb Int?     @map("daily_agent_upload_limit_mb")
   badge              String?  @db.VarChar(32)
   features           Json?
   isActive           Boolean  @default(true) @map("is_active")
@@ -70,6 +73,7 @@ model User {
   chatSessions     ChatSession[]
   sessionFiles     SessionFile[]
   usagePeriods     UserUsagePeriod[]
+  usageLogs        UsageLog[]
   usageWindows     UserUsageWindow[]
   updatedSettings  AppSetting[]
   adminAuditLogs   AdminAuditLog[]
@@ -210,6 +214,9 @@ model CatalogModel {
   outputPricePerMillion Decimal  @default(0.0000) @map("output_price_per_million") @db.Decimal(10, 4)
   pricingCurrency       String   @default("USD") @map("pricing_currency") @db.VarChar(8)
 
+  routingStrategy      String @default("priority") @map("routing_strategy") @db.VarChar(16)
+  routeCooldownSeconds Int    @default(30) @map("route_cooldown_seconds")
+
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -218,6 +225,7 @@ model CatalogModel {
   chatSessions ChatSession[]
   chatMessages ChatMessage[]
   planAccesses PlanModelAccess[]
+  usageLogs    UsageLog[]
 
   @@index([status, sortOrder], map: "idx_catalog_models_listing")
   @@index([providerId], map: "idx_catalog_models_provider")
@@ -242,7 +250,8 @@ model CatalogModelRoute {
   id              BigInt   @id @default(autoincrement()) 
   catalogModelId  BigInt   @map("catalog_model_id") 
   upstreamModelId BigInt   @map("upstream_model_id") 
-  priority        Int      
+  priority        Int
+  weight          Int      @default(1)
   isEnabled       Boolean  @default(true) @map("is_enabled")
   paramOverrides  Json?    @map("param_overrides")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -377,6 +386,7 @@ model UserUsagePeriod {
   requestCount     Int      @default(0) @map("request_count") 
   promptTokens     BigInt   @default(0) @map("prompt_tokens") 
   completionTokens BigInt   @default(0) @map("completion_tokens") 
+  costUsd          Decimal  @default(0) @map("cost_usd") @db.Decimal(16, 8)
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_usage_user")
@@ -395,6 +405,7 @@ model UserUsageWindow {
   requestCount     Int      @default(0) @map("request_count") 
   promptTokens     BigInt   @default(0) @map("prompt_tokens") 
   completionTokens BigInt   @default(0) @map("completion_tokens") 
+  costUsd          Decimal  @default(0) @map("cost_usd") @db.Decimal(16, 8)
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_usage_window_user")
@@ -402,6 +413,30 @@ model UserUsageWindow {
   @@unique([userId, windowType, windowKey], map: "uq_user_window")
   @@index([userId, windowType, windowEnd], map: "idx_user_window_lookup")
   @@map("user_usage_windows")
+}
+
+/// One row per generated reply: who spent what, on which model, at which price.
+/// Prices are snapshotted so later catalog edits never rewrite history.
+model UsageLog {
+  id                    BigInt   @id @default(autoincrement())
+  userId                BigInt   @map("user_id")
+  sessionId             BigInt?  @map("session_id")
+  messageId             BigInt?  @map("message_id")
+  catalogModelId        BigInt?  @map("catalog_model_id")
+  requestId             String?  @map("request_id") @db.VarChar(64)
+  promptTokens          Int      @default(0) @map("prompt_tokens")
+  completionTokens      Int      @default(0) @map("completion_tokens")
+  inputPricePerMillion  Decimal  @default(0) @map("input_price_per_million") @db.Decimal(10, 4)
+  outputPricePerMillion Decimal  @default(0) @map("output_price_per_million") @db.Decimal(10, 4)
+  costUsd               Decimal  @default(0) @map("cost_usd") @db.Decimal(16, 8)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_usage_logs_user")
+  catalogModel CatalogModel? @relation(fields: [catalogModelId], references: [id], onDelete: SetNull, map: "fk_usage_logs_model")
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_usage_logs_user")
+  @@index([catalogModelId, createdAt], map: "idx_usage_logs_model")
+  @@map("usage_logs")
 }
 
 model AdminAuditLog {
@@ -544,7 +579,7 @@ model Project {
   isArchived          Boolean       @default(false) @map("is_archived")
   shareToken          String?       @unique(map: "uq_projects_share_token") @map("share_token") @db.Char(36)
   sharedAt            DateTime?     @map("shared_at") @db.Timestamptz(3)
-  shareAccess         String        @default("anyone") @map("share_access") @db.VarChar(16)
+  shareAccess         String        @default("invited") @map("share_access") @db.VarChar(16)
   invitedEmails       Json?         @map("invited_emails")
   createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)

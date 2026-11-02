@@ -31,7 +31,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           role="status"
           aria-live="polite"
           className={cn(
-            "toast-panel fixed bottom-6 left-1/2 -translate-x-1/2 z-[200]",
+            "toast-panel fixed bottom-6 left-1/2 -translate-x-1/2 z-[10100]",
             "max-w-[calc(100vw-32px)] w-fit text-center",
             "glass px-4 py-2.5 rounded-[10px] text-[13px] font-medium text-[var(--ink)]",
             "pointer-events-none select-none shadow-lg"

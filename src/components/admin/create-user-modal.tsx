@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { createPortal } from "react-dom";
-import { X, UserPlus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { CustomSelect } from "@/components/ui/custom-select";
 import type { AdminUserListItemDto } from "@/lib/users/types";
 
@@ -69,139 +71,122 @@ export function CreateUserModal({ plans, onClose, onSuccess }: CreateUserModalPr
     }
   }
 
-  const content = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="relative flex max-h-[90vh] w-full max-w-[500px] flex-col rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
-          <div className="flex items-center gap-2">
-            <div className="rounded-[8px] bg-[var(--primary)]/10 p-1.5 text-[var(--primary)]">
-              <UserPlus className="h-4 w-4" />
-            </div>
-            <h3 className="text-base font-semibold text-[var(--ink)]">
-              {t("admin.users.createTitle")}
-            </h3>
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={t("admin.users.createTitle")}
+      description="Tambahkan pengguna baru dan tentukan peran serta paket langganan awal"
+      maxWidth="lg"
+    >
+      <form onSubmit={handleSubmit} className="max-h-[75vh] overflow-y-auto pr-1 space-y-4">
+        {error && (
+          <div className="rounded-[10px] border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-500">
+            {error}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[8px] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        )}
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--muted)]">Nama Lengkap</label>
+          <Input
+            type="text"
+            required
+            placeholder="Contoh: Denis Prasetio"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {error && (
-            <div className="rounded-[10px] border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-500">
-              {error}
-            </div>
-          )}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--muted)]">Email</label>
+          <Input
+            type="email"
+            required
+            placeholder="nama@domain.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
 
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--muted)]">
+            {t("admin.users.initialPassword")}
+          </label>
+          <Input
+            type="password"
+            placeholder={t("admin.users.initialPasswordPlaceholder")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--muted)]">Nama Lengkap</label>
-            <input
-              type="text"
-              required
-              placeholder="Contoh: Denis Prasetio"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-[8px] border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--primary)] focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--muted)]">Email</label>
-            <input
-              type="email"
-              required
-              placeholder="nama@domain.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-[8px] border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--primary)] focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--muted)]">
-              {t("admin.users.initialPassword")}
-            </label>
-            <input
-              type="password"
-              placeholder={t("admin.users.initialPasswordPlaceholder")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-[8px] border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--primary)] focus:outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--muted)]">Peran (Role)</label>
-              <CustomSelect
-                value={role}
-                onChange={setRole}
-                options={[
-                  { value: "user", label: "User" },
-                  { value: "admin", label: "Administrator" },
-                ]}
-                className="w-full"
-                size="md"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[var(--muted)]">Paket Langganan</label>
-              <CustomSelect
-                value={planId}
-                onChange={setPlanId}
-                options={[
-                  { value: "none", label: "Tanpa Paket (Default)" },
-                  ...plans.map((p) => ({
-                    value: p.id,
-                    label: p.name,
-                  })),
-                ]}
-                className="w-full"
-                size="md"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[var(--muted)]">Status Awal</label>
+            <label className="text-xs font-medium text-[var(--muted)]">Peran (Role)</label>
             <CustomSelect
-              value={status}
-              onChange={setStatus}
+              value={role}
+              onChange={setRole}
               options={[
-                { value: "active", label: "Aktif" },
-                { value: "deactivated", label: "Dinonaktifkan" },
+                { value: "user", label: "User" },
+                { value: "admin", label: "Administrator" },
               ]}
               className="w-full"
               size="md"
             />
           </div>
-
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="rounded-[8px] border border-[var(--border)] px-4 py-2 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--hover)]"
-            >
-              {t("admin.users.cancel")}
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--primary)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {t("admin.users.addUser")}
-            </button>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-[var(--muted)]">Paket Langganan</label>
+            <CustomSelect
+              value={planId}
+              onChange={setPlanId}
+              options={[
+                { value: "none", label: "Tanpa Paket (Default)" },
+                ...plans.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                })),
+              ]}
+              className="w-full"
+              size="md"
+            />
           </div>
-        </form>
-      </div>
-    </div>
-  );
+        </div>
 
-  return typeof document !== "undefined" ? createPortal(content, document.body) : null;
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[var(--muted)]">Status Awal</label>
+          <CustomSelect
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: "active", label: "Aktif" },
+              { value: "deactivated", label: "Dinonaktifkan" },
+            ]}
+            className="w-full"
+            size="md"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--border)]">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onClose}
+            disabled={isSubmitting}
+          >
+            {t("admin.users.cancel")}
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={isSubmitting}
+          >
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t("admin.users.addUser")}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
 }

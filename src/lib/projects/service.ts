@@ -83,7 +83,7 @@ export async function listUserProjects(userId: bigint): Promise<ProjectDto[]> {
     isArchived: p.isArchived,
     shareToken: p.shareToken,
     sharedAt: p.sharedAt?.toISOString() || null,
-    shareAccess: (p.shareAccess as "anyone" | "invited") || "anyone",
+    shareAccess: (p.shareAccess as "anyone" | "invited") || "invited",
     invitedEmails: Array.isArray(p.invitedEmails) ? (p.invitedEmails as string[]) : [],
     chatCount: p._count.chatSessions,
     recentChats: p.chatSessions.map(formatRecentChat),
@@ -124,7 +124,7 @@ export async function createProject(
     isArchived: project.isArchived,
     shareToken: project.shareToken,
     sharedAt: project.sharedAt?.toISOString() || null,
-    shareAccess: (project.shareAccess as "anyone" | "invited") || "anyone",
+    shareAccess: (project.shareAccess as "anyone" | "invited") || "invited",
     invitedEmails: [],
     chatCount: 0,
     recentChats: [],
@@ -185,7 +185,7 @@ export async function getProjectDetail(
     isArchived: project.isArchived,
     shareToken: project.shareToken,
     sharedAt: project.sharedAt?.toISOString() || null,
-    shareAccess: (project.shareAccess as "anyone" | "invited") || "anyone",
+    shareAccess: (project.shareAccess as "anyone" | "invited") || "invited",
     invitedEmails: Array.isArray(project.invitedEmails) ? (project.invitedEmails as string[]) : [],
     chatCount: project._count.chatSessions,
     recentChats: project.chatSessions.slice(0, 5).map(formatRecentChat),
@@ -272,7 +272,7 @@ export async function updateProject(
     isArchived: updated.isArchived,
     shareToken: updated.shareToken,
     sharedAt: updated.sharedAt?.toISOString() || null,
-    shareAccess: (updated.shareAccess as "anyone" | "invited") || "anyone",
+    shareAccess: (updated.shareAccess as "anyone" | "invited") || "invited",
     invitedEmails: Array.isArray(updated.invitedEmails) ? (updated.invitedEmails as string[]) : [],
     chatCount: updated._count.chatSessions,
     recentChats: updated.chatSessions.map(formatRecentChat),
@@ -349,6 +349,26 @@ export async function moveChatToProject(
   return { success: true, projectId: targetProjectPublicId };
 }
 
+/**
+ * Collaborators must be active registered users, and never the owner.
+ * Unknown or self emails are dropped silently (the UI already blocks them).
+ */
+async function sanitizeInvitedEmails(ownerId: bigint, emails: string[]): Promise<string[]> {
+  const normalized = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  if (normalized.length === 0) return [];
+
+  const [owner, users] = await Promise.all([
+    db.user.findUnique({ where: { id: ownerId }, select: { email: true } }),
+    db.user.findMany({
+      where: { email: { in: normalized }, status: "active" },
+      select: { email: true },
+    }),
+  ]);
+  const ownerEmail = owner?.email.toLowerCase();
+  const registered = new Set(users.map((u) => u.email.toLowerCase()));
+  return normalized.filter((e) => e !== ownerEmail && registered.has(e));
+}
+
 export async function updateProjectShare(
   userId: bigint,
   publicId: string,
@@ -373,10 +393,10 @@ export async function updateProjectShare(
   const nextAccess =
     options.shareAccess ||
     (existing.shareAccess as "anyone" | "invited") ||
-    "anyone";
+    "invited";
   const nextEmails =
     options.invitedEmails !== undefined
-      ? options.invitedEmails
+      ? await sanitizeInvitedEmails(userId, options.invitedEmails)
       : Array.isArray(existing.invitedEmails)
         ? (existing.invitedEmails as string[])
         : [];

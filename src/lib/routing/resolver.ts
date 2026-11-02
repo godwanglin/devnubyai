@@ -2,13 +2,18 @@ import { db } from "@/lib/db";
 import { mapGateway } from "@/lib/gateways/repository";
 import { getCachedJson, setCachedJson, invalidateCachePattern } from "@/lib/redis/client";
 import type { CandidateRoute } from "@/lib/gateways/types";
-import { getCircuitOpenUntil, seedCircuit } from "./circuit";
+import { seedCircuit } from "./circuit";
 import { getRoutingSettings } from "./settings";
+import { normalizeStrategy, orderCandidates, type RoutingStrategy } from "./strategy";
 
 export interface ResolvedCandidates {
   catalogModelId: bigint;
   publicId: string;
   defaultModelUsed: boolean;
+  strategy: RoutingStrategy;
+  routeCooldownSeconds: number;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
   candidates: CandidateRoute[];
   routingVersion: number;
 }
@@ -32,8 +37,10 @@ function candidateCacheKey(version: number, publicId: string): string {
 }
 
 /**
- * Resolve ordered candidate routes for a public catalog model id.
- * Uses Redis cache (with in-memory fallback) keyed on `routing.version` and `routing.cache_ttl_seconds`.
+ * Resolve the attempt order of candidate routes for a public catalog model id.
+ * The DB route list (priority order) is cached in Redis (with in-memory fallback)
+ * keyed on `routing.version` and `routing.cache_ttl_seconds`; the per-request
+ * ordering (strategy, circuits, cooldowns) is applied on top of it every call.
  */
 export async function resolveCandidates(
   requestedPublicId?: string | null,
@@ -41,12 +48,24 @@ export async function resolveCandidates(
 ): Promise<ResolvedCandidates> {
   const now = options?.now ?? Date.now();
   const settings = await getRoutingSettings({ forceRefresh: options?.forceRefresh });
+  const base = await loadBaseCandidates(requestedPublicId, settings, now, options?.forceRefresh);
+
+  const candidates = await orderCandidates(base, settings, now);
+  return { ...base, candidates };
+}
+
+async function loadBaseCandidates(
+  requestedPublicId: string | null | undefined,
+  settings: Awaited<ReturnType<typeof getRoutingSettings>>,
+  now: number,
+  forceRefresh?: boolean
+): Promise<ResolvedCandidates> {
   const publicId = requestedPublicId?.trim() || settings.defaultModel;
   const defaultModelUsed = !requestedPublicId?.trim();
 
   const rKey = candidateCacheKey(settings.version, publicId);
 
-  if (!options?.forceRefresh) {
+  if (!forceRefresh) {
     // 1. Check in-memory fast cache
     const memHit = memoryCache.get(rKey);
     if (memHit && memHit.version === settings.version && now < memHit.expiresAt) {
@@ -60,8 +79,13 @@ export async function resolveCandidates(
       const hydrated: ResolvedCandidates = {
         ...redisHit,
         catalogModelId: BigInt(redisHit.catalogModelId),
+        strategy: normalizeStrategy(redisHit.strategy),
+        routeCooldownSeconds: redisHit.routeCooldownSeconds ?? 0,
+        inputPricePerMillion: Number(redisHit.inputPricePerMillion ?? 0),
+        outputPricePerMillion: Number(redisHit.outputPricePerMillion ?? 0),
         candidates: redisHit.candidates.map((c) => ({
           ...c,
+          weight: c.weight ?? 1,
           candidateId: BigInt(c.candidateId),
           upstreamModelId: BigInt(c.upstreamModelId),
           gateway: {
@@ -89,6 +113,10 @@ export async function resolveCandidates(
       id: true,
       publicId: true,
       status: true,
+      routingStrategy: true,
+      routeCooldownSeconds: true,
+      inputPricePerMillion: true,
+      outputPricePerMillion: true,
       routes: {
         where: {
           isEnabled: true,
@@ -101,6 +129,7 @@ export async function resolveCandidates(
         select: {
           id: true,
           priority: true,
+          weight: true,
           paramOverrides: true,
           upstreamModel: {
             select: {
@@ -119,19 +148,23 @@ export async function resolveCandidates(
       catalogModelId: catalogModel?.id ?? 0n,
       publicId,
       defaultModelUsed,
+      strategy: "priority",
+      routeCooldownSeconds: 0,
+      inputPricePerMillion: 0,
+      outputPricePerMillion: 0,
       candidates: [],
       routingVersion: settings.version,
     };
     return emptyResult;
   }
 
-  const routes = catalogModel.routes;
-  const rawCandidates: CandidateRoute[] = routes.map((r) => {
+  const candidates: CandidateRoute[] = catalogModel.routes.map((r) => {
     const gw = mapGateway(r.upstreamModel.gateway);
     seedCircuit(gw);
     return {
       candidateId: r.id,
       priority: r.priority,
+      weight: r.weight,
       paramOverrides:
         r.paramOverrides && typeof r.paramOverrides === "object"
           ? (r.paramOverrides as Record<string, unknown>)
@@ -142,44 +175,15 @@ export async function resolveCandidates(
     };
   });
 
-  // Reorder primary first if configured
-  let ordered = rawCandidates;
-  if (settings.primaryFirst) {
-    const primaries = rawCandidates.filter((c) => c.gateway.isPrimary);
-    const others = rawCandidates.filter((c) => !c.gateway.isPrimary);
-    ordered = [...primaries, ...others];
-  }
-
-  // Filter open circuits, but if all are open, fall back to the one closing soonest (half-open)
-  const circuitAvailable: CandidateRoute[] = [];
-  const circuitOpen: Array<{ candidate: CandidateRoute; openUntil: number }> = [];
-
-  for (const c of ordered) {
-    const openUntil = getCircuitOpenUntil(c.gateway.id, now);
-    if (openUntil === null) {
-      circuitAvailable.push(c);
-    } else {
-      circuitOpen.push({ candidate: c, openUntil });
-    }
-  }
-
-  let finalCandidates: CandidateRoute[];
-  if (circuitAvailable.length > 0) {
-    finalCandidates = circuitAvailable;
-  } else if (circuitOpen.length > 0) {
-    circuitOpen.sort((a, b) => a.openUntil - b.openUntil);
-    finalCandidates = [circuitOpen[0].candidate];
-  } else {
-    finalCandidates = [];
-  }
-
-  const capped = finalCandidates.slice(0, settings.maxAttempts);
-
   const result: ResolvedCandidates = {
     catalogModelId: catalogModel.id,
     publicId: catalogModel.publicId,
     defaultModelUsed,
-    candidates: capped,
+    strategy: normalizeStrategy(catalogModel.routingStrategy),
+    routeCooldownSeconds: catalogModel.routeCooldownSeconds,
+    inputPricePerMillion: Number(catalogModel.inputPricePerMillion ?? 0),
+    outputPricePerMillion: Number(catalogModel.outputPricePerMillion ?? 0),
+    candidates,
     routingVersion: settings.version,
   };
 

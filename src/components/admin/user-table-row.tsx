@@ -1,13 +1,16 @@
 "use client";
 
 import React from "react";
-import { ShieldCheck, ShieldAlert, Eye, Pencil, Trash2 } from "lucide-react";
+import { ShieldCheck, ShieldAlert, Eye, Pencil, Trash2, ScrollText } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { AdminUserListItemDto } from "@/lib/users/types";
 
 export interface UserTableRowProps {
   user: AdminUserListItemDto;
   onDetail: (userId: string) => void;
+  onViewLogs: (user: AdminUserListItemDto) => void;
   onEdit: (user: AdminUserListItemDto) => void;
   onDelete: (user: AdminUserListItemDto) => void;
   t: (key: string) => string;
@@ -16,6 +19,7 @@ export interface UserTableRowProps {
 export function UserTableRow({
   user: u,
   onDetail,
+  onViewLogs,
   onEdit,
   onDelete,
   t,
@@ -121,30 +125,47 @@ export function UserTableRow({
       {/* Actions */}
       <td className="px-4 py-3.5 text-right">
         <div className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onDetail(u.id)}
-            title={t("admin.users.viewDetail")}
-            className="rounded-[6px] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer"
-          >
-            <Eye className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onEdit(u)}
-            title={t("admin.users.editUser")}
-            className="rounded-[6px] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)] cursor-pointer"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(u)}
-            title={t("admin.users.deleteUser")}
-            className="rounded-[6px] p-1.5 text-rose-500/80 transition-colors hover:bg-rose-500/10 hover:text-rose-500 cursor-pointer"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <Tooltip content="Lihat Log Request (.logs/)">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onViewLogs(u)}
+              className="hover:text-[var(--primary)]"
+            >
+              <ScrollText className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t("admin.users.viewDetail")}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onDetail(u.id)}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t("admin.users.editUser")}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => onEdit(u)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t("admin.users.deleteUser")}>
+            <Button
+              type="button"
+              variant="danger"
+              size="icon-sm"
+              onClick={() => onDelete(u)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </Tooltip>
         </div>
       </td>
     </tr>

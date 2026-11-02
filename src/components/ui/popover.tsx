@@ -268,7 +268,8 @@ export function Popover({
               overflow: "auto",
             }}
             className={cn(
-              "popover-panel fixed z-[150] glass rounded-[10px] p-1.5 min-w-[200px]",
+              // Above modals (9999) and in-modal selects (10050), below toasts (10100)
+              "popover-panel fixed z-[10060] glass rounded-[10px] p-1.5 min-w-[200px]",
               className
             )}
             onClick={(e) => e.stopPropagation()}

@@ -24,9 +24,12 @@ interface CatalogModelModalProps {
   loading: boolean;
 }
 
+type RoutingStrategy = "priority" | "round_robin";
+
 interface FormRouteItem {
   upstreamModelId: string;
   priority: number;
+  weight: number;
   isEnabled: boolean;
 }
 
@@ -86,6 +89,10 @@ function CatalogModelModalInner({
   const [pricingCurrency, setPricingCurrency] = useState(() => model?.pricingCurrency ?? "USD");
   const [status, setStatus] = useState<"active" | "draft" | "deprecated">(() => (model?.status as "active") ?? "active");
   const [sortOrder, setSortOrder] = useState<number>(() => model?.sortOrder ?? 100);
+  const [routingStrategy, setRoutingStrategy] = useState<RoutingStrategy>(() =>
+    model?.routingStrategy === "round_robin" ? "round_robin" : "priority"
+  );
+  const [routeCooldownSeconds, setRouteCooldownSeconds] = useState<number>(() => model?.routeCooldownSeconds ?? 30);
 
   // Routing Multi-Upstream states
   const [routes, setRoutes] = useState<FormRouteItem[]>(() => {
@@ -93,6 +100,7 @@ function CatalogModelModalInner({
       return model.routes.map((r) => ({
         upstreamModelId: r.upstreamModelId,
         priority: r.priority,
+        weight: r.weight ?? 1,
         isEnabled: r.isEnabled,
       }));
     }
@@ -114,6 +122,7 @@ function CatalogModelModalInner({
       {
         upstreamModelId: selectedToAdd,
         priority: prev.length + 1,
+        weight: 1,
         isEnabled: true,
       },
     ]);
@@ -139,6 +148,14 @@ function CatalogModelModalInner({
       return copy.map((r, i) => ({ ...r, priority: i + 1 }));
     });
   }
+
+  function handleRouteWeightChange(idx: number, value: string) {
+    const weight = Math.min(100, Math.max(1, parseInt(value, 10) || 1));
+    setRoutes((prev) => prev.map((r, i) => (i === idx ? { ...r, weight } : r)));
+  }
+
+  const isRoundRobin = routingStrategy === "round_robin";
+  const totalEnabledWeight = routes.reduce((sum, r) => (r.isEnabled ? sum + r.weight : sum), 0);
 
   function handleToggleRouteEnabled(idx: number) {
     setRoutes((prev) =>
@@ -174,9 +191,12 @@ function CatalogModelModalInner({
         pricingCurrency: pricingCurrency.trim() || "USD",
         status,
         sortOrder,
+        routingStrategy,
+        routeCooldownSeconds,
         routes: routes.map((r) => ({
           upstreamModelId: r.upstreamModelId,
           priority: r.priority,
+          weight: r.weight,
           isEnabled: r.isEnabled,
         })),
       });
@@ -458,8 +478,51 @@ function CatalogModelModalInner({
               {t("admin.catalog.sectionRouting")}
             </h3>
             <p className="text-[11px] text-[var(--muted)] mt-0.5">
-              {t("admin.catalog.routingExplanation")}
+              {t(isRoundRobin ? "admin.catalog.routingExplanationRoundRobin" : "admin.catalog.routingExplanation")}
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[var(--ink)] mb-1">
+                {t("admin.catalog.strategy")}
+              </label>
+              <CustomSelect<RoutingStrategy>
+                options={[
+                  {
+                    value: "priority",
+                    label: t("admin.catalog.strategyPriority"),
+                    sublabel: t("admin.catalog.strategyPriorityDesc"),
+                  },
+                  {
+                    value: "round_robin",
+                    label: t("admin.catalog.strategyRoundRobin"),
+                    sublabel: t("admin.catalog.strategyRoundRobinDesc"),
+                  },
+                ]}
+                value={routingStrategy}
+                onChange={setRoutingStrategy}
+              />
+            </div>
+
+            {isRoundRobin && (
+              <div>
+                <label className="block text-xs font-medium text-[var(--ink)] mb-1">
+                  {t("admin.catalog.routeCooldown")}
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={3600}
+                  value={routeCooldownSeconds}
+                  onChange={(e) =>
+                    setRouteCooldownSeconds(Math.min(3600, Math.max(0, parseInt(e.target.value, 10) || 0)))
+                  }
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:border-[var(--accent)] outline-none"
+                />
+                <p className="text-[10px] text-[var(--muted)] mt-0.5">{t("admin.catalog.routeCooldownHint")}</p>
+              </div>
+            )}
           </div>
 
           {/* Add Route selector */}
@@ -519,6 +582,28 @@ function CatalogModelModalInner({
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {isRoundRobin && (
+                        <div className="flex items-center gap-1.5 mr-1">
+                          {r.isEnabled && totalEnabledWeight > 0 && (
+                            <span className="text-[10px] text-[var(--muted)] tabular-nums">
+                              {t("admin.catalog.trafficShare", {
+                                percent: String(Math.round((r.weight / totalEnabledWeight) * 100)),
+                              })}
+                            </span>
+                          )}
+                          <label className="flex items-center gap-1 text-[10px] text-[var(--muted)]">
+                            {t("admin.catalog.weight")}
+                            <input
+                              type="number"
+                              min={1}
+                              max={100}
+                              value={r.weight}
+                              onChange={(e) => handleRouteWeightChange(idx, e.target.value)}
+                              className="w-12 px-1.5 py-0.5 text-xs text-center rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] focus:border-[var(--accent)] outline-none tabular-nums"
+                            />
+                          </label>
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleToggleRouteEnabled(idx)}

@@ -6,14 +6,14 @@ import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { dispatchModelsInvalidated } from "@/providers/account-provider";
 import { cn } from "@/lib/cn";
+import { formatUsd } from "@/lib/billing/format";
 import { PlanModal, type AdminPlan } from "@/components/admin/plan-modal";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { Button } from "@/components/ui/button";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 
-function formatNumber(value: number | null) {
-  if (value == null) return "∞";
-  return new Intl.NumberFormat("id-ID").format(value);
+function formatLimit(value: number | null) {
+  return value == null ? "∞" : formatUsd(value);
 }
 
 function PriceLine({
@@ -218,13 +218,13 @@ export function PlansTab() {
                   </td>
                   <td className="px-4 py-4 align-top text-xs text-[var(--muted)]">
                     <div>
-                      <b className="font-medium text-[var(--ink)]">{formatNumber(plan.monthlyTokenLimit)}</b> / mo
+                      <b className="font-medium text-[var(--ink)]">{formatLimit(plan.monthlyCostLimitUsd)}</b> / mo
                     </div>
                     <div className="mt-1">
-                      <b className="font-medium text-[var(--ink)]">{formatNumber(plan.weeklyTokenLimit)}</b> / wk
+                      <b className="font-medium text-[var(--ink)]">{formatLimit(plan.weeklyCostLimitUsd)}</b> / wk
                     </div>
                     <div className="mt-1">
-                      <b className="font-medium text-[var(--ink)]">{formatNumber(plan.fiveHourTokenLimit)}</b> / 5h
+                      <b className="font-medium text-[var(--ink)]">{formatLimit(plan.fiveHourCostLimitUsd)}</b> / 5h
                     </div>
                   </td>
                   <td className="px-4 py-4 align-top text-xs text-[var(--muted)]">

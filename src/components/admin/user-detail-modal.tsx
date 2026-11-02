@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
 import {
-  X,
   ShieldAlert,
   RotateCcw,
   LogOut,
@@ -17,6 +15,8 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { parseDeviceUa } from "@/lib/auth/device";
 import type { AdminUserDetailDto } from "@/lib/users/types";
@@ -89,8 +89,9 @@ export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetail
         const data = await res.json();
         if (!res.ok) throw new Error(data.error?.message || "Gagal mencabut sesi");
 
-        const msg = t("admin.users.revokeSuccess")
-          ?.replace("{count}", data.data.revokedCount.toString()) || `Berhasil mencabut ${data.data.revokedCount} sesi aktif.`;
+        const msg =
+          t("admin.users.revokeSuccess")?.replace("{count}", data.data.revokedCount.toString()) ||
+          `Berhasil mencabut ${data.data.revokedCount} sesi aktif.`;
         toast(msg);
         setActionNotice(msg);
         void fetchDetail();
@@ -125,250 +126,295 @@ export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetail
     }
   }
 
-  const content = (
+  return (
     <>
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-150">
-        <div className="relative flex max-h-[92vh] w-full max-w-[680px] flex-col rounded-[16px] border border-[var(--border)] bg-[var(--panel)] shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 sm:px-6 py-3.5 sm:py-4">
-            <div className="min-w-0 flex-1 pr-2">
-              <h3 className="text-sm sm:text-base font-semibold text-[var(--ink)] truncate">
-                {t("admin.users.viewDetail")}
-              </h3>
-              <p className="mt-0.5 text-[11px] sm:text-xs text-[var(--muted)] truncate">
-                Informasi akun, sesi login aktif, dan kuota
-              </p>
+      <Modal
+        isOpen={Boolean(userId)}
+        onClose={onClose}
+        title={t("admin.users.viewDetail")}
+        description="Informasi akun, sesi login aktif, dan kuota"
+        maxWidth="2xl"
+      >
+        <div className="max-h-[75vh] overflow-y-auto overflow-x-hidden pr-1 space-y-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-[var(--muted)]">
+              <Loader2 className="h-6 w-6 animate-spin mb-2" />
+              <span className="text-xs">{t("admin.users.loading")}</span>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-[8px] p-1.5 text-[var(--muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--ink)] shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          ) : error || !detail ? (
+            <div className="rounded-[10px] border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-500">
+              {error || "Pengguna tidak ditemukan"}
+            </div>
+          ) : (
+            <>
+              {actionNotice && (
+                <div className="flex items-center gap-2 rounded-[10px] border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{actionNotice}</span>
+                </div>
+              )}
 
-          {/* Content Body */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-4 space-y-4 sm:space-y-5">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-12 text-[var(--muted)]">
-                <Loader2 className="h-6 w-6 animate-spin mb-2" />
-                <span className="text-xs">{t("admin.users.loading")}</span>
-              </div>
-            ) : error || !detail ? (
-              <div className="rounded-[10px] border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-500">
-                {error || "Pengguna tidak ditemukan"}
-              </div>
-            ) : (
-              <>
-                {actionNotice && (
-                  <div className="flex items-center gap-2 rounded-[10px] border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{actionNotice}</span>
+              {/* Profile Card */}
+              <div className="flex flex-col gap-3.5 rounded-[12px] border border-[var(--border)] bg-[var(--hover)]/30 p-3.5 sm:p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/10 text-sm sm:text-base font-bold text-[var(--primary)]">
+                    {detail.name.slice(0, 2).toUpperCase()}
                   </div>
-                )}
-
-                {/* Profile Card */}
-                <div className="flex flex-col gap-3.5 rounded-[12px] border border-[var(--border)] bg-[var(--hover)]/30 p-3.5 sm:p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/10 text-sm sm:text-base font-bold text-[var(--primary)]">
-                      {detail.name.slice(0, 2).toUpperCase()}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-xs sm:text-sm text-[var(--ink)] truncate max-w-[170px] sm:max-w-none">
+                        {detail.name}
+                      </span>
+                      <span className="rounded-full bg-[var(--primary)]/10 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--primary)] uppercase shrink-0">
+                        {detail.role}
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-xs sm:text-sm text-[var(--ink)] truncate max-w-[170px] sm:max-w-none">
-                          {detail.name}
-                        </span>
-                        <span className="rounded-full bg-[var(--primary)]/10 px-1.5 py-0.5 text-[9px] font-semibold text-[var(--primary)] uppercase shrink-0">
-                          {detail.role}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-[var(--muted)] truncate">{detail.email}</div>
-                      <div className="mt-0.5 font-mono text-[9px] text-[var(--muted)] truncate">ID: {detail.publicId}</div>
+                    <div className="text-[11px] text-[var(--muted)] truncate">{detail.email}</div>
+                    <div className="mt-0.5 font-mono text-[9px] text-[var(--muted)] truncate">
+                      ID: {detail.publicId}
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium border ${
-                        detail.status === "active"
-                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                      }`}
-                    >
-                      {detail.status === "active" ? t("admin.users.statusActive") : t("admin.users.statusDeactivated")}
-                    </span>
-                    <span className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-2.5 py-0.5 text-[10px] font-medium text-[var(--ink)]">
-                      {detail.planName || "Free Plan"}
-                    </span>
                   </div>
                 </div>
 
-                {/* Deactivation Reason Notice */}
-                {detail.status !== "active" && detail.statusReason && (
-                  <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
-                    <div className="flex items-center gap-1.5 font-semibold mb-1">
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      <span>{t("admin.users.deactivateReason")}</span>
-                    </div>
-                    <p className="leading-relaxed break-words text-[11px] sm:text-xs">{detail.statusReason}</p>
-                  </div>
-                )}
-
-                {/* Stats Overview */}
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-                  <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">Total Token</div>
-                    <div className="mt-1 text-sm sm:text-base font-bold text-[var(--ink)] truncate">
-                      {new Intl.NumberFormat("id-ID").format(
-                        detail.stats.totalPromptTokens + detail.stats.totalCompletionTokens
-                      )}
-                    </div>
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)] truncate">
-                      Prompt: {new Intl.NumberFormat("id-ID").format(detail.stats.totalPromptTokens)}
-                    </div>
-                  </div>
-
-                  <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">Total Request</div>
-                    <div className="mt-1 text-sm sm:text-base font-bold text-[var(--ink)]">
-                      {new Intl.NumberFormat("id-ID").format(detail.stats.totalRequests)}
-                    </div>
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)]">Pemanggilan model</div>
-                  </div>
-
-                  <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">Obrolan & Proyek</div>
-                    <div className="mt-1 text-sm sm:text-base font-bold text-[var(--ink)]">
-                      {detail.stats.chatCount} / {detail.stats.projectCount}
-                    </div>
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)]">Obrolan / Proyek</div>
-                  </div>
-
-                  <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">Sesi Aktif</div>
-                    <div className="mt-1 text-sm sm:text-base font-bold text-emerald-500">
-                      {detail.activeSessions.length}
-                    </div>
-                    <div className="text-[9px] sm:text-[10px] text-[var(--muted)]">Perangkat login</div>
-                  </div>
-                </div>
-
-                {/* Actions Row */}
-                <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmAction("revoke")}
-                    disabled={actionLoading !== null || detail.activeSessions.length === 0}
-                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 disabled:opacity-40 transition-colors"
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium border ${
+                      detail.status === "active"
+                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                    }`}
                   >
-                    {actionLoading === "revoke" ? <Loader2 className="h-3 w-3 animate-spin" /> : <LogOut className="h-3 w-3" />}
-                    {t("admin.users.revokeSessions")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmAction("quota")}
-                    disabled={actionLoading !== null}
-                    className="inline-flex items-center gap-1.5 rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-3 py-1.5 text-xs font-medium text-[var(--ink)] hover:bg-[var(--hover)] disabled:opacity-40 transition-colors"
-                  >
-                    {actionLoading === "quota" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                    {t("admin.users.resetQuota")}
-                  </button>
+                    {detail.status === "active"
+                      ? t("admin.users.statusActive")
+                      : t("admin.users.statusDeactivated")}
+                  </span>
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-2.5 py-0.5 text-[10px] font-medium text-[var(--ink)]">
+                    {detail.planName || "Free Plan"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Deactivation Reason Notice */}
+              {detail.status !== "active" && detail.statusReason && (
+                <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+                  <div className="flex items-center gap-1.5 font-semibold mb-1">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>{t("admin.users.deactivateReason")}</span>
+                  </div>
+                  <p className="leading-relaxed break-words text-[11px] sm:text-xs">
+                    {detail.statusReason}
+                  </p>
+                </div>
+              )}
+
+              {/* Stats Overview */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+                <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">
+                    Total Token
+                  </div>
+                  <div className="mt-1 text-sm sm:text-base font-bold text-[var(--ink)] truncate">
+                    {new Intl.NumberFormat("id-ID").format(
+                      detail.stats.totalPromptTokens + detail.stats.totalCompletionTokens
+                    )}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)] truncate">
+                    Prompt: {new Intl.NumberFormat("id-ID").format(detail.stats.totalPromptTokens)}
+                  </div>
                 </div>
 
-                {/* Active Sessions List (Fully Responsive) */}
-                <div className="space-y-2 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] p-3 sm:p-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink)]">
-                    <ShieldAlert className="h-4 w-4 text-[var(--muted)] shrink-0" />
-                    <span className="truncate">Daftar Sesi Perangkat Aktif ({detail.activeSessions.length})</span>
+                <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">
+                    Total Request
                   </div>
-                  {detail.activeSessions.length === 0 ? (
-                    <p className="text-xs text-[var(--muted)] py-2">Tidak ada sesi login yang sedang aktif.</p>
+                  <div className="mt-1 text-sm sm:text-base font-bold text-[var(--ink)]">
+                    {new Intl.NumberFormat("id-ID").format(detail.stats.totalRequests)}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)]">
+                    Pemanggilan model
+                  </div>
+                </div>
+
+                <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">
+                    Obrolan &amp; Proyek
+                  </div>
+                  <div className="mt-1 text-sm sm:text-base font-bold text-[var(--ink)]">
+                    {detail.stats.chatCount} / {detail.stats.projectCount}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)]">
+                    Obrolan / Proyek
+                  </div>
+                </div>
+
+                <div className="rounded-[10px] border border-[var(--border)] bg-[var(--panel)] p-2.5 sm:p-3">
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)] uppercase tracking-wide">
+                    Sesi Aktif
+                  </div>
+                  <div className="mt-1 text-sm sm:text-base font-bold text-emerald-500">
+                    {detail.activeSessions.length}
+                  </div>
+                  <div className="text-[9px] sm:text-[10px] text-[var(--muted)]">
+                    Perangkat login
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions Row */}
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setConfirmAction("revoke")}
+                  disabled={actionLoading !== null || detail.activeSessions.length === 0}
+                  className="border border-rose-500/30 bg-rose-500/10 text-xs"
+                >
+                  {actionLoading === "revoke" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <div className="divide-y divide-[var(--border)]">
-                      {detail.activeSessions.map((s) => {
-                        const { device, browser } = parseDeviceUa(s.userAgent);
-                        const isMobile = device === "Android" || device === "iPhone" || device === "iPad";
-                        const isCli = browser.includes("CLI");
-
-                        return (
-                          <div key={s.id} className="py-2.5 text-xs flex items-start justify-between gap-2.5 min-w-0">
-                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                              <div className="mt-0.5 rounded-[6px] bg-[var(--hover)] p-1.5 shrink-0 text-[var(--muted)]">
-                                {isMobile ? (
-                                  <Smartphone className="h-3.5 w-3.5 text-[var(--primary)]" />
-                                ) : isCli ? (
-                                  <Terminal className="h-3.5 w-3.5 text-amber-500" />
-                                ) : (
-                                  <Laptop className="h-3.5 w-3.5" />
-                                )}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 font-medium text-[var(--ink)] text-xs truncate">
-                                  <span>{device}</span>
-                                  <span className="text-[var(--muted)]">•</span>
-                                  <span className="text-[var(--muted)]">{browser}</span>
-                                </div>
-                                <div className="text-[10px] sm:text-[11px] text-[var(--muted)] mt-0.5 truncate">
-                                  IP: <span className="font-mono text-[var(--ink)]">{s.ipAddress || "Unknown IP"}</span>
-                                  {" • "}
-                                  <span>{new Date(s.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                                </div>
-                                {s.userAgent && (
-                                  <div className="mt-1 font-mono text-[9px] text-[var(--muted)]/60 line-clamp-1 break-all" title={s.userAgent}>
-                                    {s.userAgent}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <span className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] sm:text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                              Aktif
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <LogOut className="h-3 w-3" />
                   )}
-                </div>
+                  {t("admin.users.revokeSessions")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setConfirmAction("quota")}
+                  disabled={actionLoading !== null}
+                  className="text-xs"
+                >
+                  {actionLoading === "quota" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3 w-3" />
+                  )}
+                  {t("admin.users.resetQuota")}
+                </Button>
+              </div>
 
-                {/* Recent Audit Logs */}
-                {detail.recentAudits.length > 0 && (
-                  <div className="space-y-2 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] p-3 sm:p-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink)]">
-                      <History className="h-4 w-4 text-[var(--muted)] shrink-0" />
-                      <span>Jejak Audit Terakhir Pengguna Ini</span>
-                    </div>
-                    <div className="divide-y divide-[var(--border)]">
-                      {detail.recentAudits.map((a) => (
-                        <div key={a.id} className="py-2 text-xs flex items-start sm:items-center justify-between gap-2 min-w-0">
-                          <div className="min-w-0 flex-1">
-                            <span className="font-medium text-[var(--ink)] capitalize">{a.action}</span>
-                            <span className="text-[var(--muted)] text-[11px] ml-1">oleh {a.actorName || "Admin"}</span>
+              {/* Active Sessions List */}
+              <div className="space-y-2 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] p-3 sm:p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink)]">
+                  <ShieldAlert className="h-4 w-4 text-[var(--muted)] shrink-0" />
+                  <span className="truncate">
+                    Daftar Sesi Perangkat Aktif ({detail.activeSessions.length})
+                  </span>
+                </div>
+                {detail.activeSessions.length === 0 ? (
+                  <p className="text-xs text-[var(--muted)] py-2">
+                    Tidak ada sesi login yang sedang aktif.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[var(--border)]">
+                    {detail.activeSessions.map((s) => {
+                      const { device, browser } = parseDeviceUa(s.userAgent);
+                      const isMobile =
+                        device === "Android" || device === "iPhone" || device === "iPad";
+                      const isCli = browser.includes("CLI");
+
+                      return (
+                        <div
+                          key={s.id}
+                          className="py-2.5 text-xs flex items-start justify-between gap-2.5 min-w-0"
+                        >
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                            <div className="mt-0.5 rounded-[6px] bg-[var(--hover)] p-1.5 shrink-0 text-[var(--muted)]">
+                              {isMobile ? (
+                                <Smartphone className="h-3.5 w-3.5 text-[var(--primary)]" />
+                              ) : isCli ? (
+                                <Terminal className="h-3.5 w-3.5 text-amber-500" />
+                              ) : (
+                                <Laptop className="h-3.5 w-3.5" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 font-medium text-[var(--ink)] text-xs truncate">
+                                <span>{device}</span>
+                                <span className="text-[var(--muted)]">•</span>
+                                <span className="text-[var(--muted)]">{browser}</span>
+                              </div>
+                              <div className="text-[10px] sm:text-[11px] text-[var(--muted)] mt-0.5 truncate">
+                                IP:{" "}
+                                <span className="font-mono text-[var(--ink)]">
+                                  {s.ipAddress || "Unknown IP"}
+                                </span>
+                                {" • "}
+                                <span>
+                                  {new Date(s.createdAt).toLocaleDateString("id-ID", {
+                                    day: "numeric",
+                                    month: "short",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                              {s.userAgent && (
+                                <div
+                                  className="mt-1 font-mono text-[9px] text-[var(--muted)]/60 line-clamp-1 break-all"
+                                  title={s.userAgent}
+                                >
+                                  {s.userAgent}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <span className="text-[10px] text-[var(--muted)] shrink-0">
-                            {new Date(a.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                          <span className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] sm:text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                            Aktif
                           </span>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
                 )}
-              </>
-            )}
-          </div>
+              </div>
+
+              {/* Recent Audit Logs */}
+              {detail.recentAudits.length > 0 && (
+                <div className="space-y-2 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] p-3 sm:p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink)]">
+                    <History className="h-4 w-4 text-[var(--muted)] shrink-0" />
+                    <span>Jejak Audit Terakhir Pengguna Ini</span>
+                  </div>
+                  <div className="divide-y divide-[var(--border)]">
+                    {detail.recentAudits.map((a) => (
+                      <div
+                        key={a.id}
+                        className="py-2 text-xs flex items-start sm:items-center justify-between gap-2 min-w-0"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="font-medium text-[var(--ink)] capitalize">
+                            {a.action}
+                          </span>
+                          <span className="text-[var(--muted)] text-[11px] ml-1">
+                            oleh {a.actorName || "Admin"}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-[var(--muted)] shrink-0">
+                          {new Date(a.createdAt).toLocaleDateString("id-ID", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
           {/* Footer */}
-          <div className="flex items-center justify-end border-t border-[var(--border)] px-4 sm:px-6 py-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-[8px] border border-[var(--border)] px-4 py-1.5 text-xs font-medium text-[var(--ink)] hover:bg-[var(--hover)]"
-            >
+          <div className="flex items-center justify-end border-t border-[var(--border)] pt-3">
+            <Button type="button" variant="secondary" size="sm" onClick={onClose}>
               {t("admin.users.close")}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Modal>
 
       {/* Custom Confirmation Modal */}
       {confirmAction && (
@@ -376,13 +422,21 @@ export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetail
           isOpen={Boolean(confirmAction)}
           onClose={() => setConfirmAction(null)}
           onConfirm={handleConfirmModalAction}
-          title={confirmAction === "revoke" ? t("admin.users.revokeSessions") : t("admin.users.resetQuota")}
+          title={
+            confirmAction === "revoke"
+              ? t("admin.users.revokeSessions")
+              : t("admin.users.resetQuota")
+          }
           description={
             confirmAction === "revoke"
               ? `${t("admin.users.revokeConfirm")} ${detail?.name}? Seluruh perangkat login pengguna ini akan dikeluarkan seketika.`
               : `${t("admin.users.resetQuotaConfirm")} ${detail?.name}? Penggunaan token periode berjalan akan dikembalikan ke 0.`
           }
-          confirmLabel={confirmAction === "revoke" ? t("admin.users.revokeSessions") : t("admin.users.resetQuota")}
+          confirmLabel={
+            confirmAction === "revoke"
+              ? t("admin.users.revokeSessions")
+              : t("admin.users.resetQuota")
+          }
           cancelLabel={t("admin.users.cancel")}
           variant={confirmAction === "revoke" ? "danger" : "primary"}
           loading={actionLoading !== null}
@@ -390,6 +444,4 @@ export function UserDetailModal({ userId, onClose, onRefreshParent }: UserDetail
       )}
     </>
   );
-
-  return typeof document !== "undefined" ? createPortal(content, document.body) : null;
 }

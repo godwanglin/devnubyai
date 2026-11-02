@@ -8,6 +8,7 @@ import {
   validateUploadCandidate,
   isImageMimeType,
 } from "@/lib/files/policy";
+import { assertUploadQuota } from "@/lib/files/upload-quota";
 
 type RouteContext = { params: Promise<{ chatId: string }> };
 
@@ -95,6 +96,9 @@ export async function POST(request: Request, context: RouteContext) {
     if (!validation.valid) {
       throw ApiError.badRequest(validation.error || "File rejected by security policy");
     }
+
+    // Rolling 24h upload size quota per plan (user uploads vs. agent-generated files)
+    await assertUploadQuota({ userId: user.id }, fileSource === "tool" ? "agent" : "user", fileSize);
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);

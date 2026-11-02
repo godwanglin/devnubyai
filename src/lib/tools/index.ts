@@ -8,6 +8,7 @@ import { deepSearchTool } from "./deep-search";
 import { writeFileTool } from "./write-file";
 import { editFileTextTool } from "./edit-file-text";
 import { readFileTool } from "./read-file";
+import { readProjectSourceTool } from "./read-project-source";
 import { createSpreadsheetTool } from "./create-spreadsheet";
 import { createDocumentTool } from "./create-document";
 import { createPresentationTool } from "./create-presentation";
@@ -24,6 +25,7 @@ export * from "./deep-search";
 export * from "./write-file";
 export * from "./edit-file-text";
 export * from "./read-file";
+export * from "./read-project-source";
 export * from "./create-spreadsheet";
 export * from "./create-document";
 export * from "./create-presentation";
@@ -49,6 +51,7 @@ export const devnubyTools: RegisteredTool[] = [
   writeFileTool,
   editFileTextTool,
   readFileTool,
+  readProjectSourceTool,
   createSpreadsheetTool,
   createDocumentTool,
   createPresentationTool,

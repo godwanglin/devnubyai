@@ -73,6 +73,7 @@ export async function* streamFromGateway(
         errorClass: classifyHttpError(response.status, text),
         httpStatus: response.status,
         message: `Gateway returned HTTP ${response.status}`,
+        rawProviderText: text,
       });
     }
     if (!response.body) {

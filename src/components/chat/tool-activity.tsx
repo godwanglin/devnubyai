@@ -2,33 +2,16 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle,
-  ChevronDown,
-  FileCode,
-  FileSpreadsheet,
-  FileText,
-  Globe,
-  Hash,
-  HelpCircle,
-  Image as ImageIcon,
-  Loader2,
-  NotebookPen,
-  Presentation,
-  Terminal,
-  Wrench,
+  AlertCircle, ChevronDown, FileCode, FileSpreadsheet, FileText, Globe,
+  Hash, HelpCircle, Image as ImageIcon, Loader2, NotebookPen, Presentation,
+  Terminal, Wrench,
 } from "lucide-react";
-import {
-  ImagePreviewModal,
-  type PreviewImageTarget,
-} from "@/components/modals/image-preview-modal";
+import { ImagePreviewModal, type PreviewImageTarget } from "@/components/modals/image-preview-modal";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 import type { InteractiveQuizInput } from "@/lib/tools/interactive-quiz";
 import type { ToolActivity } from "@/types";
-import {
-  CodeExecutionWidget,
-  type StandaloneChartFigure,
-} from "./code-execution-widget";
+import { CodeExecutionWidget, type StandaloneChartFigure } from "./code-execution-widget";
 import { InteractiveQuizWidget } from "./interactive-quiz-widget";
 import { SearchActivityAccordion } from "./search-activity-accordion";
 
@@ -113,30 +96,18 @@ function describeTool(tool: ToolActivity, t: Translate): string {
 function ToolGlyph({ name, className }: { name?: string; className?: string }) {
   switch (name) {
     case "read_file":
-      return <FileText className={className} />;
+    case "create_document": return <FileText className={className} />;
     case "write_file":
-    case "edit_file":
-      return <FileCode className={className} />;
-    case "create_document":
-      return <FileText className={className} />;
-    case "create_spreadsheet":
-      return <FileSpreadsheet className={className} />;
-    case "create_presentation":
-      return <Presentation className={className} />;
-    case "vision_tool":
-      return <ImageIcon className={className} />;
-    case "execute_code":
-      return <Terminal className={className} />;
-    case "interactive_quiz":
-      return <HelpCircle className={className} />;
-    case "calculate":
-      return <Hash className={className} />;
-    case "fetch_url":
-      return <Globe className={className} />;
-    case "memory_note":
-      return <NotebookPen className={className} />;
-    default:
-      return <Wrench className={className} />;
+    case "edit_file": return <FileCode className={className} />;
+    case "create_spreadsheet": return <FileSpreadsheet className={className} />;
+    case "create_presentation": return <Presentation className={className} />;
+    case "vision_tool": return <ImageIcon className={className} />;
+    case "execute_code": return <Terminal className={className} />;
+    case "interactive_quiz": return <HelpCircle className={className} />;
+    case "calculate": return <Hash className={className} />;
+    case "fetch_url": return <Globe className={className} />;
+    case "memory_note": return <NotebookPen className={className} />;
+    default: return <Wrench className={className} />;
   }
 }
 
@@ -155,14 +126,8 @@ function extractPersistedCharts(output: unknown): StandaloneChartFigure[] {
 }
 
 function extractDiffStats(tool: ToolActivity): { added: number; removed: number } | null {
-  const output = (tool.output && typeof tool.output === "object" ? tool.output : {}) as Record<
-    string,
-    unknown
-  >;
-  const data = (output.data && typeof output.data === "object" ? output.data : output) as Record<
-    string,
-    unknown
-  >;
+  const output = (tool.output && typeof tool.output === "object" ? tool.output : {}) as Record<string, unknown>;
+  const data = (output.data && typeof output.data === "object" ? output.data : output) as Record<string, unknown>;
 
   if (data.linesChanged && typeof data.linesChanged === "object") {
     const lc = data.linesChanged as Record<string, unknown>;
@@ -171,15 +136,19 @@ function extractDiffStats(tool: ToolActivity): { added: number; removed: number 
     return { added, removed };
   }
 
-  // Fallback for write_file if output doesn't have linesChanged yet
-  if (tool.name === "write_file") {
-    const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<
-      string,
-      unknown
-    >;
-    if (typeof input.content === "string") {
-      return { added: input.content.split("\n").length, removed: 0 };
-    }
+  const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
+  // Live streaming fallback for write_file & edit_file before output.linesChanged arrives
+  if (tool.name === "write_file" && typeof input.content === "string" && input.content.length > 0) {
+    return { added: input.content.split("\n").length, removed: 0 };
+  }
+  if (tool.name === "edit_file") {
+    const added = typeof input.replacementText === "string" && input.replacementText.length > 0
+      ? input.replacementText.split("\n").length
+      : 0;
+    const removed = typeof input.targetText === "string" && input.targetText.length > 0
+      ? input.targetText.split("\n").length
+      : 0;
+    if (added > 0 || removed > 0) return { added, removed };
   }
 
   return null;
@@ -285,6 +254,13 @@ export function ToolActivityList({
         ? t("message.toolsRunning", { count: tools.length })
         : t("message.toolsUsed", { count: tools.length });
 
+  const singleErrorText =
+    tools.length === 1 && tools[0].state === "error" && tools[0].error
+      ? tools[0].error
+      : null;
+  const canExpand = tools.length > 1 || Boolean(singleErrorText);
+  const effectiveOpen = canExpand && isOpen;
+
   const quizTools = otherTools.filter(
     (tool) => tool.name === "interactive_quiz" && Boolean(tool.input)
   );
@@ -295,9 +271,13 @@ export function ToolActivityList({
         {/* Borderless trigger matching ThinkingAccordion ("Thought for Xs") */}
         <button
           type="button"
-          onClick={() => setIsOpen((v) => !v)}
-          aria-expanded={isOpen}
-          className="group inline-flex items-center gap-2 -ml-1.5 px-1.5 py-1 rounded-[8px] text-[13.5px] font-medium cursor-pointer select-none transition-colors hover:bg-[var(--hover)]"
+          disabled={!canExpand}
+          onClick={canExpand ? () => setIsOpen((v) => !v) : undefined}
+          aria-expanded={canExpand ? effectiveOpen : undefined}
+          className={cn(
+            "group inline-flex items-center gap-2 -ml-1.5 px-1.5 py-1 rounded-[8px] text-[13.5px] font-medium select-none transition-colors",
+            canExpand ? "cursor-pointer hover:bg-[var(--hover)]" : "cursor-default"
+          )}
         >
           {isRunning ? (
             <Loader2 className="w-4 h-4 shrink-0 animate-spin text-[var(--muted)]" />
@@ -315,7 +295,9 @@ export function ToolActivityList({
               "transition-colors truncate max-w-[260px] sm:max-w-[440px]",
               isRunning
                 ? "text-shimmer"
-                : "text-[var(--muted)] group-hover:text-[var(--ink)]"
+                : failedCount > 0 && tools.length === 1
+                  ? "text-red-400/90"
+                  : cn("text-[var(--muted)]", canExpand && "group-hover:text-[var(--ink)]")
             )}
           >
             {title}
@@ -338,50 +320,61 @@ export function ToolActivityList({
             </span>
           ) : null}
 
-          <ChevronDown
-            className={cn(
-              "w-3.5 h-3.5 shrink-0 text-[var(--muted)] transition-transform duration-200",
-              isOpen && "rotate-180"
-            )}
-          />
+          {canExpand ? (
+            <ChevronDown
+              className={cn(
+                "w-3.5 h-3.5 shrink-0 transition-transform duration-200",
+                singleErrorText ? "text-red-400/70" : "text-[var(--muted)]",
+                effectiveOpen && "rotate-180"
+              )}
+            />
+          ) : null}
         </button>
 
-        {/* Smooth grid-rows drawer — stays mounted so WASM code executes automatically */}
-        <div
-          className={cn(
-            "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
-            isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-          )}
-        >
-          <div className="overflow-hidden">
-            <div className="mt-1.5 ml-[7px] pl-4 border-l border-[var(--border)] space-y-1">
-              {searchTools.length > 0 ? (
-                <SearchActivityAccordion tools={searchTools} embedded />
-              ) : null}
+        {/* Smooth grid-rows drawer — stays mounted when execute_code is present so WASM executes */}
+        {(canExpand || otherTools.some((t) => t.name === "execute_code")) ? (
+          <div
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+              effectiveOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+            )}
+          >
+            <div className="overflow-hidden">
+              {singleErrorText ? (
+                <pre className="mt-1.5 ml-[7px] max-w-[620px] whitespace-pre-wrap break-words rounded-[8px] border border-red-400/20 bg-red-400/5 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-red-400/90">
+                  {singleErrorText}
+                </pre>
+              ) : (
+                <div className="mt-1.5 ml-[7px] pl-4 border-l border-[var(--border)] space-y-1">
+                  {tools.length > 1 && searchTools.length > 0 ? (
+                    <SearchActivityAccordion tools={searchTools} embedded />
+                  ) : null}
 
-              {otherTools.map((tool) => {
-                if (tool.name === "execute_code") {
-                  return (
-                    <CodeExecutionWidget
-                      key={tool.id}
-                      input={tool.input}
-                      output={tool.output}
-                      toolState={tool.state}
-                      toolCallId={tool.id}
-                      messageId={messageId}
-                      chatId={chatId}
-                      isMessageStreaming={isMessageStreaming}
-                      singleTool={tools.length === 1}
-                      onChartsChange={handleChartsChange}
-                    />
-                  );
-                }
+                  {otherTools.map((tool) => {
+                    if (tool.name === "execute_code") {
+                      return (
+                        <CodeExecutionWidget
+                          key={tool.id}
+                          input={tool.input}
+                          output={tool.output}
+                          toolState={tool.state}
+                          toolCallId={tool.id}
+                          messageId={messageId}
+                          chatId={chatId}
+                          isMessageStreaming={isMessageStreaming}
+                          singleTool={tools.length === 1}
+                          onChartsChange={handleChartsChange}
+                        />
+                      );
+                    }
 
-                return <ToolActivityRow key={tool.id} tool={tool} t={t} />;
-              })}
+                    return tools.length > 1 ? <ToolActivityRow key={tool.id} tool={tool} t={t} /> : null;
+                  })}
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       {/* Standalone Visual Charts from `execute_code` — rendered OUTSIDE the tool block */}
@@ -462,12 +455,7 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
       ) : (
         <ToolGlyph name={tool.name} className="w-3.5 h-3.5 shrink-0 text-[var(--muted)]" />
       )}
-      <span
-        className={cn(
-          "truncate",
-          isError ? "text-red-400/90" : "text-[var(--muted)]"
-        )}
-      >
+      <span className={cn("truncate", isError ? "text-red-400/90" : "text-[var(--muted)]")}>
         {describeTool(tool, t)}
       </span>
       {(() => {
@@ -475,17 +463,10 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
         return stats ? <DiffBadge stats={stats} /> : null;
       })()}
       {displaySec !== undefined ? (
-        <span className="font-mono text-[11px] text-[var(--muted)]/80 shrink-0">
-          ({displaySec}s)
-        </span>
+        <span className="font-mono text-[11px] text-[var(--muted)]/80 shrink-0">({displaySec}s)</span>
       ) : null}
       {canExpandError ? (
-        <ChevronDown
-          className={cn(
-            "w-3 h-3 shrink-0 text-red-400/70 transition-transform duration-200",
-            showError && "rotate-180"
-          )}
-        />
+        <ChevronDown className={cn("w-3 h-3 shrink-0 text-red-400/70 transition-transform duration-200", showError && "rotate-180")} />
       ) : null}
     </>
   );

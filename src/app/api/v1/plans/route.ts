@@ -3,6 +3,8 @@ import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { applyPlanDiscount, isPlanDiscountType, type PlanDiscountType } from "@/lib/plans/pricing";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
+import { costLimit } from "@/lib/billing/cost";
+import { normalizePlanFeatures, type PlanFeature } from "@/lib/plans/features";
 
 export interface PublicPlanModel {
   id: string;
@@ -27,13 +29,20 @@ export interface PublicPlanItem {
   discountYearlyValue: number | null;
   effectivePriceMonthly: number;
   effectivePriceYearly: number;
-  monthlyTokenLimit: number | null;
-  weeklyTokenLimit: number | null;
-  fiveHourTokenLimit: number | null;
+  /**
+   * Usage allowance relative to the base plan (lowest monthly limit), e.g. 10 = 10x.
+   * Dollar caps stay server-side: users only see how plans compare.
+   */
+  usage:
+    | { kind: "unlimited" }
+    | { kind: "base" }
+    | { kind: "multiple"; multiplier: number; baseName: string };
   dailyRequestLimit: number | null;
   requestsPerMinute: number | null;
   badge: string | null;
   sortOrder: number;
+  /** Admin-managed "Capacity & Quotas" rows, in display order */
+  features: PlanFeature[];
   models: PublicPlanModel[];
 }
 
@@ -72,6 +81,20 @@ export async function GET(request: Request) {
       },
     });
 
+    // The plan with the smallest monthly cap is the yardstick for the others
+    const base = plans
+      .map((p) => ({ name: p.name, limit: costLimit(p.monthlyCostLimitUsd) }))
+      .filter((p): p is { name: string; limit: number } => p.limit !== null)
+      .sort((a, b) => a.limit - b.limit)[0];
+
+    const usageOf = (monthlyCap: number | null): PublicPlanItem["usage"] => {
+      if (monthlyCap === null) return { kind: "unlimited" };
+      if (!base || monthlyCap <= base.limit) return { kind: "base" };
+      const ratio = monthlyCap / base.limit;
+      const multiplier = ratio >= 2 ? Math.round(ratio) : Math.round(ratio * 10) / 10;
+      return { kind: "multiple", multiplier, baseName: base.name };
+    };
+
     const items: PublicPlanItem[] = plans.map((p) => {
       const discountMonthlyType = isPlanDiscountType(p.discountMonthlyType) ? p.discountMonthlyType : null;
       const discountMonthlyValue = p.discountMonthlyValue != null ? p.discountMonthlyValue : null;
@@ -105,13 +128,12 @@ export async function GET(request: Request) {
         discountYearlyValue,
         effectivePriceMonthly: applyPlanDiscount(p.priceMonthly, monthlyDiscount),
         effectivePriceYearly: applyPlanDiscount(p.priceYearly, yearlyDiscount),
-        monthlyTokenLimit: p.monthlyTokenLimit != null ? Number(p.monthlyTokenLimit) : null,
-        weeklyTokenLimit: p.weeklyTokenLimit != null ? Number(p.weeklyTokenLimit) : null,
-        fiveHourTokenLimit: p.fiveHourTokenLimit != null ? Number(p.fiveHourTokenLimit) : null,
+        usage: usageOf(costLimit(p.monthlyCostLimitUsd)),
         dailyRequestLimit: p.dailyRequestLimit,
         requestsPerMinute: p.requestsPerMinute,
         badge: p.badge,
         sortOrder: p.sortOrder,
+        features: normalizePlanFeatures(p.features),
         models: activeModels,
       };
     });
