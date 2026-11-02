@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireSession } from "@/lib/auth/session";
-import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import {
   CACHE_KEYS,
@@ -73,6 +73,9 @@ export async function DELETE(request: Request) {
 
     if (targetSessionId) {
       // Revoke a specific session if it belongs to user and is NOT current
+      if (!/^\d{1,19}$/.test(targetSessionId)) {
+        throw ApiError.badRequest("Invalid sessionId");
+      }
       const sId = BigInt(targetSessionId);
       if (sId === ctx.sessionId) {
         return jsonSuccess({ revoked: false, message: "Cannot revoke current session via this method" }, { requestId });
