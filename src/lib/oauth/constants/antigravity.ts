@@ -5,17 +5,9 @@ import crypto from "node:crypto";
  * Matches official Cloud Code IDE extensions and 9router's implementation.
  */
 
-// Public client credentials for Google Cloud Code Assist IDE extension (reconstructed at runtime to avoid false-positive static secret scanning)
-const DEFAULT_CLIENT_ID_B64 = "MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==";
-const DEFAULT_CLIENT_SECRET_B64 = "R0NDU1BYLUs1OEZXUjQ4NmRMTDFtTEI4c1hDNHo2cURBZg==";
-
-export const ANTIGRAVITY_CLIENT_ID =
-  process.env.ANTIGRAVITY_CLIENT_ID ||
-  Buffer.from(DEFAULT_CLIENT_ID_B64, "base64").toString("utf8");
-
-export const ANTIGRAVITY_CLIENT_SECRET =
-  process.env.ANTIGRAVITY_CLIENT_SECRET ||
-  Buffer.from(DEFAULT_CLIENT_SECRET_B64, "base64").toString("utf8");
+// Cloud Code Assist IDE client credentials, supplied via .env (kept out of git for push protection)
+export const ANTIGRAVITY_CLIENT_ID = process.env.ANTIGRAVITY_CLIENT_ID ?? "";
+export const ANTIGRAVITY_CLIENT_SECRET = process.env.ANTIGRAVITY_CLIENT_SECRET ?? "";
 
 export const GOOGLE_OAUTH_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
