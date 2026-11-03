@@ -8,23 +8,25 @@ import { normalizeIndonesianPhone } from "@/lib/payments/phone";
 
 interface PhoneRequiredFormProps {
   methodName: string;
+  defaultPhone?: string | null;
   submitting: boolean;
   onSubmit: (phone: string) => void;
   onBack: () => void;
 }
 
 /**
- * Prompt shown when a selected payment method (e.g. DANA / ShopeePay) requires
- * an active mobile number that the user has not yet entered in their profile.
+ * Prompt shown when a selected payment method (e.g. DANA / ShopeePay / OVO) requires
+ * an active mobile number. Pre-fills user's saved phone if available.
  */
 export function PhoneRequiredForm({
   methodName,
+  defaultPhone,
   submitting,
   onSubmit,
   onBack,
 }: PhoneRequiredFormProps) {
   const { t } = useI18n();
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(defaultPhone || "");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function handleSubmit(e: React.FormEvent) {

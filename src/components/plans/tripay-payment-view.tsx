@@ -14,10 +14,13 @@ import {
   Wallet,
   Smartphone,
   BellRing,
+  Send,
+  Edit2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
 import type { TripayPaymentResult } from "@/lib/tripay/payment-kind";
+import { normalizeIndonesianPhone } from "@/lib/payments/phone";
 
 interface TripayPaymentViewProps {
   result: TripayPaymentResult;
@@ -33,10 +36,12 @@ function formatCountdown(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+const OVO_COOLDOWN_MS = 120_000; // 2 minutes cooldown
+
 /**
  * Tripay invoice inside the checkout modal: a locally rendered QR (QRIS), a
- * copyable pay code with Tripay's instructions (VA / retail), or a button to
- * Tripay's hosted page (e-wallet redirect). Status is polled the same way for all.
+ * copyable pay code with Tripay's instructions (VA / retail), a button to
+ * Tripay's hosted page (e-wallet redirect), or an OVO push prompt with repush & 2-min cooldown.
  */
 export function TripayPaymentView({
   result,
@@ -52,6 +57,29 @@ export function TripayPaymentView({
   const [now, setNow] = useState(() => Date.now());
   const expiresAt = new Date(result.expiredAt).getTime();
   const remaining = expiresAt - now;
+
+  // ── OVO Repush & Custom Phone State ──
+  const cooldownStorageKey = `ovo_repush_cooldown_${result.invoiceNumber}`;
+  const [ovoPhone, setOvoPhone] = useState(result.customerPhone || "");
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(result.customerPhone || "");
+  const [repushing, setRepushing] = useState(false);
+  const [repushSuccess, setRepushSuccess] = useState<string | null>(null);
+  const [repushError, setRepushError] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<number>(() => {
+    if (typeof window === "undefined") return Date.now() + OVO_COOLDOWN_MS;
+    const saved = localStorage.getItem(cooldownStorageKey);
+    if (saved) {
+      const parsed = Number(saved);
+      if (parsed > Date.now()) return parsed;
+    }
+    const initialCooldown = Date.now() + OVO_COOLDOWN_MS;
+    localStorage.setItem(cooldownStorageKey, String(initialCooldown));
+    return initialCooldown;
+  });
+
+  const cooldownRemaining = Math.max(0, cooldownUntil - now);
+  const isCooldownActive = cooldownRemaining > 0;
 
   // Render QRIS SVG if the transaction returned a qrString
   useEffect(() => {
@@ -115,6 +143,53 @@ export function TripayPaymentView({
     navigator.clipboard.writeText(result.payCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleRepushOvo = async (overrideTargetPhone?: string) => {
+    const targetPhone = overrideTargetPhone || ovoPhone;
+    const normalized = normalizeIndonesianPhone(targetPhone);
+    if (!normalized) {
+      setRepushError(t("plans.phoneInvalid"));
+      return;
+    }
+
+    setRepushing(true);
+    setRepushError(null);
+    setRepushSuccess(null);
+
+    try {
+      const res = await fetch("/api/v1/payments/tripay/ovo-repush", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          invoiceNumber: result.invoiceNumber,
+          phone: normalized,
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.error?.message || t("plans.createPaymentFailed"));
+      }
+
+      setOvoPhone(normalized);
+      setEditingPhone(false);
+      setRepushSuccess(t("plans.ovoSentSuccess"));
+
+      // Set and persist 2-minute cooldown
+      const nextCooldown = Date.now() + OVO_COOLDOWN_MS;
+      setCooldownUntil(nextCooldown);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(cooldownStorageKey, String(nextCooldown));
+      }
+
+      setTimeout(() => setRepushSuccess(null), 4000);
+    } catch (err) {
+      setRepushError(err instanceof Error ? err.message : t("plans.paymentError"));
+    } finally {
+      setRepushing(false);
+    }
   };
 
   return (
@@ -262,20 +337,122 @@ export function TripayPaymentView({
               <BellRing className="w-2.5 h-2.5" />
             </span>
           </div>
+
           <div>
             <h4 className="text-sm font-semibold text-[var(--ink)]">
               {t("plans.ovoPushTitle")}
             </h4>
             <p className="text-xs text-[var(--muted)] mt-1 max-w-xs mx-auto leading-relaxed">
-              {result.customerPhone
-                ? t("plans.ovoPushDescWithPhone", { phone: result.customerPhone })
+              {ovoPhone
+                ? t("plans.ovoPushDescWithPhone", { phone: ovoPhone })
                 : t("plans.ovoPushDesc")}
             </p>
+          </div>
+
+          {/* OVO Number Editor / Custom Phone Input */}
+          <div className="p-3 rounded-[10px] bg-[var(--surface)] border border-[var(--border)] text-left space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[var(--muted)] font-medium">Nomor Akun OVO:</span>
+              {!editingPhone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoneInput(ovoPhone);
+                    setEditingPhone(true);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  <span>{t("plans.ovoChangeNumber")}</span>
+                </button>
+              )}
+            </div>
+
+            {editingPhone ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    placeholder="Contoh: 08123456789"
+                    className="flex-1 px-3 py-1.5 rounded-[6px] bg-[var(--panel-elevated)] border border-[var(--border)] text-xs text-[var(--ink)] font-mono focus:outline-hidden focus:border-[var(--accent)]"
+                  />
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={repushing || isCooldownActive || !phoneInput.trim()}
+                    onClick={() => void handleRepushOvo(phoneInput)}
+                    className="text-xs h-8 px-3"
+                  >
+                    {repushing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Kirim"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditingPhone(false)}
+                    className="text-xs h-8 px-2 text-[var(--muted)]"
+                  >
+                    Batal
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm font-bold text-[var(--ink)]">
+                  {ovoPhone || "-"}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="p-2.5 rounded-[8px] bg-purple-500/5 border border-purple-500/20 text-purple-300 text-[11px] flex items-center justify-center gap-2">
             <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
             <span>{t("plans.ovoWaitingConfirm")}</span>
+          </div>
+
+          {/* Repush Notification Button with 2-Minute Cooldown */}
+          <div className="pt-1 space-y-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRepushOvo()}
+              disabled={repushing || isCooldownActive || isExpired}
+              className="w-full text-xs py-2 gap-1.5 border-purple-500/30 text-purple-300 hover:bg-purple-500/10"
+            >
+              {repushing ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{t("plans.processing")}</span>
+                </>
+              ) : isCooldownActive ? (
+                <>
+                  <BellRing className="w-3.5 h-3.5 text-purple-400" />
+                  <span>
+                    {t("plans.ovoCooldownWait", {
+                      time: formatCountdown(cooldownRemaining),
+                    })}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{t("plans.ovoSendPush")}</span>
+                </>
+              )}
+            </Button>
+
+            {repushSuccess && (
+              <p className="text-[11px] text-emerald-400 bg-emerald-500/10 p-2 rounded-[6px] border border-emerald-500/20 text-center">
+                {repushSuccess}
+              </p>
+            )}
+
+            {repushError && (
+              <p className="text-[11px] text-red-400 bg-red-500/10 p-2 rounded-[6px] border border-red-500/20 text-center">
+                {repushError}
+              </p>
+            )}
           </div>
 
           {result.checkoutUrl && (

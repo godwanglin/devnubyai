@@ -287,6 +287,7 @@ export function PlanCheckoutModal({
       ) : needsPhone ? (
         <PhoneRequiredForm
           methodName={selectedMethod?.name || "E-Wallet"}
+          defaultPhone={user?.phone}
           submitting={submitting}
           onSubmit={(phone) => void handlePay(phone)}
           onBack={() => {

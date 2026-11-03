@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         id: user.publicId,
         name: user.name,
         email: user.email,
+        phone: user.phone ?? null,
         initials,
         role: user.role,
         plan: user.plan?.slug ?? "free",

@@ -33,6 +33,7 @@ export interface SessionUser {
   publicId: string;
   email: string;
   name: string;
+  phone: string | null;
   avatarUrl: string | null;
   role: string;
   status: string;
@@ -171,6 +172,7 @@ export async function validateSessionToken(rawToken: string): Promise<SessionCon
       publicId: session.user.publicId,
       email: session.user.email,
       name: session.user.name,
+      phone: session.user.phone,
       avatarUrl: session.user.avatarUrl,
       role: session.user.role,
       status: session.user.status,

@@ -118,6 +118,7 @@ export interface UserProfile {
   name: string;
   email: string;
   initials: string;
+  phone?: string | null;
   role?: string;
   plan: string;
   planLabel: string;
