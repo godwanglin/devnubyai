@@ -25,7 +25,7 @@ import { isConnectionQuotaExhausted, type PoolConnection } from "../src/lib/gate
 import { isOAuthProviderId, OAUTH_PROVIDERS } from "../src/lib/oauth/providers";
 import type { GatewayExecutionRequest } from "../src/lib/gateways/types";
 import type { ToolDefinition } from "../src/lib/tools/types";
-import { resolveAntigravityModel } from "../src/lib/gateways/adapters/antigravity-model-map";
+import { antigravityThinkingConfig, resolveAntigravityModel } from "../src/lib/gateways/adapters/antigravity-model-map";
 import { isAntigravityPlaceholderModel, pingAntigravityModel } from "../src/lib/gateways/antigravity-models";
 
 function testAuthorizeUrl() {
@@ -338,6 +338,19 @@ function testModelResolution() {
   assert.deepEqual(resolveAntigravityModel("claude-opus-5-5-low"), { upstreamModel: "claude-opus-5-5-low", level: "low" });
   assert.deepEqual(resolveAntigravityModel("claude-sonnet-4-6"), { upstreamModel: "claude-sonnet-4-6", level: null });
   assert.deepEqual(resolveAntigravityModel("gemini-3.8-flash-medium(high)"), { upstreamModel: "gemini-3.8-flash-medium", level: "high" });
+
+  // User-picked reasoning effort overrides the "-high" preset; the model id stays the same
+  const flashHigh = resolveAntigravityModel("gemini-3.8-flash-high");
+  assert.equal(antigravityThinkingConfig(flashHigh, undefined)?.thinkingConfig.thinkingBudget, 24576);
+  assert.equal(antigravityThinkingConfig(flashHigh, "low")?.thinkingConfig.thinkingBudget, 1024);
+  assert.equal(antigravityThinkingConfig(flashHigh, "medium")?.thinkingConfig.thinkingBudget, 8192);
+  assert.equal(antigravityThinkingConfig(flashHigh, "off"), null);
+  const lowEnvelope = buildAntigravityEnvelope(
+    { model: "gemini-3.8-flash-high", messages: [{ role: "user", content: "hi" }], reasoningEffort: "low" },
+    "p"
+  ) as { model: string; request: { generationConfig: { thinkingConfig?: { thinkingBudget?: number } } } };
+  assert.equal(lowEnvelope.model, "gemini-3.8-flash-high");
+  assert.equal(lowEnvelope.request.generationConfig.thinkingConfig?.thinkingBudget, 1024);
 
   assert(isAntigravityPlaceholderModel("MODEL_PLACEHOLDER_M319"));
   assert(!isAntigravityPlaceholderModel("claude-sonnet-5-5-high"));

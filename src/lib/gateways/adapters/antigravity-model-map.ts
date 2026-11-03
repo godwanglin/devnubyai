@@ -63,12 +63,18 @@ function outputFloor(budget: number): number {
   return 32768;
 }
 
-/** thinkingConfig + minimum maxOutputTokens for a resolved model, or null when no thinking applies. */
+/**
+ * thinkingConfig + minimum maxOutputTokens, or null when no thinking applies.
+ * The reasoning effort the user picked wins over the preset in the model id; the
+ * model id itself is never rewritten, since not every model has every tier upstream.
+ */
 export function antigravityThinkingConfig(
   resolved: ResolvedAntigravityModel,
   effort: ReasoningEffortVariant | undefined
 ): { thinkingConfig: Record<string, unknown>; minOutputTokens: number } | null {
-  const level = resolved.level ?? levelFromEffort(effort);
+  // "off": send no thinkingConfig and let the model run on its own default
+  if (effort === "off") return null;
+  const level = levelFromEffort(effort) ?? resolved.level;
   if (!level) return null;
   const budget = LEVEL_TO_BUDGET[level];
   return { thinkingConfig: { thinkingBudget: budget, includeThoughts: true }, minOutputTokens: outputFloor(budget) };
