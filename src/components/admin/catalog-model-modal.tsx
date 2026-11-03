@@ -73,7 +73,7 @@ function CatalogModelModalInner({
   const [shortName, setShortName] = useState(() => model?.shortName ?? "");
   const [description, setDescription] = useState(() => model?.description ?? "");
   const [providerId, setProviderId] = useState(() => model?.providerId ?? (providers[0]?.id ?? ""));
-  const [category, setCategory] = useState<"powerful" | "fast" | "balanced" | "flagship">(() => (model?.category as "powerful") ?? "powerful");
+  const [category, setCategory] = useState<"powerful" | "fast" | "balanced" | "flagship" | "image">(() => (model?.category as "powerful") ?? "powerful");
   const [badge, setBadge] = useState(() => model?.badge ?? "");
   const [contextWindow, setContextWindow] = useState<string>(() => model?.contextWindow ? String(model.contextWindow) : "");
   const [maxOutputTokens, setMaxOutputTokens] = useState<string>(() => model?.maxOutputTokens ? String(model.maxOutputTokens) : "");
@@ -305,12 +305,13 @@ function CatalogModelModalInner({
               <label className="block text-xs font-medium text-[var(--ink)] mb-1">
                 {t("admin.catalog.category")}
               </label>
-              <CustomSelect<"powerful" | "fast" | "balanced" | "flagship">
+              <CustomSelect<"powerful" | "fast" | "balanced" | "flagship" | "image">
                 options={[
                   { value: "powerful", label: "Powerful" },
                   { value: "fast", label: "Fast" },
                   { value: "balanced", label: "Balanced" },
                   { value: "flagship", label: "Flagship" },
+                  { value: "image", label: "Image (generate_image)" },
                 ]}
                 value={category}
                 onChange={setCategory}

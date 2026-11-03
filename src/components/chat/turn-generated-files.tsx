@@ -33,6 +33,7 @@ const FILE_TOOLS = new Set([
   "create_document",
   "create_spreadsheet",
   "create_presentation",
+  "generate_image",
 ]);
 
 /** Running-state label per tool; keys match the ones in tool-activity.tsx. */
@@ -41,6 +42,7 @@ const RUNNING_LABEL_KEY: Record<string, string> = {
   create_document: "message.toolCreateDocument",
   create_spreadsheet: "message.toolCreateSpreadsheet",
   create_presentation: "message.toolCreatePresentation",
+  generate_image: "message.toolGenerateImage",
 };
 
 export interface TurnGeneratedFilesProps {

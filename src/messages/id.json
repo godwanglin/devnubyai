@@ -355,6 +355,7 @@
     "toolReadFile": "Membaca {target}",
     "toolWriteFile": "Menulis {target}",
     "toolCreateDocument": "Membuat dokumen {target}",
+    "toolGenerateImage": "Menghasilkan gambar {target}",
     "toolCreateSpreadsheet": "Membuat spreadsheet {target}",
     "toolCreatePresentation": "Membuat presentasi {target}",
     "toolEditFile": "Mengedit {target}",

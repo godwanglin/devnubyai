@@ -355,6 +355,7 @@
     "toolReadFile": "Reading {target}",
     "toolWriteFile": "Writing {target}",
     "toolCreateDocument": "Creating document {target}",
+    "toolGenerateImage": "Generating image {target}",
     "toolCreateSpreadsheet": "Creating spreadsheet {target}",
     "toolCreatePresentation": "Creating presentation {target}",
     "toolEditFile": "Edited {target}",

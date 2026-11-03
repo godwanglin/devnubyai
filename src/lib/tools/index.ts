@@ -18,6 +18,7 @@ import { calculateTool } from "./calculate";
 import { fetchUrlTool } from "./fetch-url";
 import { memoryNoteTool } from "./memory-note";
 import { loadSkillTool } from "./load-skill";
+import { generateImageTool } from "./generate-image";
 
 export * from "./types";
 export * from "./ssrf";
@@ -37,6 +38,7 @@ export * from "./calculate";
 export * from "./fetch-url";
 export * from "./memory-note";
 export * from "./load-skill";
+export * from "./generate-image";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RegisteredTool = ToolDefinition<any, any>;
@@ -64,6 +66,7 @@ export const devnubyTools: RegisteredTool[] = [
   fetchUrlTool,
   memoryNoteTool,
   loadSkillTool,
+  generateImageTool,
 ];
 
 /**

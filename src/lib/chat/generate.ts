@@ -369,7 +369,14 @@ export function createChatGenerationStream(
               "  * Word Document (.docx) for CVs, resumes, cover letters, formal proposals, memos, contracts, and reports: ALWAYS use `create_document` with structured sections (headings, styled paragraphs, bullet lists, numbered lists, and tables).",
               "  * Excel Spreadsheet (.xlsx) for budgets, financial plans, schedules, matrices, or data tables: ALWAYS use `create_spreadsheet` with sheet names, structured headers, cell data, and Excel formulas (e.g. { formula: '=SUM(B2:B10)' }).",
               "  * PowerPoint Presentation (.pptx) for pitch decks, slides, quarterly reviews, and presentations: ALWAYS use `create_presentation` with structured slides, bullet points, and speaker notes.",
-              "  * NEVER write fake mock binary strings into `write_file`. Always use these dedicated binary document tools so real, valid Office files are generated and immediately previewable/downloadable."
+              "  * NEVER write fake mock binary strings into `write_file`. Always use these dedicated binary document tools so real, valid Office files are generated and immediately previewable/downloadable.",
+              "",
+              "## 10. Generating Images (`generate_image`)",
+              "- When the user asks to generate, draw, illustrate, design, or create an image, illustration, photo, logo, or icon:",
+              "  * ALWAYS call `generate_image` with a rich visual prompt describing subject, composition, lighting, and style.",
+              "  * If the user specifies an aspect ratio (e.g. 16:9 widescreen, 9:16 vertical/story, 1:1 square), set `aspectRatio`.",
+              "  * If the user asks for a transparent background, cutout, sticker, or logo without background, set `transparentBackground: true`. The system automatically isolates the subject into an authentic transparent PNG.",
+              "  * Do NOT use `write_file` or mock base64 for images; use `generate_image` so real images are rendered and previewable in chat."
             ].join("\n"),
           });
 

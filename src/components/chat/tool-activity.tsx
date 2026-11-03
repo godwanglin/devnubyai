@@ -63,6 +63,8 @@ function describeTool(tool: ToolActivity, t: Translate): string {
       return t("message.toolCreateSpreadsheet", { target: officeFilename(input.filename, ".xlsx") });
     case "create_presentation":
       return t("message.toolCreatePresentation", { target: officeFilename(input.filename, ".pptx") });
+    case "generate_image":
+      return t("message.toolGenerateImage", { target: String(input.prompt || "gambar").slice(0, 30) });
     case "edit_file":
       return t("message.toolEditFile", {
         target: baseName(input.filename || input.fileId, "file"),
@@ -103,6 +105,7 @@ function ToolGlyph({ name, className }: { name?: string; className?: string }) {
     case "edit_file": return <FileCode className={className} />;
     case "create_spreadsheet": return <FileSpreadsheet className={className} />;
     case "create_presentation": return <Presentation className={className} />;
+    case "generate_image":
     case "vision_tool": return <ImageIcon className={className} />;
     case "execute_code": return <Terminal className={className} />;
     case "interactive_quiz": return <HelpCircle className={className} />;

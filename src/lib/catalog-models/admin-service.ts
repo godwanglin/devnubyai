@@ -83,7 +83,7 @@ export const createCatalogModelSchema = z.object({
   shortName: z.string().trim().min(1).max(60),
   description: z.string().trim().max(500).optional().nullable(),
   providerId: z.string(),
-  category: z.enum(["powerful", "fast", "balanced", "flagship"]).default("powerful"),
+  category: z.enum(["powerful", "fast", "balanced", "flagship", "image"]).default("powerful"),
   badge: z.string().trim().max(32).optional().nullable(),
   contextWindow: z.number().int().positive().optional().nullable(),
   maxOutputTokens: z.number().int().positive().optional().nullable(),
