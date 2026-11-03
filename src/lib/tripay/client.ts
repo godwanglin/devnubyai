@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import type {
+  TripayChannel,
   TripayConfig,
-  TripayCreateQrisRequest,
+  TripayCreateTransactionRequest,
   TripayTransactionData,
 } from "./types";
 
@@ -88,10 +89,13 @@ async function tripayRequest<T>(
   return json.data as T;
 }
 
-/** POST /transaction/create for a QRIS channel; the QR payload is returned in `qr_string` */
-export async function createTripayQrisTransaction(
+/**
+ * POST /transaction/create for any channel. Depending on the channel Tripay
+ * returns `qr_string` (QRIS), `pay_code` (VA / retail) or `checkout_url` (e-wallet redirect).
+ */
+export async function createTripayTransaction(
   config: TripayConfig,
-  input: TripayCreateQrisRequest
+  input: TripayCreateTransactionRequest
 ): Promise<TripayTransactionData> {
   const expiresIn = input.expiresInMinutes ?? DEFAULT_EXPIRY_MINUTES;
   return tripayRequest<TripayTransactionData>(config, "/transaction/create", {
@@ -122,9 +126,7 @@ export async function getTripayTransactionDetail(
   );
 }
 
-/** Lists the merchant's channels; used by the admin "test connection" button */
-export async function listTripayChannels(
-  config: TripayConfig
-): Promise<Array<{ code: string; name: string; active: boolean }>> {
-  return tripayRequest(config, "/merchant/payment-channel");
+/** Lists the merchant's channels (admin "test connection" and channel picker) */
+export async function listTripayChannels(config: TripayConfig): Promise<TripayChannel[]> {
+  return tripayRequest<TripayChannel[]>(config, "/merchant/payment-channel");
 }

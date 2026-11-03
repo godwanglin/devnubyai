@@ -58,6 +58,7 @@ model User {
   publicId    String    @unique(map: "uq_users_public_id") @default(uuid(7)) @map("public_id") @db.Char(36)
   email       String    @unique(map: "uq_users_email") @db.VarChar(320)
   name        String    @db.VarChar(120)
+  phone       String?   @db.VarChar(32)
   avatarUrl   String?   @map("avatar_url") @db.VarChar(2048)
   role        String    @default("user") @db.VarChar(16)
   status      String    @default("active") @db.VarChar(16)

@@ -5,13 +5,16 @@ import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/respon
 import { getPublicOrigin } from "@/lib/api/origin";
 import { resolvePlanCheckout } from "@/lib/payments/plan-checkout";
 import { getTripayConfig } from "@/lib/tripay/config";
-import { createTripayQrisTransaction, TripayApiError } from "@/lib/tripay/client";
-import { tripayCheckoutRequestSchema } from "@/lib/tripay/schemas";
+import { createTripayTransaction, TripayApiError } from "@/lib/tripay/client";
+import { tripayPaymentKind, type TripayPaymentResult } from "@/lib/tripay/payment-kind";
+import { isTripayPhoneRequiredError, tripayCheckoutRequestSchema } from "@/lib/tripay/schemas";
+import { normalizeIndonesianPhone, PHONE_REQUIRED_CODE } from "@/lib/payments/phone";
 import type { Prisma } from "@/generated/client";
 
 /**
  * POST /api/v1/payments/tripay/checkout
- * Creates a Tripay QRIS transaction for a plan purchase and returns the QR payload.
+ * Creates a Tripay transaction for a plan purchase on any enabled channel and
+ * returns what the UI needs: a QR payload, a VA/pay code, or Tripay's checkout URL.
  */
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
@@ -38,7 +41,16 @@ export async function POST(request: Request) {
 
     const method = await db.paymentMethod.findFirst({
       where: { publicId: parsed.data.methodId, provider: "tripay", isActive: true },
-      select: { id: true, code: true, name: true, dokuCode: true, minAmount: true, maxAmount: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        dokuCode: true,
+        category: true,
+        flowType: true,
+        minAmount: true,
+        maxAmount: true,
+      },
     });
     if (!method?.dokuCode) {
       throw ApiError.badRequest("Metode pembayaran tidak tersedia");
@@ -55,13 +67,50 @@ export async function POST(request: Request) {
     // Invoice numbers are minted here, never taken from the client
     const invoiceNumber = `INV-${Date.now()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
     const appOrigin = new URL(getPublicOrigin(request)).origin;
+
+    // Load user's saved phone or accept and save the one submitted with the request
+    const userRecord = await db.user.findUnique({
+      where: { id: user.id },
+      select: { phone: true },
+    });
+    let resolvedPhone = userRecord?.phone || null;
+
+    if (parsed.data.customerPhone) {
+      const normalized = normalizeIndonesianPhone(parsed.data.customerPhone);
+      if (!normalized) {
+        throw new ApiError(
+          400,
+          "BAD_REQUEST",
+          "Format nomor HP tidak valid. Gunakan format Indonesia (misal: 08123456789 atau 628123456789)."
+        );
+      }
+      resolvedPhone = normalized;
+      await db.user.update({
+        where: { id: user.id },
+        data: { phone: normalized },
+      });
+    }
+
+    const kind = tripayPaymentKind(method);
+
+    // E-wallet channels in Tripay require a phone number up front
+    if (!resolvedPhone && kind === "redirect") {
+      throw new ApiError(
+        400,
+        "BAD_REQUEST",
+        "Metode pembayaran ini memerlukan nomor WhatsApp/HP aktif untuk memproses pembayaran.",
+        { code: PHONE_REQUIRED_CODE }
+      );
+    }
+
     const customer = {
       name: user.name || "Customer",
       email: user.email,
+      ...(resolvedPhone ? { phone: resolvedPhone } : {}),
     };
 
     try {
-      const result = await createTripayQrisTransaction(config, {
+      const result = await createTripayTransaction(config, {
         channel: method.dokuCode,
         merchantRef: invoiceNumber,
         amount: planCheckout.amount,
@@ -70,8 +119,14 @@ export async function POST(request: Request) {
         returnUrl: `${appOrigin}/plans?payment=success&invoice=${encodeURIComponent(invoiceNumber)}`,
       });
 
-      if (!result.qr_string) {
+      if (kind === "qris" && !result.qr_string) {
         throw new TripayApiError("Tripay did not return a QR code", 502, result);
+      }
+      if (kind === "pay_code" && !result.pay_code) {
+        throw new TripayApiError("Tripay did not return a payment code", 502, result);
+      }
+      if (kind === "redirect" && !result.checkout_url) {
+        throw new TripayApiError("Tripay did not return a checkout URL", 502, result);
       }
 
       const fee = Math.max(0, Number(result.fee_customer) || 0);
@@ -94,29 +149,43 @@ export async function POST(request: Request) {
           totalAmount,
           currency: "IDR",
           status: "PENDING",
-          qrContent: result.qr_string,
+          qrContent: result.qr_string || null,
+          paymentCode: result.pay_code || null,
+          checkoutUrl: result.checkout_url || null,
           customerName: customer.name,
           customerEmail: customer.email,
+          customerPhone: resolvedPhone,
           metadata: planCheckout.metadata as Prisma.InputJsonValue,
           gatewayResponse: result as Prisma.InputJsonValue,
           expiredAt,
         },
       });
 
-      return jsonSuccess(
-        {
-          invoiceNumber,
-          qrString: result.qr_string,
-          amount: planCheckout.amount,
-          fee,
-          totalAmount,
-          expiredAt: expiredAt.toISOString(),
-        },
-        { requestId }
-      );
+      const payment: TripayPaymentResult = {
+        invoiceNumber,
+        kind,
+        paymentName: method.name,
+        qrString: result.qr_string || null,
+        payCode: result.pay_code || null,
+        checkoutUrl: result.checkout_url || null,
+        instructions: Array.isArray(result.instructions) ? result.instructions : [],
+        amount: planCheckout.amount,
+        fee,
+        totalAmount,
+        expiredAt: expiredAt.toISOString(),
+      };
+      return jsonSuccess(payment, { requestId });
     } catch (err) {
       if (err instanceof TripayApiError) {
         console.error("[Tripay] create transaction failed:", err.message);
+        if (isTripayPhoneRequiredError(err.message)) {
+          throw new ApiError(
+            400,
+            "BAD_REQUEST",
+            "Metode pembayaran ini memerlukan nomor WhatsApp/HP aktif untuk memproses pembayaran.",
+            { code: PHONE_REQUIRED_CODE }
+          );
+        }
         throw new ApiError(err.status, "BAD_REQUEST", err.message);
       }
       throw err;

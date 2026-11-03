@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, Loader2, Image as ImageIcon, RefreshCw } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  Image as ImageIcon,
+  RefreshCw,
+  ArrowLeftRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { useToast } from "@/providers/toast-provider";
@@ -21,6 +29,8 @@ export function PaymentMethodsView() {
   const [deletingMethod, setDeletingMethod] = useState<PaymentMethodItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [failoverTarget, setFailoverTarget] = useState<"tripay" | "doku" | null>(null);
+  const [isSwitching, setIsSwitching] = useState(false);
 
   // Pagination state (default 10)
   const [page, setPage] = useState(1);
@@ -103,6 +113,28 @@ export function PaymentMethodsView() {
     }
   }
 
+  async function handleFailoverConfirm() {
+    if (!failoverTarget) return;
+    try {
+      setIsSwitching(true);
+      const res = await fetch("/api/v1/admin/payment-methods/failover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ primaryProvider: failoverTarget }),
+      });
+      const json = await res.json().catch(() => null);
+      toast(res.ok ? json?.data?.message : json?.error?.message || "Gagal mengalihkan gateway");
+      if (res.ok) {
+        setFailoverTarget(null);
+        await loadMethods();
+      }
+    } catch {
+      toast("Terjadi kesalahan jaringan");
+    } finally {
+      setIsSwitching(false);
+    }
+  }
+
   async function handleDeleteConfirm() {
     if (!deletingMethod) return;
     try {
@@ -140,11 +172,31 @@ export function PaymentMethodsView() {
         <div>
           <h2 className="text-base font-semibold text-[var(--ink)]">Daftar Metode Pembayaran</h2>
           <p className="text-xs text-[var(--muted)]">
-            Atur metode pembayaran, logo gambar R2, sumber gateway (DOKU / Tripay QRIS), alur pembayaran, dan status aktif.
+            Atur metode pembayaran, logo, sumber gateway (Tripay utama, DOKU cadangan), alur pembayaran, dan status aktif.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setFailoverTarget("tripay")}
+            className="border border-[var(--border)] gap-1.5"
+            title="Aktifkan semua metode Tripay, nonaktifkan DOKU"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+            Pakai Tripay
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setFailoverTarget("doku")}
+            className="border border-[var(--border)] gap-1.5"
+            title="Aktifkan semua metode DOKU, nonaktifkan Tripay (saat Tripay bermasalah)"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5" />
+            Pakai DOKU
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -270,7 +322,7 @@ export function PaymentMethodsView() {
                     <span className="text-[var(--muted)] block">Tipe Alur:</span>
                     <span className="font-medium text-[var(--ink)] capitalize">
                       {method.provider === "tripay"
-                        ? `🟢 Tripay QRIS · ${method.dokuCode || "-"}`
+                        ? `🟢 Tripay · ${method.dokuCode || "-"}`
                         : method.flowType === "direct"
                           ? "⚡ DOKU Direct VA"
                           : "🔗 DOKU Checkout"}
@@ -360,6 +412,24 @@ export function PaymentMethodsView() {
         onClose={() => setIsModalOpen(false)}
         method={editingMethod}
         onSaved={loadMethods}
+      />
+
+      {/* Confirm Gateway Failover */}
+      <ConfirmModal
+        isOpen={Boolean(failoverTarget)}
+        onClose={() => setFailoverTarget(null)}
+        onConfirm={handleFailoverConfirm}
+        title={`Alihkan pembayaran ke ${failoverTarget === "doku" ? "DOKU" : "Tripay"}?`}
+        description={
+          <span>
+            Semua metode <strong>{failoverTarget === "doku" ? "DOKU" : "Tripay"}</strong> akan diaktifkan dan
+            semua metode <strong>{failoverTarget === "doku" ? "Tripay" : "DOKU"}</strong> dinonaktifkan.
+            Tagihan yang sudah dibuat tetap diproses gateway asalnya.
+          </span>
+        }
+        confirmLabel="Alihkan"
+        cancelLabel="Batal"
+        loading={isSwitching}
       />
 
       {/* Confirm Delete Modal */}

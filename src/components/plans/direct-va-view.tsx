@@ -63,14 +63,14 @@ export function DirectVaView({
           return true;
         } else if (json?.status === "expired") {
           setIsExpired(true);
-          setStatusMessage("Waktu pembayaran telah kedaluwarsa (batas flat 1 jam). Silakan buat pesanan baru.");
+          setStatusMessage(t("plans.expiredNotice"));
         } else if (json?.status === "failed") {
-          setStatusMessage("Pembayaran gagal atau dibatalkan.");
+          setStatusMessage(t("plans.failedOrCancelled"));
         }
       } catch (err) {
         if (!silent) {
           setStatusMessage(
-            err instanceof Error ? err.message : "Gagal memeriksa status pembayaran"
+            err instanceof Error ? err.message : t("plans.checkStatusFailed")
           );
         }
       } finally {
@@ -78,7 +78,7 @@ export function DirectVaView({
       }
       return false;
     },
-    [userId, vaResult.invoiceNumber, onPaid]
+    [userId, vaResult.invoiceNumber, onPaid, t]
   );
 
   // Auto-polling every 3.5 seconds while open and not expired
@@ -105,15 +105,13 @@ export function DirectVaView({
       {isExpired ? (
         <div className="p-4 rounded-[12px] bg-red-500/10 border border-red-500/20 text-center space-y-2">
           <AlertCircle className="w-8 h-8 text-red-400 mx-auto" />
-          <h4 className="text-sm font-semibold text-red-400">Pembayaran Kedaluwarsa</h4>
-          <p className="text-xs text-[var(--muted)]">
-            Batas waktu pembayaran flat 1 jam telah habis. Silakan buat pesanan baru untuk melanjutkan.
-          </p>
+          <h4 className="text-sm font-semibold text-red-400">{t("plans.expiredTitle")}</h4>
+          <p className="text-xs text-[var(--muted)]">{t("plans.expiredNotice")}</p>
         </div>
       ) : (
         <div className="p-4 rounded-[12px] bg-[var(--panel-elevated)] border border-[var(--border)] text-center space-y-3">
           <span className="text-xs uppercase font-semibold text-[var(--muted)] tracking-wider">
-            Nomor Virtual Account ({vaResult.bank.toUpperCase()})
+            {t("plans.vaNumberLabel", { name: vaResult.bank.toUpperCase() })}
           </span>
           <div className="flex items-center justify-center gap-3">
             <span className="text-2xl font-mono font-bold text-[var(--ink)] tracking-wider select-all">
@@ -137,7 +135,7 @@ export function DirectVaView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline"
               >
-                <span>Lihat Petunjuk Pembayaran</span>
+                <span>{t("plans.viewInstructions")}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -147,11 +145,11 @@ export function DirectVaView({
 
       <div className="space-y-2 text-xs text-[var(--muted)]">
         <div className="flex justify-between py-1 border-b border-[var(--border)]">
-          <span>Nomor Invoice</span>
+          <span>{t("plans.invoiceNumber")}</span>
           <span className="font-mono text-[var(--ink)]">{vaResult.invoiceNumber}</span>
         </div>
         <div className="flex justify-between py-1 border-b border-[var(--border)]">
-          <span>Total Tagihan</span>
+          <span>{t("plans.totalBill")}</span>
           <span className="font-semibold text-[var(--ink)]">{formatRupiah(vaResult.amount)}</span>
         </div>
         <div className="flex justify-between py-1 border-b border-[var(--border)]">
@@ -159,7 +157,7 @@ export function DirectVaView({
           <span className="text-amber-400 font-medium">
             {vaResult.expiredDate
               ? new Date(vaResult.expiredDate).toLocaleString("id-ID")
-              : "1 Jam dari pembuatan"}
+              : t("plans.oneHourFromCreation")}
           </span>
         </div>
       </div>
@@ -177,7 +175,7 @@ export function DirectVaView({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            Menunggu pembayaran via DOKU...
+            {t("plans.waitingPayment")}
           </span>
           <button
             type="button"
@@ -186,18 +184,18 @@ export function DirectVaView({
             className="flex items-center gap-1 text-[var(--accent)] hover:underline cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3 h-3 ${checking ? "animate-spin" : ""}`} />
-            <span>{checking ? "Mengecek..." : "Cek Sekarang"}</span>
+            <span>{checking ? t("plans.checkingStatus") : t("plans.checkNow")}</span>
           </button>
         </div>
       )}
 
       <p className="text-xs text-[var(--muted)] bg-white/[0.03] p-3 rounded-[8px] border border-white/5">
-        {t("plans.vaInstructions")} (Batas pembayaran berlaku 1 jam flat).
+        {t("plans.vaInstructions")} {t("plans.payWithinFlatOneHour")}
       </p>
 
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1 text-xs" onClick={onClose}>
-          Tutup
+          {t("plans.close")}
         </Button>
         {!isExpired && (
           <Button
@@ -209,10 +207,10 @@ export function DirectVaView({
             {checking ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                Mengecek...
+                {t("plans.checkingStatus")}
               </>
             ) : (
-              "Saya Sudah Bayar"
+              t("plans.iHavePaid")
             )}
           </Button>
         )}

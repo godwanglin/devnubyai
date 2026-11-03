@@ -94,7 +94,7 @@ export function TripayConfigCard() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-[var(--ink)]">Tripay (QRIS)</h3>
+              <h3 className="text-base font-semibold text-[var(--ink)]">Tripay (VA, E-Wallet, QRIS)</h3>
               <span className={cn(
                 "px-2 py-0.5 rounded-full text-xs font-semibold",
                 isProd

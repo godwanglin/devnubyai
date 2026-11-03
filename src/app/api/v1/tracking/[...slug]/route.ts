@@ -96,6 +96,8 @@ export async function GET(request: Request, context: RouteContext) {
         amount: number;
         vaNumber?: string;
         bank?: string;
+        methodName?: string;
+        kind?: "qris" | "pay_code" | "redirect";
         checkoutUrl?: string;
         qrString?: string;
         expiredAt?: string;
@@ -121,6 +123,15 @@ export async function GET(request: Request, context: RouteContext) {
             amount: tx.totalAmount,
             vaNumber: tx.paymentCode || undefined,
             bank: tx.paymentMethodCode || undefined,
+            methodName: tx.paymentMethodName || undefined,
+            kind:
+              tx.provider === "tripay"
+                ? tx.qrContent
+                  ? "qris"
+                  : tx.paymentCode
+                    ? "pay_code"
+                    : "redirect"
+                : undefined,
             checkoutUrl: tx.checkoutUrl || undefined,
             qrString: tx.qrContent || undefined,
             expiredAt: tx.expiredAt ? tx.expiredAt.toISOString() : undefined,

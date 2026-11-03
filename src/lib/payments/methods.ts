@@ -8,7 +8,7 @@ import {
   invalidatePaymentMethodsCache,
 } from "@/lib/redis/cache-keys";
 import { ApiError } from "@/lib/api/response";
-import { TRIPAY_QRIS_CHANNELS } from "@/lib/tripay/types";
+import { findTripayChannel } from "@/lib/tripay/channels";
 import type {
   PaymentMethodItem,
   PaymentMethodCategory,
@@ -44,20 +44,29 @@ function toPaymentMethodItem(record: any): PaymentMethodItem {
 }
 
 /**
- * Tripay serves QRIS only: its methods are always category `qris`, rendered in
- * our UI (`direct`), with one of Tripay's QRIS channel codes.
+ * Tripay methods must use a channel the merchant has enabled at Tripay; category
+ * and flow are derived from that channel, never picked by hand.
  */
-function enforceProviderRules(
+async function enforceProviderRules(
   provider: PaymentProvider,
   channelCode: string | null | undefined
-): { category?: PaymentMethodCategory; flowType?: PaymentFlowType } {
+): Promise<{ category?: PaymentMethodCategory; flowType?: PaymentFlowType }> {
   if (provider !== "tripay") return {};
-  if (!channelCode || !(TRIPAY_QRIS_CHANNELS as readonly string[]).includes(channelCode)) {
+  if (!channelCode) {
+    throw ApiError.badRequest("Channel code Tripay wajib dipilih");
+  }
+  let channel;
+  try {
+    channel = await findTripayChannel(channelCode);
+  } catch (err) {
     throw ApiError.badRequest(
-      `Channel code Tripay harus salah satu dari: ${TRIPAY_QRIS_CHANNELS.join(", ")}`
+      `Gagal memuat channel Tripay: ${err instanceof Error ? err.message : "unknown error"}`
     );
   }
-  return { category: "qris", flowType: "direct" };
+  if (!channel) {
+    throw ApiError.badRequest(`Channel '${channelCode}' tidak tersedia di akun merchant Tripay`);
+  }
+  return { category: channel.category, flowType: channel.flowType };
 }
 
 export async function listPaymentMethods(options?: {
@@ -105,7 +114,7 @@ export async function createPaymentMethod(
     throw new Error(`Metode pembayaran dengan kode '${input.code}' sudah digunakan`);
   }
 
-  const forced = enforceProviderRules(input.provider, input.dokuCode);
+  const forced = await enforceProviderRules(input.provider, input.dokuCode);
   const created = await db.paymentMethod.create({
     data: {
       name: input.name,
@@ -162,10 +171,13 @@ export async function updatePaymentMethod(
     }
   }
 
-  const forced = enforceProviderRules(
-    input.provider ?? (current.provider === "tripay" ? "tripay" : "doku"),
-    input.dokuCode !== undefined ? input.dokuCode : current.dokuCode
-  );
+  const providerOrChannelChanged = input.provider !== undefined || input.dokuCode !== undefined;
+  const forced = providerOrChannelChanged
+    ? await enforceProviderRules(
+        input.provider ?? (current.provider === "tripay" ? "tripay" : "doku"),
+        input.dokuCode !== undefined ? input.dokuCode : current.dokuCode
+      )
+    : {};
   const category = forced.category ?? input.category;
   const flowType = forced.flowType ?? input.flowType;
   const updated = await db.paymentMethod.update({

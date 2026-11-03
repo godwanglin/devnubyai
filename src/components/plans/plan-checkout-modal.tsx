@@ -1,18 +1,22 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Image from "next/image";
-import { Check, Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
 import { useAccount } from "@/providers/account-provider";
 import { DirectVaView, type DirectVaResult } from "./direct-va-view";
 import { QrisCheckoutView, type CheckoutResult } from "./qris-checkout-view";
-import { TripayQrisView, type TripayQrisResult } from "./tripay-qris-view";
+import { TripayPaymentView } from "./tripay-payment-view";
 import { PaymentSuccessView } from "./payment-success-view";
+import { PaymentMethodList } from "./payment-method-list";
+import { PendingInvoiceBanner, type PendingInvoice } from "./pending-invoice-banner";
+import { PhoneRequiredForm } from "./phone-required-form";
+import { PHONE_REQUIRED_CODE } from "@/lib/payments/phone";
 import type { PublicPlanItem } from "@/app/api/v1/plans/route";
 import type { PaymentMethodItem } from "@/lib/payments/types";
+import type { TripayPaymentResult } from "@/lib/tripay/payment-kind";
 
 interface PlanCheckoutModalProps {
   isOpen: boolean;
@@ -36,21 +40,14 @@ export function PlanCheckoutModal({
   const [loadingMethods, setLoadingMethods] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsPhone, setNeedsPhone] = useState(false);
   const [vaResult, setVaResult] = useState<DirectVaResult | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
-  const [tripayResult, setTripayResult] = useState<TripayQrisResult | null>(null);
+  const [tripayResult, setTripayResult] = useState<TripayPaymentResult | null>(null);
   const [isPaid, setIsPaid] = useState(false);
-  const [pendingInvoice, setPendingInvoice] = useState<{
-    invoice: string;
-    type?: string;
-    amount: number;
-    qrString?: string;
-    vaNumber?: string;
-    bank?: string;
-    expiredAt?: string;
-  } | null>(null);
+  const [pendingInvoice, setPendingInvoice] = useState<PendingInvoice | null>(null);
 
-  // Sync initial cycle & check active pending invoices when modal opens
+  // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setCycle(initialCycle);
@@ -59,6 +56,7 @@ export function PlanCheckoutModal({
       setTripayResult(null);
       setIsPaid(false);
       setError(null);
+      setNeedsPhone(false);
 
       if (user?.id) {
         fetch(`/api/v1/tracking/pym:${encodeURIComponent(String(user.id))}`, {
@@ -131,7 +129,7 @@ export function PlanCheckoutModal({
     }
   };
 
-  const handlePay = async () => {
+  const handlePay = async (customerPhoneOverride?: string) => {
     if (!selectedMethod) {
       setError(t("plans.selectMethod"));
       return;
@@ -144,7 +142,6 @@ export function PlanCheckoutModal({
 
     try {
       if (selectedMethod.provider === "tripay") {
-        // Tripay QRIS: the server mints the invoice and returns the QR payload
         const res = await fetch("/api/v1/payments/tripay/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -152,16 +149,25 @@ export function PlanCheckoutModal({
           body: JSON.stringify({
             methodId: selectedMethod.publicId,
             amount: effectivePrice,
+            customerPhone: customerPhoneOverride,
             metadata: { planId: plan.id, cycle },
           }),
         });
         const json = await res.json();
-        if (!res.ok) {
-          throw new Error(json.error?.message || "Gagal membuat QRIS");
+
+        // The gateway needs a phone number the user hasn't saved yet: ask, then retry
+        if (!res.ok && json?.error?.details?.code === PHONE_REQUIRED_CODE) {
+          setNeedsPhone(true);
+          return;
         }
+
+        if (!res.ok) {
+          throw new Error(json.error?.message || t("plans.createPaymentFailed"));
+        }
+        setNeedsPhone(false);
         setTripayResult(json.data);
       } else if (selectedMethod.flowType === "direct" && selectedMethod.code) {
-        // Direct VA flow (e.g. BRI, BCA, Mandiri)
+        // DOKU Direct VA
         const res = await fetch("/api/v1/payments/doku/direct-va", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -171,25 +177,20 @@ export function PlanCheckoutModal({
             amount: effectivePrice,
             bank: selectedMethod.code,
             customer: {
-              name: user?.name || "DevNuby Customer",
+              name: user?.name || "Customer",
               email: user?.email || "customer@devnuby.ai",
-              phone: "088220783426",
+              phone: customerPhoneOverride || "088220783426",
             },
-            metadata: {
-              planId: plan.id,
-              cycle,
-            },
+            metadata: { planId: plan.id, cycle },
           }),
         });
-
         const json = await res.json();
         if (!res.ok) {
-          throw new Error(json.error?.message || "Gagal membuat kode Virtual Account");
+          throw new Error(json.error?.message || t("plans.createPaymentFailed"));
         }
-
         setVaResult(json.data);
       } else {
-        // Checkout flow (QRIS) - in-modal iframe, no page redirect!
+        // DOKU Checkout
         const res = await fetch("/api/v1/payments/doku/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -202,33 +203,27 @@ export function PlanCheckoutModal({
                 ? ["QRIS"]
                 : undefined,
             customer: {
-              name: user?.name || "DevNuby Customer",
+              name: user?.name || "Customer",
               email: user?.email || "customer@devnuby.ai",
-              phone: "088220783426",
+              phone: customerPhoneOverride || "088220783426",
             },
             items: [
               {
-                name: `${plan.name} (${cycle === "monthly" ? "Bulanan" : "Tahunan"})`,
+                name: `${plan.name} (${cycle === "monthly" ? t("plans.monthly") : t("plans.yearly")})`,
                 price: effectivePrice,
                 quantity: 1,
               },
             ],
             callbackUrl: `${window.location.origin}/plans?payment=success&invoice=${invoiceNumber}`,
             callbackUrlCancel: `${window.location.origin}/plans?payment=cancel&invoice=${invoiceNumber}`,
-            metadata: {
-              planId: plan.id,
-              cycle,
-            },
+            metadata: { planId: plan.id, cycle },
           }),
         });
-
         const json = await res.json();
         if (!res.ok) {
-          throw new Error(json.error?.message || "Gagal membuat sesi pembayaran checkout");
+          throw new Error(json.error?.message || t("plans.createPaymentFailed"));
         }
-
         if (json.data?.paymentUrl) {
-          // Render inside the modal! No page redirection!
           setCheckoutResult({
             paymentUrl: json.data.paymentUrl,
             invoiceNumber: json.data.invoiceNumber || invoiceNumber,
@@ -236,26 +231,37 @@ export function PlanCheckoutModal({
             paymentMethodCode: selectedMethod.code,
           });
         } else {
-          throw new Error("URL pembayaran tidak ditemukan");
+          throw new Error(t("plans.paymentUrlMissing"));
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan pembayaran");
+      setError(err instanceof Error ? err.message : t("plans.paymentError"));
     } finally {
       setSubmitting(false);
     }
   };
 
   const getModalTitle = () => {
-    if (isPaid) return "Pembayaran Berhasil";
-    if (checkoutResult || tripayResult) return "Pembayaran QRIS";
+    if (isPaid) return t("plans.successTitle");
+    if (needsPhone) return t("plans.phoneRequiredTitle");
+    if (tripayResult) {
+      if (tripayResult.kind === "qris") return t("plans.qrisTitle");
+      return t("plans.methodTitle", { name: tripayResult.paymentName });
+    }
+    if (checkoutResult) return t("plans.qrisTitle");
     if (vaResult) return t("plans.paymentSuccess");
     return t("plans.checkoutTitle", { name: plan.name });
   };
 
   const getModalDescription = () => {
-    if (isPaid) return "Status langganan akun Anda telah diperbarui.";
-    if (checkoutResult || tripayResult) return "Pindai kode QRIS di bawah ini untuk menyelesaikan pembayaran.";
+    if (isPaid) return t("plans.successDesc");
+    if (needsPhone) return t("plans.phoneRequiredNotice");
+    if (tripayResult) {
+      if (tripayResult.kind === "qris") return t("plans.qrisDesc");
+      if (tripayResult.kind === "pay_code") return t("plans.vaDesc");
+      return t("plans.ewalletDesc");
+    }
+    if (checkoutResult) return t("plans.qrisDesc");
     if (vaResult) return t("plans.vaNotice");
     return t("plans.checkoutSubtitle");
   };
@@ -278,8 +284,18 @@ export function PlanCheckoutModal({
           formatRupiah={formatRupiah}
           onDone={onClose}
         />
+      ) : needsPhone ? (
+        <PhoneRequiredForm
+          methodName={selectedMethod?.name || "E-Wallet"}
+          submitting={submitting}
+          onSubmit={(phone) => void handlePay(phone)}
+          onBack={() => {
+            setNeedsPhone(false);
+            setError(null);
+          }}
+        />
       ) : tripayResult ? (
-        <TripayQrisView
+        <TripayPaymentView
           result={tripayResult}
           formatRupiah={formatRupiah}
           onPaid={handlePaymentSuccess}
@@ -303,52 +319,12 @@ export function PlanCheckoutModal({
       ) : (
         <div className="space-y-5 py-1">
           {pendingInvoice && (
-            <div className="p-3.5 rounded-[12px] bg-amber-500/10 border border-amber-500/25 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-amber-400">Tagihan Belum Selesai</span>
-                <span className="text-[10px] text-[var(--muted)] font-mono">{pendingInvoice.invoice}</span>
-              </div>
-              <p className="text-[11px] text-[var(--muted)] leading-relaxed">
-                {pendingInvoice.qrString ? (
-                  <>Anda memiliki tagihan QRIS aktif sebesar </>
-                ) : (
-                  <>
-                    Anda memiliki Virtual Account ({pendingInvoice.bank?.toUpperCase() || "VA"}) aktif:{" "}
-                    <span className="text-[var(--ink)] font-mono font-semibold">{pendingInvoice.vaNumber}</span> sebesar{" "}
-                  </>
-                )}
-                <span className="text-[var(--ink)] font-semibold">{formatRupiah(pendingInvoice.amount)}</span>.
-              </p>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  variant="primary"
-                  className="text-[11px] py-1 px-3 h-auto"
-                  onClick={() => {
-                    if (pendingInvoice.qrString && pendingInvoice.expiredAt) {
-                      setTripayResult({
-                        invoiceNumber: pendingInvoice.invoice,
-                        qrString: pendingInvoice.qrString,
-                        amount: pendingInvoice.amount,
-                        fee: 0,
-                        totalAmount: pendingInvoice.amount,
-                        expiredAt: pendingInvoice.expiredAt,
-                      });
-                      return;
-                    }
-                    setVaResult({
-                      invoiceNumber: pendingInvoice.invoice,
-                      amount: pendingInvoice.amount,
-                      bank: pendingInvoice.bank || "briva",
-                      virtualAccountNumber: pendingInvoice.vaNumber,
-                      paymentCode: pendingInvoice.vaNumber,
-                      expiredDate: pendingInvoice.expiredAt,
-                    });
-                  }}
-                >
-                  Lanjutkan Pembayaran Ini
-                </Button>
-              </div>
-            </div>
+            <PendingInvoiceBanner
+              invoice={pendingInvoice}
+              formatRupiah={formatRupiah}
+              onResumeTripay={setTripayResult}
+              onResumeVa={setVaResult}
+            />
           )}
 
           {/* Cycle Selector */}
@@ -380,7 +356,7 @@ export function PlanCheckoutModal({
           {/* Order Summary */}
           <div className="p-3.5 rounded-[12px] bg-white/[0.02] border border-[var(--border)] space-y-2 text-xs">
             <div className="flex justify-between text-[var(--muted)]">
-              <span>Paket Langganan</span>
+              <span>{t("plans.subscriptionPlan")}</span>
               <span className="font-medium text-[var(--ink)]">{plan.name}</span>
             </div>
             <div className="flex justify-between text-[var(--muted)]">
@@ -404,61 +380,16 @@ export function PlanCheckoutModal({
             <label className="text-xs font-semibold text-[var(--ink)]">
               {t("plans.paymentMethod")}
             </label>
-
-            {loadingMethods ? (
-              <div className="py-6 flex items-center justify-center text-xs text-[var(--muted)]">
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Memuat metode pembayaran...
-              </div>
-            ) : methods.length === 0 ? (
-              <p className="text-xs text-[var(--muted)] p-3 border border-[var(--border)] rounded-[8px]">
-                Belum ada metode pembayaran yang aktif.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
-                {methods.map((m) => {
-                  const isSelected = selectedMethod?.id === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setSelectedMethod(m)}
-                      className={`flex items-center gap-3 w-full p-2.5 rounded-[10px] text-left border transition-all cursor-pointer ${
-                        isSelected
-                          ? "bg-[var(--panel-elevated)] border-[var(--accent)] text-[var(--ink)]"
-                          : "bg-transparent border-[var(--border)] text-[var(--muted)] hover:border-white/20"
-                      }`}
-                    >
-                      {m.imageUrl && (
-                        <div className="relative w-8 h-8 rounded-[6px] bg-white/[0.06] overflow-hidden flex items-center justify-center shrink-0 p-1">
-                          <Image
-                            src={m.imageUrl}
-                            alt={m.name}
-                            width={32}
-                            height={32}
-                            className="object-contain max-h-6"
-                            unoptimized
-                          />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-[var(--ink)] truncate">{m.name}</p>
-                        <p className="text-[10px] text-[var(--placeholder)] truncate">
-                          {m.provider === "tripay" || m.flowType !== "direct"
-                            ? "Pembayaran Instan QRIS"
-                            : "Virtual Account Langsung"}
-                        </p>
-                      </div>
-                      {isSelected && (
-                        <div className="w-4 h-4 rounded-full bg-[var(--accent)] text-[var(--accent-text)] grid place-items-center shrink-0">
-                          <Check className="w-2.5 h-2.5" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <PaymentMethodList
+              methods={methods}
+              selectedId={selectedMethod?.id ?? null}
+              loading={loadingMethods}
+              onSelect={(m) => {
+                setSelectedMethod(m);
+                setNeedsPhone(false);
+                setError(null);
+              }}
+            />
           </div>
 
           {error && (
@@ -472,7 +403,7 @@ export function PlanCheckoutModal({
             <Button
               variant="primary"
               className="w-full text-xs font-semibold py-2.5"
-              onClick={handlePay}
+              onClick={() => void handlePay()}
               disabled={submitting || !selectedMethod}
             >
               {submitting ? (
@@ -487,8 +418,9 @@ export function PlanCheckoutModal({
 
             <p className="text-[10px] text-[var(--placeholder)] text-center mt-2.5 flex items-center justify-center gap-1">
               <ShieldCheck className="w-3 h-3 text-[var(--accent)]" />
-              Pembayaran aman didukung oleh{" "}
-              {selectedMethod?.provider === "tripay" ? "Tripay" : "DOKU Payment Gateway"}
+              {t("plans.securedBy", {
+                gateway: selectedMethod?.provider === "tripay" ? "Tripay" : "DOKU Payment Gateway",
+              })}
             </p>
           </div>
         </div>
