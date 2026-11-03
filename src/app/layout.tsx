@@ -14,6 +14,7 @@ import { AccountProvider } from "@/providers/account-provider";
 import { I18nProvider } from "@/providers/i18n-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { ToastProvider } from "@/providers/toast-provider";
+import { PaymentTrackerProvider } from "@/providers/payment-tracker-provider";
 import { SettingsModal } from "@/components/settings/settings-modal";
 import "./globals.css";
 
@@ -103,8 +104,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <I18nProvider>
             <ToastProvider>
               <AccountProvider>
-                {children}
-                <SettingsModal />
+                <PaymentTrackerProvider>
+                  {children}
+                  <SettingsModal />
+                </PaymentTrackerProvider>
               </AccountProvider>
             </ToastProvider>
           </I18nProvider>

@@ -108,7 +108,7 @@ export async function GET(request: Request, context: RouteContext) {
       for (const tx of pendingTxs) {
         const isExpired =
           (tx.expiredAt && tx.expiredAt.getTime() <= now) ||
-          now - tx.createdAt.getTime() > EXPIRATION_WINDOW_MS;
+          (!tx.expiredAt && now - tx.createdAt.getTime() > EXPIRATION_WINDOW_MS);
 
         if (isExpired) {
           // Auto-mark expired transactions
@@ -186,11 +186,11 @@ export async function GET(request: Request, context: RouteContext) {
         return NextResponse.json({ invoice: tx.invoiceNumber, status: "expired", type });
       }
 
-      // Enforce flat 1-hour expiration check
+      // Expiration check based on tx.expiredAt if present, otherwise default window
       const now = Date.now();
       const isExpired =
         (tx.expiredAt && tx.expiredAt.getTime() <= now) ||
-        now - tx.createdAt.getTime() > EXPIRATION_WINDOW_MS;
+        (!tx.expiredAt && now - tx.createdAt.getTime() > EXPIRATION_WINDOW_MS);
 
       if (isExpired) {
         await db.paymentTransaction.update({
@@ -258,7 +258,37 @@ export async function GET(request: Request, context: RouteContext) {
       }
 
       // Still pending
-      return NextResponse.json({ invoice: tx.invoiceNumber, status: "pending", type });
+      const methodCode = (tx.paymentMethodCode || "").toUpperCase();
+      const isOvo = methodCode === "OVO" || (tx.paymentMethodName || "").toUpperCase().includes("OVO");
+      return NextResponse.json({
+        invoice: tx.invoiceNumber,
+        status: "pending",
+        type: tx.provider,
+        transaction: {
+          invoice: tx.invoiceNumber,
+          type: tx.provider,
+          amount: tx.totalAmount,
+          vaNumber: tx.paymentCode || undefined,
+          bank: tx.paymentMethodCode || undefined,
+          methodName: tx.paymentMethodName || undefined,
+          howToPayUrl: tx.howToPayUrl || undefined,
+          customerPhone: tx.customerPhone || undefined,
+          kind:
+            tx.provider === "tripay"
+              ? isOvo
+                ? "push"
+                : tx.qrContent
+                  ? "qris"
+                  : tx.paymentCode
+                    ? "pay_code"
+                    : "redirect"
+              : undefined,
+          checkoutUrl: tx.checkoutUrl || undefined,
+          qrString: tx.qrContent || undefined,
+          expiredAt: tx.expiredAt ? tx.expiredAt.toISOString() : undefined,
+          createdAt: tx.createdAt.toISOString(),
+        },
+      });
     }
 
     return NextResponse.json({ error: "Invalid tracking path format" }, { status: 400 });

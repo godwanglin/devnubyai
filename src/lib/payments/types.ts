@@ -33,6 +33,7 @@ export interface PaymentMethodItem {
   instructions: string | null;
   minAmount: number;
   maxAmount: number | null;
+  expiryDurationMinutes: number;
   feeType: "none" | "flat" | "percent";
   feeValue: number;
   isActive: boolean;

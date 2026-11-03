@@ -102,6 +102,20 @@ export function DirectVaView({
 
   return (
     <div className="space-y-5 py-1">
+      {/* Top Invoice summary badge */}
+      <div className="flex items-center justify-between gap-2 p-3 rounded-[12px] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] shadow-[var(--glass-shadow)] text-xs">
+        <div>
+          <span className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider block">
+            {t("plans.invoiceNumber")}
+          </span>
+          <span className="font-mono font-medium text-[var(--ink)]">{vaResult.invoiceNumber}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium text-[11px]">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span>{isExpired ? t("plans.statusExpired") : t("plans.statusPending")}</span>
+        </div>
+      </div>
+
       {isExpired ? (
         <div className="p-4 rounded-[12px] bg-red-500/10 border border-red-500/20 text-center space-y-2">
           <AlertCircle className="w-8 h-8 text-red-400 mx-auto" />

@@ -14,6 +14,7 @@ import { PaymentMethodList } from "./payment-method-list";
 import { PendingInvoiceBanner, type PendingInvoice } from "./pending-invoice-banner";
 import { PhoneRequiredForm } from "./phone-required-form";
 import { PHONE_REQUIRED_CODE } from "@/lib/payments/phone";
+import { usePaymentTracker } from "@/providers/payment-tracker-provider";
 import type { PublicPlanItem } from "@/app/api/v1/plans/route";
 import type { PaymentMethodItem } from "@/lib/payments/types";
 import type { TripayPaymentResult } from "@/lib/tripay/payment-kind";
@@ -33,6 +34,7 @@ export function PlanCheckoutModal({
 }: PlanCheckoutModalProps) {
   const { t } = useI18n();
   const { user, refresh } = useAccount();
+  const { openTransaction } = usePaymentTracker();
 
   const [cycle, setCycle] = useState<"monthly" | "yearly">(initialCycle);
   const [methods, setMethods] = useState<PaymentMethodItem[]>([]);
@@ -166,6 +168,21 @@ export function PlanCheckoutModal({
         }
         setNeedsPhone(false);
         setTripayResult(json.data);
+        if (json.data) {
+          openTransaction({
+            invoice: json.data.invoiceNumber,
+            type: "tripay",
+            amount: json.data.totalAmount || effectivePrice,
+            vaNumber: json.data.payCode || undefined,
+            methodName: json.data.paymentName,
+            customerPhone: json.data.customerPhone || undefined,
+            kind: json.data.kind,
+            checkoutUrl: json.data.checkoutUrl || undefined,
+            qrString: json.data.qrString || undefined,
+            expiredAt: json.data.expiredAt,
+            createdAt: new Date().toISOString(),
+          });
+        }
       } else if (selectedMethod.flowType === "direct" && selectedMethod.code) {
         // DOKU Direct VA
         const res = await fetch("/api/v1/payments/doku/direct-va", {
@@ -189,6 +206,19 @@ export function PlanCheckoutModal({
           throw new Error(json.error?.message || t("plans.createPaymentFailed"));
         }
         setVaResult(json.data);
+        if (json.data) {
+          openTransaction({
+            invoice: json.data.invoiceNumber || invoiceNumber,
+            type: "doku",
+            amount: json.data.amount || effectivePrice,
+            vaNumber: json.data.virtualAccountNumber || json.data.paymentCode,
+            bank: json.data.bank || selectedMethod.code,
+            methodName: selectedMethod.name,
+            howToPayUrl: json.data.howToPayPage,
+            expiredAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+            createdAt: new Date().toISOString(),
+          });
+        }
       } else {
         // DOKU Checkout
         const res = await fetch("/api/v1/payments/doku/checkout", {
@@ -323,8 +353,35 @@ export function PlanCheckoutModal({
             <PendingInvoiceBanner
               invoice={pendingInvoice}
               formatRupiah={formatRupiah}
-              onResumeTripay={setTripayResult}
-              onResumeVa={setVaResult}
+              onResumeTripay={(res) => {
+                setTripayResult(res);
+                openTransaction({
+                  invoice: res.invoiceNumber,
+                  type: "tripay",
+                  amount: res.totalAmount,
+                  vaNumber: res.payCode || undefined,
+                  methodName: res.paymentName,
+                  customerPhone: res.customerPhone || undefined,
+                  kind: res.kind,
+                  checkoutUrl: res.checkoutUrl || undefined,
+                  qrString: res.qrString || undefined,
+                  expiredAt: res.expiredAt,
+                  createdAt: new Date().toISOString(),
+                });
+              }}
+              onResumeVa={(res) => {
+                setVaResult(res);
+                openTransaction({
+                  invoice: res.invoiceNumber,
+                  type: "doku",
+                  amount: res.amount,
+                  vaNumber: res.virtualAccountNumber || res.paymentCode,
+                  bank: res.bank,
+                  howToPayUrl: res.howToPayPage,
+                  expiredAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                  createdAt: new Date().toISOString(),
+                });
+              }}
             />
           )}
 

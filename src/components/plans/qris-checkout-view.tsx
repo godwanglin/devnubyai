@@ -102,7 +102,7 @@ export function QrisCheckoutView({
   return (
     <div className="space-y-4 py-1">
       {/* Top summary badge bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 rounded-[12px] bg-[var(--panel-elevated)] border border-[var(--border)] text-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 rounded-[12px] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] shadow-[var(--glass-shadow)] text-xs">
         <div>
           <span className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider block">
             {t("plans.invoiceNumber")}

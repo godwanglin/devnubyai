@@ -34,6 +34,7 @@ function toPaymentMethodItem(record: any): PaymentMethodItem {
     instructions: record.instructions,
     minAmount: Number(record.minAmount),
     maxAmount: record.maxAmount ? Number(record.maxAmount) : null,
+    expiryDurationMinutes: Number(record.expiryDurationMinutes ?? 60),
     feeType: record.feeType as "none" | "flat" | "percent",
     feeValue: Number(record.feeValue),
     isActive: Boolean(record.isActive),
@@ -128,6 +129,7 @@ export async function createPaymentMethod(
       instructions: input.instructions || null,
       minAmount: input.minAmount,
       maxAmount: input.maxAmount || null,
+      expiryDurationMinutes: input.expiryDurationMinutes ?? 60,
       feeType: input.feeType,
       feeValue: input.feeValue,
       isActive: input.isActive,
@@ -194,6 +196,9 @@ export async function updatePaymentMethod(
       ...(input.instructions !== undefined ? { instructions: input.instructions || null } : {}),
       ...(input.minAmount !== undefined ? { minAmount: input.minAmount } : {}),
       ...(input.maxAmount !== undefined ? { maxAmount: input.maxAmount || null } : {}),
+      ...(input.expiryDurationMinutes !== undefined
+        ? { expiryDurationMinutes: input.expiryDurationMinutes }
+        : {}),
       ...(input.feeType !== undefined ? { feeType: input.feeType } : {}),
       ...(input.feeValue !== undefined ? { feeValue: input.feeValue } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),

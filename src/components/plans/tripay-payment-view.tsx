@@ -67,15 +67,13 @@ export function TripayPaymentView({
   const [repushSuccess, setRepushSuccess] = useState<string | null>(null);
   const [repushError, setRepushError] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number>(() => {
-    if (typeof window === "undefined") return Date.now() + OVO_COOLDOWN_MS;
+    if (typeof window === "undefined") return 0;
     const saved = localStorage.getItem(cooldownStorageKey);
     if (saved) {
       const parsed = Number(saved);
       if (parsed > Date.now()) return parsed;
     }
-    const initialCooldown = Date.now() + OVO_COOLDOWN_MS;
-    localStorage.setItem(cooldownStorageKey, String(initialCooldown));
-    return initialCooldown;
+    return 0;
   });
 
   const cooldownRemaining = Math.max(0, cooldownUntil - now);
@@ -194,8 +192,8 @@ export function TripayPaymentView({
 
   return (
     <div className="space-y-4 py-1">
-      {/* Invoice header & countdown */}
-      <div className="flex items-center justify-between gap-2 p-3 rounded-[12px] bg-[var(--panel-elevated)] border border-[var(--border)] text-xs">
+      {/* Invoice header & countdown (glassmorphism pure dark token style) */}
+      <div className="flex items-center justify-between gap-2 p-3 rounded-[12px] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] shadow-[var(--glass-shadow)] text-xs">
         <div>
           <span className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider block">
             {t("plans.invoiceNumber")}
@@ -349,10 +347,10 @@ export function TripayPaymentView({
             </p>
           </div>
 
-          {/* OVO Number Editor / Custom Phone Input */}
-          <div className="p-3 rounded-[10px] bg-[var(--surface)] border border-[var(--border)] text-left space-y-2">
+          {/* OVO Number Editor / Custom Phone Input with blue token styling */}
+          <div className="p-3 rounded-[10px] bg-blue-500/10 border border-blue-500/25 text-left space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--muted)] font-medium">Nomor Akun OVO:</span>
+              <span className="text-blue-300 font-medium">Nomor Akun OVO:</span>
               {!editingPhone && (
                 <button
                   type="button"
@@ -360,7 +358,7 @@ export function TripayPaymentView({
                     setPhoneInput(ovoPhone);
                     setEditingPhone(true);
                   }}
-                  className="inline-flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline"
+                  className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 hover:underline"
                 >
                   <Edit2 className="w-3 h-3" />
                   <span>{t("plans.ovoChangeNumber")}</span>
@@ -376,7 +374,7 @@ export function TripayPaymentView({
                     value={phoneInput}
                     onChange={(e) => setPhoneInput(e.target.value)}
                     placeholder="Contoh: 08123456789"
-                    className="flex-1 px-3 py-1.5 rounded-[6px] bg-[var(--panel-elevated)] border border-[var(--border)] text-xs text-[var(--ink)] font-mono focus:outline-hidden focus:border-[var(--accent)]"
+                    className="flex-1 px-3 py-1.5 rounded-[6px] bg-[var(--surface)] border border-blue-500/30 text-xs text-[var(--ink)] font-mono focus:outline-hidden focus:border-blue-400"
                   />
                   <Button
                     size="sm"
@@ -399,7 +397,7 @@ export function TripayPaymentView({
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <span className="font-mono text-sm font-bold text-[var(--ink)]">
+                <span className="font-mono text-base font-bold text-blue-200 tracking-wide">
                   {ovoPhone || "-"}
                 </span>
               </div>

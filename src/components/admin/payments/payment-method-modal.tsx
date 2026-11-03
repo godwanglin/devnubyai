@@ -61,6 +61,7 @@ export function PaymentMethodModal({
   const [instructions, setInstructions] = useState("");
   const [minAmount, setMinAmount] = useState(1000);
   const [maxAmount, setMaxAmount] = useState<number | "">("");
+  const [expiryDurationMinutes, setExpiryDurationMinutes] = useState(60);
   const [sortOrder, setSortOrder] = useState(100);
   const [isActive, setIsActive] = useState(true);
 
@@ -169,6 +170,7 @@ export function PaymentMethodModal({
         setInstructions(method.instructions || "");
         setMinAmount(method.minAmount || 1000);
         setMaxAmount(method.maxAmount ?? "");
+        setExpiryDurationMinutes(Math.max(5, method.expiryDurationMinutes ?? 60));
         setSortOrder(method.sortOrder ?? 100);
         setIsActive(method.isActive);
       } else {
@@ -183,6 +185,7 @@ export function PaymentMethodModal({
         setInstructions("");
         setMinAmount(1000);
         setMaxAmount("");
+        setExpiryDurationMinutes(60);
         setSortOrder(100);
         setIsActive(true);
       }
@@ -250,6 +253,7 @@ export function PaymentMethodModal({
         instructions: instructions.trim() || null,
         minAmount: Number(minAmount),
         maxAmount: maxAmount === "" ? null : Number(maxAmount),
+        expiryDurationMinutes: Math.max(5, Number(expiryDurationMinutes) || 60),
         sortOrder: Number(sortOrder),
         isActive,
       };
@@ -482,7 +486,7 @@ export function PaymentMethodModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
             <label className="block text-[var(--muted)] font-medium mb-1">Nominal Minimal (IDR)</label>
             <input
@@ -501,6 +505,21 @@ export function PaymentMethodModal({
               value={maxAmount}
               onChange={(e) => setMaxAmount(e.target.value === "" ? "" : Number(e.target.value))}
               placeholder="Tanpa batas"
+              className="w-full px-3 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[var(--ink)] focus:outline-hidden"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[var(--muted)] font-medium mb-1">
+              Kedaluwarsa (Menit) <span className="text-[10px] text-[var(--accent)] font-normal">Min. 5m</span>
+            </label>
+            <input
+              type="number"
+              min="5"
+              max="43200"
+              value={expiryDurationMinutes}
+              onChange={(e) => setExpiryDurationMinutes(Math.max(1, Number(e.target.value)))}
+              placeholder="60"
               className="w-full px-3 py-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] text-[var(--ink)] focus:outline-hidden"
             />
           </div>

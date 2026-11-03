@@ -24,6 +24,12 @@ export const paymentMethodCreateSchema = z.object({
   instructions: z.string().optional().nullable(),
   minAmount: z.number().int().min(1000, "Minimal nominal Rp 1.000").default(1000),
   maxAmount: z.number().int().min(1000).optional().nullable(),
+  expiryDurationMinutes: z
+    .number()
+    .int()
+    .min(5, "Durasi kedaluwarsa minimal 5 menit")
+    .max(43200, "Durasi kedaluwarsa maksimal 30 hari (43200 menit)")
+    .default(60),
   feeType: z.enum(["none", "flat", "percent"]).default("none"),
   feeValue: z.number().int().min(0).default(0),
   isActive: z.boolean().default(true),

@@ -51,6 +51,7 @@ export async function POST(request: Request) {
         flowType: true,
         minAmount: true,
         maxAmount: true,
+        expiryDurationMinutes: true,
       },
     });
     if (!method?.dokuCode) {
@@ -110,6 +111,9 @@ export async function POST(request: Request) {
       ...(resolvedPhone ? { phone: resolvedPhone } : {}),
     };
 
+    // Minimum 5 minutes expiry safety
+    const expiryMinutes = Math.max(5, method.expiryDurationMinutes ?? 60);
+
     try {
       const result = await createTripayTransaction(config, {
         channel: method.dokuCode,
@@ -118,6 +122,7 @@ export async function POST(request: Request) {
         customer,
         items: [{ name: planCheckout.itemName, price: planCheckout.amount, quantity: 1 }],
         returnUrl: `${appOrigin}/plans?payment=success&invoice=${encodeURIComponent(invoiceNumber)}`,
+        expiresInMinutes: expiryMinutes,
       });
 
       if (kind === "qris" && !result.qr_string) {
@@ -136,13 +141,7 @@ export async function POST(request: Request) {
         ? new Date(result.expired_time * 1000)
         : new Date(Date.now() + 60 * 60 * 1000);
 
-      // 1. If it's OVO push payment, automatically trigger Tripay's internal OVO process
-      // so the invoice notification lands directly in the customer's OVO app
-      if (kind === "push" && result.checkout_url && resolvedPhone) {
-        await triggerOvoPayment(result.checkout_url, result.reference, resolvedPhone);
-      }
-
-      // 2. If it's a redirect channel (e.g. DANA, ShopeePay), scrape the direct wallet deep-link
+      // 1. For redirect channels (e.g. DANA, ShopeePay), scrape the direct wallet deep-link
       // from the Tripay checkout page so user bypasses the Tripay intermediary page
       let effectiveCheckoutUrl = result.checkout_url || null;
       if (kind === "redirect" && result.checkout_url) {
