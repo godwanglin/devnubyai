@@ -8,7 +8,7 @@ import { getTripayConfig } from "@/lib/tripay/config";
 import { createTripayTransaction, TripayApiError } from "@/lib/tripay/client";
 import { tripayPaymentKind, type TripayPaymentResult } from "@/lib/tripay/payment-kind";
 import { isTripayPhoneRequiredError, tripayCheckoutRequestSchema } from "@/lib/tripay/schemas";
-import { resolveDirectWalletUrl } from "@/lib/tripay/scraper";
+import { resolveDirectWalletUrl, triggerOvoPayment } from "@/lib/tripay/scraper";
 import { normalizeIndonesianPhone, PHONE_REQUIRED_CODE } from "@/lib/payments/phone";
 import type { Prisma } from "@/generated/client";
 
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
     const kind = tripayPaymentKind(method);
 
     // E-wallet channels in Tripay require a phone number up front
-    if (!resolvedPhone && kind === "redirect") {
+    if (!resolvedPhone && (kind === "redirect" || kind === "push")) {
       throw new ApiError(
         400,
         "BAD_REQUEST",
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       if (kind === "pay_code" && !result.pay_code) {
         throw new TripayApiError("Tripay did not return a payment code", 502, result);
       }
-      if (kind === "redirect" && !result.checkout_url) {
+      if ((kind === "redirect" || kind === "push") && !result.checkout_url) {
         throw new TripayApiError("Tripay did not return a checkout URL", 502, result);
       }
 
@@ -136,7 +136,13 @@ export async function POST(request: Request) {
         ? new Date(result.expired_time * 1000)
         : new Date(Date.now() + 60 * 60 * 1000);
 
-      // If it's a redirect channel (e.g. DANA), scrape the direct wallet deep-link
+      // 1. If it's OVO push payment, automatically trigger Tripay's internal OVO process
+      // so the invoice notification lands directly in the customer's OVO app
+      if (kind === "push" && result.checkout_url && resolvedPhone) {
+        await triggerOvoPayment(result.checkout_url, result.reference, resolvedPhone);
+      }
+
+      // 2. If it's a redirect channel (e.g. DANA, ShopeePay), scrape the direct wallet deep-link
       // from the Tripay checkout page so user bypasses the Tripay intermediary page
       let effectiveCheckoutUrl = result.checkout_url || null;
       if (kind === "redirect" && result.checkout_url) {
@@ -176,6 +182,7 @@ export async function POST(request: Request) {
         invoiceNumber,
         kind,
         paymentName: method.name,
+        customerPhone: resolvedPhone,
         qrString: result.qr_string || null,
         payCode: result.pay_code || null,
         checkoutUrl: effectiveCheckoutUrl,

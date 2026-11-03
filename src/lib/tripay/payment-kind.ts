@@ -5,7 +5,10 @@ import type { TripayInstruction, TripayPaymentKind } from "./types";
 export function tripayPaymentKind(method: {
   category: PaymentMethodCategory | string;
   flowType: PaymentFlowType | string;
+  dokuCode?: string | null;
 }): TripayPaymentKind {
+  const code = (method.dokuCode || "").toUpperCase();
+  if (code === "OVO") return "push";
   if (method.flowType === "checkout") return "redirect";
   if (method.category === "qris") return "qris";
   return "pay_code";
@@ -16,6 +19,7 @@ export interface TripayPaymentResult {
   invoiceNumber: string;
   kind: TripayPaymentKind;
   paymentName: string;
+  customerPhone?: string | null;
   qrString?: string | null;
   payCode?: string | null;
   checkoutUrl?: string | null;

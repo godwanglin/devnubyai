@@ -15,6 +15,7 @@ export interface PendingInvoice {
   vaNumber?: string;
   bank?: string;
   methodName?: string;
+  customerPhone?: string;
   checkoutUrl?: string;
   expiredAt?: string;
 }
@@ -42,6 +43,7 @@ export function PendingInvoiceBanner({
         invoiceNumber: invoice.invoice,
         kind: invoice.kind,
         paymentName: label,
+        customerPhone: invoice.customerPhone || null,
         qrString: invoice.qrString || null,
         payCode: invoice.vaNumber || null,
         checkoutUrl: invoice.checkoutUrl || null,

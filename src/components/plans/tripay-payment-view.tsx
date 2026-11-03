@@ -12,6 +12,8 @@ import {
   QrCode,
   CreditCard,
   Wallet,
+  Smartphone,
+  BellRing,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/providers/i18n-provider";
@@ -247,6 +249,47 @@ export function TripayPaymentView({
               <span>{t("plans.ewalletPayButton", { name: result.paymentName })}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
+          )}
+        </div>
+      )}
+
+      {/* ── KIND 4: E-Wallet Push Payment (OVO) ── */}
+      {result.kind === "push" && (
+        <div className="p-4 rounded-[12px] bg-white/[0.03] border border-[var(--border)] text-center space-y-3">
+          <div className="relative w-12 h-12 rounded-full bg-purple-500/10 text-purple-400 flex items-center justify-center mx-auto">
+            <Smartphone className="w-6 h-6" />
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500 text-[9px] text-white font-bold animate-bounce">
+              <BellRing className="w-2.5 h-2.5" />
+            </span>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-[var(--ink)]">
+              {t("plans.ovoPushTitle")}
+            </h4>
+            <p className="text-xs text-[var(--muted)] mt-1 max-w-xs mx-auto leading-relaxed">
+              {result.customerPhone
+                ? t("plans.ovoPushDescWithPhone", { phone: result.customerPhone })
+                : t("plans.ovoPushDesc")}
+            </p>
+          </div>
+
+          <div className="p-2.5 rounded-[8px] bg-purple-500/5 border border-purple-500/20 text-purple-300 text-[11px] flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+            <span>{t("plans.ovoWaitingConfirm")}</span>
+          </div>
+
+          {result.checkoutUrl && (
+            <div className="pt-1">
+              <a
+                href={result.checkoutUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1 text-[11px] text-[var(--muted)] hover:text-[var(--ink)] underline underline-offset-4"
+              >
+                <span>{t("plans.ovoTroubleOpenLink")}</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
           )}
         </div>
       )}

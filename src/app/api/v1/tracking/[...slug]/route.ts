@@ -97,8 +97,9 @@ export async function GET(request: Request, context: RouteContext) {
         vaNumber?: string;
         bank?: string;
         methodName?: string;
-        kind?: "qris" | "pay_code" | "redirect";
+        kind?: "qris" | "pay_code" | "redirect" | "push";
         checkoutUrl?: string;
+        customerPhone?: string;
         qrString?: string;
         expiredAt?: string;
         createdAt: string;
@@ -116,6 +117,8 @@ export async function GET(request: Request, context: RouteContext) {
             data: { status: "EXPIRED" },
           });
         } else {
+          const methodCode = (tx.paymentMethodCode || "").toUpperCase();
+          const isOvo = methodCode === "OVO" || (tx.paymentMethodName || "").toUpperCase().includes("OVO");
           activeInvoices.push({
             invoice: tx.invoiceNumber,
             status: "pending",
@@ -124,13 +127,16 @@ export async function GET(request: Request, context: RouteContext) {
             vaNumber: tx.paymentCode || undefined,
             bank: tx.paymentMethodCode || undefined,
             methodName: tx.paymentMethodName || undefined,
+            customerPhone: tx.customerPhone || undefined,
             kind:
               tx.provider === "tripay"
-                ? tx.qrContent
-                  ? "qris"
-                  : tx.paymentCode
-                    ? "pay_code"
-                    : "redirect"
+                ? isOvo
+                  ? "push"
+                  : tx.qrContent
+                    ? "qris"
+                    : tx.paymentCode
+                      ? "pay_code"
+                      : "redirect"
                 : undefined,
             checkoutUrl: tx.checkoutUrl || undefined,
             qrString: tx.qrContent || undefined,

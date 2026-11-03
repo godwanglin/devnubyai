@@ -32,8 +32,8 @@ export interface TripayChannel {
   active: boolean;
 }
 
-/** How a Tripay channel is paid in our UI: QR payload, pay code (VA/retail), or Tripay's hosted page */
-export type TripayPaymentKind = "qris" | "pay_code" | "redirect";
+/** How a Tripay channel is paid in our UI: QR payload, pay code (VA/retail), Tripay's hosted page, or push prompt (OVO) */
+export type TripayPaymentKind = "qris" | "pay_code" | "redirect" | "push";
 
 export type TripayTransactionStatus = "UNPAID" | "PAID" | "EXPIRED" | "FAILED" | "REFUND";
 
