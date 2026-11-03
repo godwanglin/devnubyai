@@ -285,7 +285,7 @@ async function noteConnectionError(id: bigint, error: GatewayError, cooldownUnti
     .update({
       where: { id },
       data: {
-        lastError: `${error.httpStatus ?? error.errorClass}: ${error.providerError}`.slice(0, 500),
+        lastError: `${error.httpStatus ?? error.errorClass}: ${error.rawProviderError ?? error.providerError}`.slice(0, 500),
         ...(cooldownUntil ? { cooldownUntil } : {}),
       },
     })

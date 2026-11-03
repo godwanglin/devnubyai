@@ -279,6 +279,14 @@ export function TelemetryLogRow({
                             [rule: {cand.errorRuleId}]
                           </span>
                         )}
+                        {cand.rawProviderError && cand.rawProviderError !== cand.providerError && (
+                          <div className="mt-1.5 p-2 rounded bg-black/40 border border-rose-500/30 text-rose-300 font-mono text-[10px] whitespace-pre-wrap break-all max-h-[160px] overflow-y-auto">
+                            <span className="text-[9px] uppercase tracking-wider text-[var(--muted)] block mb-0.5">
+                              Raw Upstream Response:
+                            </span>
+                            {cand.rawProviderError}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -30,6 +30,7 @@ export interface SanitizedCandidateAttemptDto {
   errorClass: string | null;
   httpStatus: number | null;
   providerError: string | null;
+  rawProviderError: string | null;
   latencyMs: number;
   ttftMs: number | null;
 }
@@ -360,6 +361,7 @@ export async function listRoutingAttempts(query: RoutingAttemptsQuery) {
             errorClass: cErrorClass,
             httpStatus: cHttpStatus,
             providerError: cProviderError,
+            rawProviderError: typeof c.rawProviderError === "string" ? c.rawProviderError : null,
             latencyMs: typeof c.latencyMs === "number" ? c.latencyMs : 0,
             ttftMs: typeof c.ttftMs === "number" ? c.ttftMs : null,
           };
@@ -376,6 +378,7 @@ export async function listRoutingAttempts(query: RoutingAttemptsQuery) {
             errorClass,
             httpStatus,
             providerError,
+            rawProviderError: typeof a.rawProviderError === "string" ? a.rawProviderError : null,
             latencyMs: typeof a.latencyMs === "number" ? a.latencyMs : 0,
             ttftMs: typeof a.ttftMs === "number" ? a.ttftMs : null,
           },

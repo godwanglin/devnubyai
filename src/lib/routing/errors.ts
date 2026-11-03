@@ -2,6 +2,8 @@ import type { GatewayErrorDetails, RoutingErrorClass } from "@/lib/gateways/type
 import type { RoutingSettings } from "./settings";
 import { mapProviderError } from "./error-mapping";
 
+const RAW_PROVIDER_ERROR_MAX_CHARS = 2000;
+
 /**
  * Raised by wire adapters for any failure before the first stream event.
  * Classification is mechanism only; whether it triggers fallback is decided
@@ -13,6 +15,8 @@ export class GatewayError extends Error implements GatewayErrorDetails {
   readonly errorRuleId: string;
   readonly providerError: string;
   readonly clientError: string;
+  /** Upstream response body as received (truncated), kept for admin logs only */
+  readonly rawProviderError: string | null;
   readonly isRetryable: boolean;
   override readonly cause?: unknown;
 
@@ -37,6 +41,8 @@ export class GatewayError extends Error implements GatewayErrorDetails {
     this.errorRuleId = details.errorRuleId ?? mapped.ruleId;
     this.providerError = details.providerError ?? mapped.providerMessage;
     this.clientError = details.clientError ?? mapped.clientMessage;
+    const raw = details.rawProviderText?.trim();
+    this.rawProviderError = raw ? raw.slice(0, RAW_PROVIDER_ERROR_MAX_CHARS) : null;
     this.isRetryable = details.isRetryable ?? false;
     this.cause = details.cause;
   }

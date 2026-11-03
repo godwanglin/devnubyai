@@ -17,23 +17,46 @@ function finishReason(value: unknown): FinishReason {
 }
 
 function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
-  const body: Record<string, unknown> = {
-    model: request.model,
-    messages: request.messages.map((m) => ({
+  const normalizedMessages: Array<Record<string, unknown>> = [];
+  for (const m of request.messages) {
+    const hasToolCalls = Boolean(m.toolCalls?.length);
+    const hasToolId = Boolean(m.toolCallId);
+    const isString = typeof m.content === "string";
+    const isEmptyString = isString && (m.content as string).trim().length === 0;
+
+    // Empty turns with no tool linkage are rejected by strict providers
+    if (isEmptyString && !hasToolCalls && !hasToolId) continue;
+
+    // Back-to-back user turns (left when a reply between them failed) become one
+    const prev = normalizedMessages[normalizedMessages.length - 1];
+    if (m.role === "user" && prev?.role === "user" && isString && typeof prev.content === "string") {
+      prev.content = `${prev.content}\n\n${m.content}`;
+      continue;
+    }
+
+    // An assistant turn that only calls tools carries `content: null`, not ""
+    const content = hasToolCalls && isEmptyString ? null : m.content;
+
+    normalizedMessages.push({
       role: m.role,
-      content: m.content,
+      content,
       ...(m.name ? { name: m.name } : {}),
       ...(m.toolCallId ? { tool_call_id: m.toolCallId } : {}),
-      ...(m.toolCalls?.length
+      ...(hasToolCalls
         ? {
-            tool_calls: m.toolCalls.map((call) => ({
+            tool_calls: m.toolCalls!.map((call) => ({
               id: call.id,
               type: "function",
               function: { name: call.name, arguments: call.arguments },
             })),
           }
         : {}),
-    })),
+    });
+  }
+
+  const body: Record<string, unknown> = {
+    model: request.model,
+    messages: normalizedMessages,
     stream: true,
     stream_options: { include_usage: true },
   };

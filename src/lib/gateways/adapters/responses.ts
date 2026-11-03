@@ -43,7 +43,7 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
         }
         const items: Array<Record<string, unknown>> = [];
         if (typeof m.content === "string") {
-          if (m.content) {
+          if (m.content.trim()) {
             items.push({ role: m.role, content: m.content });
           }
         } else if (Array.isArray(m.content) && m.content.length > 0) {
@@ -60,8 +60,24 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
             });
           }
         }
-        return items.length > 0 ? items : [{ role: m.role, content: "" }];
-      }),
+        // Strict upstreams reject empty message items, so an empty turn is dropped
+        return items;
+      })
+      .reduce<Array<Record<string, unknown>>>((acc, item) => {
+        // Back-to-back plain-text user turns (left when a reply between them failed) become one
+        const prev = acc[acc.length - 1];
+        if (
+          item.role === "user" &&
+          prev?.role === "user" &&
+          typeof item.content === "string" &&
+          typeof prev.content === "string"
+        ) {
+          prev.content = `${prev.content}\n\n${item.content}`;
+          return acc;
+        }
+        acc.push(item);
+        return acc;
+      }, []),
     stream: true,
   };
   if (system.length) body.instructions = system.join("\n\n");

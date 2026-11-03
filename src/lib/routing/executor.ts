@@ -65,6 +65,7 @@ export async function* executeWithFallback(
         errorClass: error?.errorClass ?? null,
         httpStatus: error?.httpStatus ?? null,
         providerError: error?.providerError ?? null,
+        rawProviderError: error?.rawProviderError ?? null,
         latencyMs: Date.now() - startedAt,
         ttftMs: firstEventAt === null ? null : firstEventAt - startedAt,
       };

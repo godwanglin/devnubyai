@@ -13,6 +13,7 @@ export interface CandidateAttemptLogEntry {
   errorClass: string | null;
   httpStatus: number | null;
   providerError: string | null;
+  rawProviderError?: string | null;
   latencyMs: number;
   ttftMs: number | null;
 }
@@ -82,6 +83,7 @@ export async function logAttempt(params: AttemptLogParams): Promise<void> {
         errorClass: params.error?.errorClass ?? null,
         httpStatus: params.error?.httpStatus ?? null,
         providerError: params.error?.providerError ?? null,
+        rawProviderError: params.error?.rawProviderError ?? null,
         clientError: finalClientError,
         latencyMs: params.latencyMs,
         ttftMs: params.ttftMs ?? null,
@@ -100,6 +102,7 @@ export async function logAttempt(params: AttemptLogParams): Promise<void> {
             errorClass: params.error?.errorClass ?? null,
             httpStatus: params.error?.httpStatus ?? null,
             providerError: params.error?.providerError ?? null,
+            rawProviderError: params.error?.rawProviderError ?? null,
             latencyMs: params.latencyMs,
             ttftMs: params.ttftMs ?? null,
           },

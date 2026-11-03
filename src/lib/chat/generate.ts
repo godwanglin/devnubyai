@@ -12,6 +12,12 @@ import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
 import { startStreamHub } from "@/lib/chat/stream-hub";
 import { getChatSettings } from "@/lib/chat/settings";
 import { recordToolExecutionLog } from "@/lib/chat/tool-log";
+import { buildFallbackAnswer, hasSuccessfulToolResult, listProducedFiles } from "@/lib/chat/turn-recovery";
+import {
+  saveTurnDraftToRedis,
+  saveSessionMemoryToRedis,
+  flushTurnToDatabase,
+} from "@/lib/chat/redis-chat-state";
 import { DEFAULT_TIME_ZONE } from "@/lib/chat/timezone";
 import { buildSystemPrompt } from "@/lib/chat/system-prompts";
 import { formatFileSize } from "@/lib/files/policy";
@@ -214,6 +220,9 @@ export function createChatGenerationStream(
       let fullReasoning = "";
       let promptTokens = 0;
       let completionTokens = 0;
+      // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
+      // (also on failure, so files already created don't vanish with the failed reply)
+      const executedToolParts: Record<string, unknown>[] = [];
       // Set once the model is resolved, so aborted/failed streams can still be billed
       let billedModel: RecordUsageInput["model"] | null = null;
       let estimatePromptChars = () => 0;
@@ -401,9 +410,11 @@ export function createChatGenerationStream(
           currentMessages.unshift({ role: "system", content: adminPrompt });
         }
 
-        const executedToolParts: Record<string, unknown>[] = [];
-        // Round budget is admin-managed (app_settings `chat.max_tool_rounds`)
+        // Round budget is admin-managed (app_settings `chat.max_tool_rounds`),
+        // with a strict 10-round emergency grace period before hard tool cutoff.
+        const MAX_GRACE_TOOL_ROUNDS = 10;
         let remainingToolRounds = chatSettings.maxToolRounds;
+        let remainingGraceRounds = MAX_GRACE_TOOL_ROUNDS;
         let stepIndex = 0;
         let reasoningStartTime: number | null = null;
         let reasoningDurationSec: number | null = null;
@@ -411,6 +422,9 @@ export function createChatGenerationStream(
         let forceFinalAnswer = false;
         // Track if we've pushed reasoning for the current step
         let hasPushedReasoningForStep = false;
+        // Whether the last model pass wrote any prose, and whether it was cut off by an error
+        let lastTurnHadText = false;
+        let interruptedAfterTools = false;
 
         while (true) {
           if (combinedSignal.aborted) {
@@ -474,6 +488,8 @@ export function createChatGenerationStream(
             }
           };
 
+          let stepError: unknown = null;
+          try {
           for await (const event of gatewayStream) {
             if (combinedSignal.aborted) {
               throw new Error("CLIENT_ABORTED");
@@ -604,6 +620,17 @@ export function createChatGenerationStream(
               completionTokens += event.completionTokens;
             }
           }
+          } catch (err) {
+            // Once tools have produced results, a failing follow-up call (timeout, 4xx/5xx on
+            // the grown context) must not throw away the finished work: wrap up with what we have.
+            const isAbortErr =
+              combinedSignal.aborted ||
+              (err instanceof Error && err.message === "CLIENT_ABORTED") ||
+              (err instanceof GatewayError && err.errorClass === "client_aborted");
+            if (isAbortErr || stepIndex === 0 || !hasSuccessfulToolResult(executedToolParts)) throw err;
+            console.warn(`[CHAT_STEP_RECOVERED] [${requestId}] step ${stepIndex}:`, err instanceof Error ? err.message : err);
+            stepError = err;
+          }
 
           closeActiveReasoning();
           closeActiveText();
@@ -646,19 +673,73 @@ export function createChatGenerationStream(
           if (turnContent.trim()) {
             executedToolParts.push({ type: "text", text: turnContent, state: "done" });
           }
+          lastTurnHadText = turnContent.trim().length > 0;
+
+          if (stepError) {
+            // Calls the failed pass had started streaming never ran; close their cards
+            for (const tc of toolCallsByIndex.values()) {
+              if (!tc.hasEmittedStart) continue;
+              writer.write({
+                type: "tool-output-error",
+                toolCallId: tc.effectiveCallId,
+                errorText: "",
+                dynamic: true,
+              });
+            }
+            interruptedAfterTools = true;
+            break;
+          }
 
           const assembledCalls = Array.from(toolCallsByIndex.values()).filter(
             (c) => c.name.trim().length > 0
           );
 
-          if (assembledCalls.length > 0 && remainingToolRounds > 0 && !forceFinalAnswer) {
+          const canExecuteMoreTools =
+            assembledCalls.length > 0 &&
+            (remainingToolRounds > 0 || remainingGraceRounds > 0) &&
+            !forceFinalAnswer;
+
+          if (canExecuteMoreTools) {
             // Reset reasoning tracking for next step
             fullReasoning = "";
             reasoningStartTime = null;
             reasoningDurationSec = null;
             hasPushedReasoningForStep = false;
 
-            remainingToolRounds -= 1;
+            let graceDirective: string | null = null;
+
+            if (remainingToolRounds > 0) {
+              remainingToolRounds -= 1;
+            } else if (remainingGraceRounds > 0) {
+              const currentGraceRound = MAX_GRACE_TOOL_ROUNDS - remainingGraceRounds + 1;
+              remainingGraceRounds -= 1;
+
+              // Strict 3-phase escalation in English
+              if (currentGraceRound === 1) {
+                graceDirective =
+                  "[CRITICAL SYSTEM DIRECTIVE: FINAL GRACE PERIOD - 10 ROUNDS REMAINING]\n" +
+                  "Your standard budget of 30 tool rounds has been fully consumed. You have entered a STRICT 10-ROUND EMERGENCY GRACE PERIOD.\n" +
+                  "MANDATORY OPERATING RULES:\n" +
+                  "1. STRICTLY FORBIDDEN: Starting any new topics, exploratory searches, or unprompted tangents.\n" +
+                  "2. FOCUS: Execute ONLY the critical missing steps required to finish the user's primary request.\n" +
+                  "3. SPEED: Combine operations where possible. Plan your wrap-up to conclude well before round 40.\n" +
+                  "4. If the primary deliverable (document, file, calculation) is already produced, CEASE ALL TOOL CALLS IMMEDIATELY and write your complete final answer now.";
+              } else if (remainingGraceRounds === 5) {
+                graceDirective =
+                  "[URGENT SYSTEM DIRECTIVE: WRAP-UP ENFORCEMENT - ONLY 5 ROUNDS LEFT]\n" +
+                  "You are burning through your final emergency rounds. Tool access will be PERMANENTLY TERMINATED in 5 turns.\n" +
+                  "ACTIONS REQUIRED NOW:\n" +
+                  "1. Immediately commit, save, or write any remaining pending file.\n" +
+                  "2. Prepare your final conclusions immediately. Do not make any more investigative tool calls.\n" +
+                  "3. This is your last opportunity to finalize deliverables.";
+              } else if (remainingGraceRounds === 1) {
+                graceDirective =
+                  "[FINAL ROUND WARNING: TOOL ACCESS TERMINATING AFTER THIS CALL]\n" +
+                  "This is your ABSOLUTE LAST TOOL CALL. After this step, all tool execution will be permanently locked.\n" +
+                  "Make this tool call your final conclusive action, and prepare to deliver your complete final response.";
+              }
+            }
+
             stepIndex += 1;
 
             const toolInputs: Array<ToolCallInput & { startedAt: number }> = assembledCalls.map(
@@ -791,6 +872,41 @@ export function createChatGenerationStream(
               });
             }
 
+            // If a grace period directive triggered on this round, inject it as a strict user turn
+            if (graceDirective) {
+              currentMessages.push({
+                role: "user",
+                content: graceDirective,
+              });
+            }
+
+            // Sync live progress draft & produced files into Redis working memory (~1ms)
+            void saveTurnDraftToRedis({
+              assistantMessageId: assistantMessageId.toString(),
+              assistantMessagePublicId,
+              sessionId: sessionId.toString(),
+              userId: userId.toString(),
+              fullContent,
+              fullReasoning,
+              parts: executedToolParts,
+              status: "completed",
+              promptTokens,
+              completionTokens,
+              updatedAt: new Date().toISOString(),
+            });
+
+            const currentFiles = listProducedFiles(executedToolParts);
+            if (currentFiles.length > 0) {
+              void saveSessionMemoryToRedis(sessionId, {
+                filesProduced: currentFiles.map((fn) => ({
+                  filename: fn,
+                  displayName: fn,
+                  createdAt: new Date().toISOString(),
+                })),
+                lastTurnSummary: `Created/updated ${currentFiles.length} file(s): ${currentFiles.join(", ")}`,
+              });
+            }
+
             continue;
           }
 
@@ -838,6 +954,18 @@ export function createChatGenerationStream(
           break;
         }
 
+        // Tools did the work but no closing prose came (empty final pass or a failed one):
+        // finish with a reply built from the tool results instead of leaving the turn hanging
+        if (!lastTurnHadText && hasSuccessfulToolResult(executedToolParts)) {
+          const fallbackText = buildFallbackAnswer(executedToolParts, interruptedAfterTools);
+          const fallbackPartId = `text_${assistantMessagePublicId}_fallback`;
+          writer.write({ type: "text-start", id: fallbackPartId });
+          writer.write({ type: "text-delta", id: fallbackPartId, delta: fallbackText });
+          writer.write({ type: "text-end", id: fallbackPartId });
+          fullContent += (fullContent.trim() ? "\n\n" : "") + fallbackText;
+          executedToolParts.push({ type: "text", text: fallbackText, state: "done" });
+        }
+
         // If reasoning was executed, append reasoning-meta so duration survives page reloads
         if (reasoningDurationSec !== null) {
           executedToolParts.push({
@@ -846,20 +974,19 @@ export function createChatGenerationStream(
           });
         }
 
-        // Persist final completed message to DB
-        await db.chatMessage.update({
-          where: { id: assistantMessageId },
-          data: {
-            content: fullContent,
-            reasoning: fullReasoning || null,
-            parts:
-              executedToolParts.length > 0
-                ? (executedToolParts as unknown as Prisma.InputJsonValue)
-                : Prisma.JsonNull,
-            status: "completed",
-            promptTokens: promptTokens || null,
-            completionTokens: completionTokens || null,
-          },
+        // Persist final completed message via Redis-first write-behind flush
+        await flushTurnToDatabase({
+          assistantMessageId: assistantMessageId.toString(),
+          assistantMessagePublicId,
+          sessionId: sessionId.toString(),
+          userId: userId.toString(),
+          fullContent,
+          fullReasoning: fullReasoning || null,
+          parts: executedToolParts,
+          status: "completed",
+          promptTokens,
+          completionTokens,
+          updatedAt: new Date().toISOString(),
         });
 
         // Always record usage (priced from the model's catalog rates) so requestCount moves even at $0
@@ -902,19 +1029,20 @@ export function createChatGenerationStream(
             ? "RATE_LIMITED"
             : (errAny?.code as string) || (errAny?.errorClass as string) || "STREAM_ERROR";
 
-        await db.chatMessage
-          .update({
-            where: { id: assistantMessageId },
-            data: {
-              content: isUpstreamRateLimit ? "" : fullContent,
-              reasoning: isUpstreamRateLimit ? null : fullReasoning || null,
-              status: finalStatus,
-              errorCode,
-              promptTokens: promptTokens || null,
-              completionTokens: completionTokens || null,
-            },
-          })
-          .catch(() => {});
+        await flushTurnToDatabase({
+          assistantMessageId: assistantMessageId.toString(),
+          assistantMessagePublicId,
+          sessionId: sessionId.toString(),
+          userId: userId.toString(),
+          fullContent: isUpstreamRateLimit ? "" : fullContent,
+          fullReasoning: isUpstreamRateLimit ? null : fullReasoning || null,
+          parts: executedToolParts,
+          status: finalStatus,
+          errorCode,
+          promptTokens,
+          completionTokens,
+          updatedAt: new Date().toISOString(),
+        });
 
         if (billedModel && !isUpstreamRateLimit) {
           await recordPartialUsage(userId, {
