@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type {
   ChatMessageInput,
   DecryptedGatewayConfig,
@@ -8,6 +9,7 @@ import type {
 import type { SseRecord } from "../sse";
 import { streamFromGateway } from "./http";
 import { sanitizeParametersSchema } from "./schema";
+import { applyClaudeCodeCloaking, extractClaudeCliVersion } from "./claude-cloaking";
 
 function mapFinishReason(value: unknown): FinishReason {
   if (value === "end_turn" || value === "stop_sequence") return "stop";
@@ -287,7 +289,17 @@ export function executeClaude(
   gateway: DecryptedGatewayConfig,
   request: GatewayExecutionRequest
 ): AsyncGenerator<GatewayStreamEvent> {
-  const body = buildClaudeBody(request);
+  const rawBody = buildClaudeBody(request);
+  const sessionId =
+    (typeof gateway.extraHeaders?.["x-claude-code-session-id"] === "string" &&
+      gateway.extraHeaders["x-claude-code-session-id"]) ||
+    crypto.randomUUID();
+  const userAgent =
+    typeof gateway.extraHeaders?.["User-Agent"] === "string"
+      ? gateway.extraHeaders["User-Agent"]
+      : undefined;
+  const version = extractClaudeCliVersion(userAgent);
+  const body = applyClaudeCodeCloaking(rawBody, gateway.apiKey, sessionId, version);
   const parser = createClaudeParser();
   return streamFromGateway(gateway, "/messages?beta=true", body, parser, request.signal);
 }

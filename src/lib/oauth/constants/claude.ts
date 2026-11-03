@@ -35,7 +35,7 @@ export const CLAUDE_BETAS = [
   "token-efficient-tools-2026-03-28",
 ].join(",");
 
-export const CLAUDE_USER_AGENT = `claude-cli/${CLAUDE_CLI_VERSION} (external, sdk-cli)`;
+export const CLAUDE_USER_AGENT = `claude-cli/${CLAUDE_CLI_VERSION} (external, cli)`;
 /** Reset grants are gated by surface: only (external, cli) User-Agent is eligible upstream */
 export const CLAUDE_RESET_USER_AGENT = `claude-cli/${CLAUDE_CLI_VERSION} (external, cli)`;
 

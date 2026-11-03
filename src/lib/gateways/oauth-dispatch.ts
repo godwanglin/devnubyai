@@ -275,13 +275,16 @@ async function buildAttempt(
     };
   }
   if (gateway.oauthProvider === "claude") {
+    const sessionId = stableUuid(`claude:${conn.id}:${firstUserText(request.messages)}`);
     return {
       gateway: {
         ...gateway,
         apiKey: accessToken,
         extraHeaders: {
+          ...CLAUDE_DEFAULT_CUSTOM_HEADERS,
           ...(gateway.extraHeaders ?? {}),
           Authorization: `Bearer ${accessToken}`,
+          "x-claude-code-session-id": sessionId,
         },
       },
       request,

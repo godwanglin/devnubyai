@@ -1,6 +1,8 @@
+import crypto from "node:crypto";
 import { validateSafeUrlResolved } from "@/lib/tools/ssrf";
 import type { ModelPingResult } from "./provider-models-service";
 import { isAdaptiveThinkingModel, isBudgetThinkingModel } from "./adapters/claude";
+import { applyClaudeCodeCloaking, extractClaudeCliVersion } from "./adapters/claude-cloaking";
 
 export async function pingClaudeModel(
   auth: { accessToken: string; headers: Record<string, string> },
@@ -22,18 +24,22 @@ export async function pingClaudeModel(
   const isAdaptive = isAdaptiveThinkingModel(modelKey);
   const isBudget = isBudgetThinkingModel(modelKey);
 
-  const body: Record<string, unknown> = {
+  const rawBody: Record<string, unknown> = {
     model: modelKey,
     max_tokens: 50,
     messages: [{ role: "user", content: "ping" }],
   };
 
   if (isAdaptive) {
-    body.thinking = { type: "adaptive" };
+    rawBody.thinking = { type: "adaptive" };
   } else if (isBudget) {
-    body.thinking = { type: "enabled", budget_tokens: 1024 };
-    body.max_tokens = 2048;
+    rawBody.thinking = { type: "enabled", budget_tokens: 1024 };
+    rawBody.max_tokens = 2048;
   }
+
+  const sessionId = crypto.randomUUID();
+  const version = extractClaudeCliVersion(auth.headers["User-Agent"]);
+  const body = applyClaudeCodeCloaking(rawBody, auth.accessToken, sessionId, version);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
@@ -48,6 +54,7 @@ export async function pingClaudeModel(
         Accept: "application/json",
         Authorization: `Bearer ${auth.accessToken}`,
         ...auth.headers,
+        "x-claude-code-session-id": sessionId,
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -68,12 +75,12 @@ export async function pingClaudeModel(
           (typeof errJson.error === "object" ? errJson.error?.message : errJson.error) || errJson.message;
         const errType = typeof errJson.error === "object" ? errJson.error?.type : errJson.type;
 
-        if (res.status === 429) {
-          msg = `Anthropic rate limit: Model ${modelKey} is temporarily throttled upstream on this account (Claude Code allocation reached).`;
-        } else if (parsed && parsed !== "Error") {
+        if (parsed && parsed !== "Error") {
           msg = String(parsed);
         } else if (errType) {
-          msg = `${errType}: ${parsed || "Request rejected upstream"}`;
+          msg = `${errType}${parsed ? `: ${parsed}` : ""}`;
+        } else if (text) {
+          msg = text.slice(0, 160);
         }
       } catch {
         if (text) msg = text.slice(0, 160);
