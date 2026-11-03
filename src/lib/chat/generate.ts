@@ -6,6 +6,7 @@ import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool, type ToolExecutionResult } from "@/lib/tools";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
+import { buildSkillsSystemPromptBlock } from "@/lib/skills/runtime";
 import { recordPartialUsage, recordUserUsage, type RecordUsageInput } from "@/lib/chat/quota";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
@@ -371,6 +372,11 @@ export function createChatGenerationStream(
               "  * NEVER write fake mock binary strings into `write_file`. Always use these dedicated binary document tools so real, valid Office files are generated and immediately previewable/downloadable."
             ].join("\n"),
           });
+
+          const skillsBlock = await buildSkillsSystemPromptBlock();
+          if (skillsBlock) {
+            currentMessages.unshift({ role: "system", content: skillsBlock });
+          }
 
           if (sessionFiles.length > 0) {
             const fileLines = sessionFiles.map((f) => {

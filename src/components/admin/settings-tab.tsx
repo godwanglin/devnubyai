@@ -10,6 +10,7 @@ import { useToast } from "@/providers/toast-provider";
 import { MAX_TOOL_ROUNDS_LIMIT, type ChatSettings } from "@/lib/chat/settings-shared";
 import { DatabasePoolConfigCard } from "./database-pool-config-card";
 import { NetworkRulesConfigCard } from "./network-rules-config-card";
+import { LegalSettingsCard } from "./legal-settings-card";
 
 /** Sentinel for "no explicit model" (CustomSelect values are non-empty strings) */
 const AUTO_MODEL = "__auto__";
@@ -235,6 +236,9 @@ export function SettingsTab() {
 
         {/* Card 3: Network & SSRF Dynamic Rules */}
         <NetworkRulesConfigCard />
+
+        {/* Card 4: Support contact & public legal pages */}
+        <LegalSettingsCard />
       </div>
     </div>
   );

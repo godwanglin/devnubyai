@@ -22,11 +22,13 @@ import type { PublicPlanItem } from "@/app/api/v1/plans/route";
 
 interface PlansViewProps {
   initialPlans?: PublicPlanItem[];
+  /** Server-rendered footer (legal links + support contact) */
+  footer?: React.ReactNode;
 }
 
 const EMPTY_PLANS: PublicPlanItem[] = [];
 
-export function PlansView({ initialPlans }: PlansViewProps) {
+export function PlansView({ initialPlans, footer }: PlansViewProps) {
   const { t } = useI18n();
   const { user } = useAccount();
   const router = useRouter();
@@ -315,6 +317,8 @@ export function PlansView({ initialPlans }: PlansViewProps) {
         plan={selectedPlanForCheckout}
         initialCycle={billingCycle}
       />
+
+      {footer}
     </div>
   );
 }

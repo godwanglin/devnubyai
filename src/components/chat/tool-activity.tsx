@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, ChevronDown, FileCode, FileSpreadsheet, FileText, Globe,
   Hash, HelpCircle, Image as ImageIcon, Loader2, NotebookPen, Presentation,
-  Terminal, Wrench,
+  Terminal, Wrench, Sparkles,
 } from "lucide-react";
 import { ImagePreviewModal, type PreviewImageTarget } from "@/components/modals/image-preview-modal";
 import { cn } from "@/lib/cn";
@@ -85,6 +85,8 @@ function describeTool(tool: ToolActivity, t: Translate): string {
       return t("message.toolFetchUrl", { target: baseName(input.url, "url") });
     case "memory_note":
       return t("message.toolMemoryNote", { action: String(input.action ?? "") });
+    case "load_skill":
+      return `Membuka skill: ${String(input.name || "skill")}`;
     case "web_search":
     case "deep_search":
       return t("message.doneWebSearch");
@@ -107,6 +109,7 @@ function ToolGlyph({ name, className }: { name?: string; className?: string }) {
     case "calculate": return <Hash className={className} />;
     case "fetch_url": return <Globe className={className} />;
     case "memory_note": return <NotebookPen className={className} />;
+    case "load_skill": return <Sparkles className={className} />;
     default: return <Wrench className={className} />;
   }
 }

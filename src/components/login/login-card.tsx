@@ -161,6 +161,25 @@ export function LoginCard() {
         <p className="text-[11px] text-[var(--placeholder)] text-center leading-relaxed mt-5">
           {t("login.terms")}
         </p>
+
+        {/* Legal & Support Links */}
+        <div className="pt-4 mt-5 border-t border-[var(--border)] flex items-center justify-center gap-3 text-[11px] text-[var(--muted)] flex-wrap">
+          <Link href="/about" className="hover:text-[var(--ink)] transition-colors">
+            Tentang Kami
+          </Link>
+          <span className="text-[var(--placeholder)]">•</span>
+          <Link href="/terms" className="hover:text-[var(--ink)] transition-colors">
+            Ketentuan
+          </Link>
+          <span className="text-[var(--placeholder)]">•</span>
+          <Link href="/privacy" className="hover:text-[var(--ink)] transition-colors">
+            Privasi
+          </Link>
+          <span className="text-[var(--placeholder)]">•</span>
+          <Link href="/contact" className="hover:text-[var(--ink)] transition-colors">
+            Kontak
+          </Link>
+        </div>
       </div>
     </div>
   );

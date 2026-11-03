@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PlansView } from "@/components/plans/plans-view";
+import { LegalFooter } from "@/components/legal/legal-footer";
 
 export const metadata: Metadata = {
   title: "Paket & Harga — Devnuby AI",
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function PlansPage() {
-  return <PlansView />;
+  return <PlansView footer={<LegalFooter />} />;
 }
