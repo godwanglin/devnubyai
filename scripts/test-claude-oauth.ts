@@ -131,7 +131,27 @@ async function runClaudeTests() {
     assert.strictEqual(tokens.upstreamUserId, "usr_claude_12345");
     assert.strictEqual(tokens.providerData?.orgId, "org_anthropic_67890");
     assert.strictEqual(tokens.providerData?.organizationName, "Devnuby Org");
-    console.log("✔ Token exchange parses JSON body and resolves Claude account & organization profile");
+
+    // Test with explicit state parameter (like from query param ?code=...&state=...)
+    tokenRequestBody = null;
+    await exchangeClaudeCode(
+      "bare_code_789",
+      "test_code_verifier",
+      CLAUDE_REDIRECT_URI,
+      "explicit_state_xyz"
+    );
+    assert.ok(tokenRequestBody !== null, "Token exchange POST body sent for explicit state");
+    const sentBody2 = tokenRequestBody as Record<string, unknown>;
+    assert.strictEqual(sentBody2.code, "bare_code_789", "Bare code sent");
+    assert.strictEqual(sentBody2.state, "explicit_state_xyz", "Explicit state parameter included");
+
+    // Test that missing state throws an informative error
+    await assert.rejects(
+      () => exchangeClaudeCode("bare_code_no_state", "test_verifier", CLAUDE_REDIRECT_URI),
+      /Claude OAuth requires the state parameter/
+    );
+
+    console.log("✔ Token exchange parses JSON body, handles both state parameter and code#state, and resolves Claude profile");
   } finally {
     globalThis.fetch = originalFetch;
   }

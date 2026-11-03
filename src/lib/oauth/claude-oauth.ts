@@ -124,26 +124,35 @@ export async function fetchClaudeProfile(accessToken: string): Promise<ClaudePro
 export async function exchangeClaudeCode(
   code: string,
   codeVerifier: string,
-  redirectUri: string = CLAUDE_REDIRECT_URI
+  redirectUri: string = CLAUDE_REDIRECT_URI,
+  state?: string
 ): Promise<TokenExchangeResult> {
   // Parse code: may contain state after '#' (e.g. "code#state")
   let authCode = code.trim();
-  let codeState = "";
+  let codeState = state?.trim() || "";
   if (authCode.includes("#")) {
     const parts = authCode.split("#");
     authCode = parts[0];
-    codeState = parts[1] || "";
+    if (!codeState) {
+      codeState = parts[1] || "";
+    }
   }
 
-  // Claude requires JSON format body
+  if (!codeState) {
+    throw new Error(
+      "Claude OAuth requires the state parameter. Please paste the full callback URL from your browser address bar or use code#state format."
+    );
+  }
+
+  // Claude requires JSON format body with non-empty state
   const payload: Record<string, string> = {
     grant_type: "authorization_code",
     client_id: CLAUDE_OAUTH_CLIENT_ID,
     code: authCode,
+    state: codeState,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   };
-  if (codeState) payload.state = codeState;
 
   const res = await fetch(CLAUDE_TOKEN_URL, {
     method: "POST",

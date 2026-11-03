@@ -51,7 +51,12 @@ const PKCE_PROVIDERS: Partial<
     OAuthProviderId,
     {
       start: () => { authUrl: string; state: string; codeVerifier: string; redirectUri: string };
-      exchange: (code: string, verifier: string, redirectUri?: string) => Promise<TokenExchangeResult>;
+      exchange: (
+        code: string,
+        verifier: string,
+        redirectUri?: string,
+        state?: string
+      ) => Promise<TokenExchangeResult>;
       loopback: { port: number; path: string };
     }
   >
@@ -73,7 +78,8 @@ const PKCE_PROVIDERS: Partial<
   },
   claude: {
     start: startClaudePkceFlow,
-    exchange: exchangeClaudeCode,
+    exchange: (code, verifier, redirectUri, state) =>
+      exchangeClaudeCode(code, verifier, redirectUri, state),
     loopback: { port: CLAUDE_LOOPBACK_PORT, path: CLAUDE_CALLBACK_PATH },
   },
 };
@@ -167,7 +173,12 @@ function fail(session: OAuthSession, error: string): OAuthPollResult {
 async function exchangePkceCode(session: OAuthSession, code: string): Promise<OAuthPollResult> {
   if (!session.codeVerifier) return fail(session, "OAuth session has no verifier");
   try {
-    const tokens = await pkceConfig(session.provider).exchange(code, session.codeVerifier, session.redirectUri);
+    const tokens = await pkceConfig(session.provider).exchange(
+      code,
+      session.codeVerifier,
+      session.redirectUri,
+      session.state
+    );
     return await finishWithTokens(session, tokens);
   } catch (err) {
     return fail(session, err instanceof Error ? err.message : "Token exchange failed");
@@ -240,7 +251,13 @@ export async function exchangeManualCallback(
     // A failed manual paste must not kill the session: let the admin retry
     if (!session.codeVerifier) return fail(session, "OAuth session has no verifier");
     const exchange = pkceConfig(session.provider).exchange;
-    const tokens = await exchange(code, session.codeVerifier, session.redirectUri).catch((err: unknown) => {
+    const effectiveState = state || session.state;
+    const tokens = await exchange(
+      code,
+      session.codeVerifier,
+      session.redirectUri,
+      effectiveState
+    ).catch((err: unknown) => {
       throw ApiError.badRequest(err instanceof Error ? err.message : "Token exchange failed");
     });
     return await finishWithTokens(session, tokens);

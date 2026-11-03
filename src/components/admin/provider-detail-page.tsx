@@ -235,7 +235,10 @@ export function ProviderDetailPage({ providerId }: ProviderDetailPageProps) {
       const res = await fetch(`/api/v1/admin/gateway/providers/${providerId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customHeaders: newHeaders }),
+        body: JSON.stringify({
+          headers: newHeaders,
+          customHeaders: newHeaders,
+        }),
         credentials: "same-origin",
       });
       const json = await res.json().catch(() => ({}));

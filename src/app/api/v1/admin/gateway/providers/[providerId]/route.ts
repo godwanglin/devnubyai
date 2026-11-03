@@ -11,9 +11,18 @@ interface RouteContext {
   params: Promise<{ providerId: string }>;
 }
 
-const updateHeadersSchema = z.object({
-  headers: z.record(z.string(), z.string()),
-});
+const updateHeadersSchema = z
+  .object({
+    headers: z.record(z.string(), z.string()).optional(),
+    customHeaders: z.record(z.string(), z.string()).optional(),
+  })
+  .refine(
+    (data) => data.headers !== undefined || data.customHeaders !== undefined,
+    { message: "Either headers or customHeaders must be provided" }
+  )
+  .transform((data) => ({
+    headers: (data.headers ?? data.customHeaders ?? {}) as Record<string, string>,
+  }));
 
 export async function GET(request: Request, context: RouteContext) {
   const requestId = getRequestId(request);
