@@ -9,7 +9,11 @@ export interface DirectVaResult {
   virtualAccountNumber?: string;
   paymentCode?: string;
   invoiceNumber: string;
+  /** Total due (plan price + fee) */
   amount: number;
+  planPrice?: number;
+  fee?: number;
+  methodName?: string;
   expiredDate?: string;
   bank: string;
   howToPayPage?: string;
@@ -161,6 +165,16 @@ export function DirectVaView({
         <div className="flex justify-between py-1 border-b border-[var(--border)]">
           <span>{t("plans.invoiceNumber")}</span>
           <span className="font-mono text-[var(--ink)]">{vaResult.invoiceNumber}</span>
+        </div>
+        <div className="flex justify-between py-1 border-b border-[var(--border)]">
+          <span>{t("plans.planPrice")}</span>
+          <span className="text-[var(--ink)]">
+            {formatRupiah(vaResult.planPrice ?? vaResult.amount - (vaResult.fee ?? 0))}
+          </span>
+        </div>
+        <div className="flex justify-between py-1 border-b border-[var(--border)]">
+          <span>{t("plans.serviceFee", { name: vaResult.methodName || vaResult.bank.toUpperCase() })}</span>
+          <span className="text-[var(--ink)]">{formatRupiah(vaResult.fee ?? 0)}</span>
         </div>
         <div className="flex justify-between py-1 border-b border-[var(--border)]">
           <span>{t("plans.totalBill")}</span>

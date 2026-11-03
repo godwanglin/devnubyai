@@ -94,6 +94,8 @@ export async function GET(request: Request, context: RouteContext) {
         status: string;
         type: string;
         amount: number;
+        planPrice?: number;
+        fee?: number;
         vaNumber?: string;
         bank?: string;
         methodName?: string;
@@ -124,6 +126,8 @@ export async function GET(request: Request, context: RouteContext) {
             status: "pending",
             type: tx.provider,
             amount: tx.totalAmount,
+            planPrice: tx.amount,
+            fee: tx.fee,
             vaNumber: tx.paymentCode || undefined,
             bank: tx.paymentMethodCode || undefined,
             methodName: tx.paymentMethodName || undefined,
@@ -268,6 +272,8 @@ export async function GET(request: Request, context: RouteContext) {
           invoice: tx.invoiceNumber,
           type: tx.provider,
           amount: tx.totalAmount,
+          planPrice: tx.amount,
+          fee: tx.fee,
           vaNumber: tx.paymentCode || undefined,
           bank: tx.paymentMethodCode || undefined,
           methodName: tx.paymentMethodName || undefined,

@@ -36,6 +36,13 @@ function formatCountdown(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function formatMinutesSeconds(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}m ${s}s`;
+}
+
 const OVO_COOLDOWN_MS = 120_000; // 2 minutes cooldown
 
 /**
@@ -347,10 +354,12 @@ export function TripayPaymentView({
             </p>
           </div>
 
-          {/* OVO Number Editor / Custom Phone Input with blue token styling */}
-          <div className="p-3 rounded-[10px] bg-blue-500/10 border border-blue-500/25 text-left space-y-2">
+          {/* OVO Number Editor / Custom Phone Input with standard glassmorphism token */}
+          <div className="p-3 rounded-[12px] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] shadow-[var(--glass-shadow)] text-left space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-blue-300 font-medium">Nomor Akun OVO:</span>
+              <span className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider">
+                Nomor Akun OVO:
+              </span>
               {!editingPhone && (
                 <button
                   type="button"
@@ -358,7 +367,7 @@ export function TripayPaymentView({
                     setPhoneInput(ovoPhone);
                     setEditingPhone(true);
                   }}
-                  className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 hover:underline"
+                  className="inline-flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline"
                 >
                   <Edit2 className="w-3 h-3" />
                   <span>{t("plans.ovoChangeNumber")}</span>
@@ -374,7 +383,7 @@ export function TripayPaymentView({
                     value={phoneInput}
                     onChange={(e) => setPhoneInput(e.target.value)}
                     placeholder="Contoh: 08123456789"
-                    className="flex-1 px-3 py-1.5 rounded-[6px] bg-[var(--surface)] border border-blue-500/30 text-xs text-[var(--ink)] font-mono focus:outline-hidden focus:border-blue-400"
+                    className="flex-1 px-3 py-1.5 rounded-[6px] bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--ink)] font-mono focus:outline-hidden focus:border-[var(--accent)]"
                   />
                   <Button
                     size="sm"
@@ -397,26 +406,21 @@ export function TripayPaymentView({
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <span className="font-mono text-base font-bold text-blue-200 tracking-wide">
+                <span className="font-mono text-base font-bold text-[var(--ink)] tracking-wide">
                   {ovoPhone || "-"}
                 </span>
               </div>
             )}
           </div>
 
-          <div className="p-2.5 rounded-[8px] bg-purple-500/5 border border-purple-500/20 text-purple-300 text-[11px] flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-            <span>{t("plans.ovoWaitingConfirm")}</span>
-          </div>
-
-          {/* Repush Notification Button with 2-Minute Cooldown */}
+          {/* Single Action Button: "Lanjutkan Pembayaran" / "Coba lagi setelah Xm Ys" */}
           <div className="pt-1 space-y-1.5">
             <Button
-              variant="outline"
+              variant="primary"
               size="sm"
               onClick={() => void handleRepushOvo()}
               disabled={repushing || isCooldownActive || isExpired}
-              className="w-full text-xs py-2 gap-1.5 border-purple-500/30 text-purple-300 hover:bg-purple-500/10"
+              className="w-full text-xs py-2.5 font-semibold gap-1.5"
             >
               {repushing ? (
                 <>
@@ -425,17 +429,17 @@ export function TripayPaymentView({
                 </>
               ) : isCooldownActive ? (
                 <>
-                  <BellRing className="w-3.5 h-3.5 text-purple-400" />
+                  <BellRing className="w-3.5 h-3.5 text-amber-300" />
                   <span>
-                    {t("plans.ovoCooldownWait", {
-                      time: formatCountdown(cooldownRemaining),
+                    {t("plans.ovoRetryAfter", {
+                      time: formatMinutesSeconds(cooldownRemaining),
                     })}
                   </span>
                 </>
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />
-                  <span>{t("plans.ovoSendPush")}</span>
+                  <span>{t("plans.ovoContinuePayment")}</span>
                 </>
               )}
             </Button>
@@ -475,12 +479,10 @@ export function TripayPaymentView({
           <span>{t("plans.planPrice")}</span>
           <span className="text-[var(--ink)]">{formatRupiah(result.amount)}</span>
         </div>
-        {result.fee > 0 && (
-          <div className="flex justify-between text-[var(--muted)]">
-            <span>{t("plans.serviceFee", { name: result.paymentName })}</span>
-            <span className="text-[var(--ink)]">{formatRupiah(result.fee)}</span>
-          </div>
-        )}
+        <div className="flex justify-between text-[var(--muted)]">
+          <span>{t("plans.serviceFee", { name: result.paymentName })}</span>
+          <span className="text-[var(--ink)]">{formatRupiah(result.fee)}</span>
+        </div>
         <div className="flex justify-between pt-1.5 border-t border-[var(--border)] font-bold text-sm text-[var(--ink)]">
           <span>{t("plans.totalPayment")}</span>
           <span>{formatRupiah(result.totalAmount)}</span>

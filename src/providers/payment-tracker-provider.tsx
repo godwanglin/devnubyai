@@ -13,6 +13,8 @@ export interface ActivePaymentTransaction {
   invoice: string;
   type: string;
   amount: number;
+  planPrice?: number;
+  fee?: number;
   vaNumber?: string;
   bank?: string;
   methodName?: string;
@@ -165,8 +167,8 @@ export function PaymentTrackerProvider({ children }: { children: React.ReactNode
           payCode: activeTx.vaNumber || null,
           checkoutUrl: activeTx.checkoutUrl || null,
           instructions: [],
-          amount: activeTx.amount,
-          fee: 0,
+          amount: activeTx.planPrice ?? activeTx.amount - (activeTx.fee ?? 0),
+          fee: activeTx.fee ?? 0,
           totalAmount: activeTx.amount,
           expiredAt: activeTx.expiredAt,
         }
@@ -177,6 +179,9 @@ export function PaymentTrackerProvider({ children }: { children: React.ReactNode
       ? {
           invoiceNumber: activeTx.invoice,
           amount: activeTx.amount,
+          planPrice: activeTx.planPrice,
+          fee: activeTx.fee,
+          methodName: activeTx.methodName,
           bank: activeTx.bank || "VA",
           virtualAccountNumber: activeTx.vaNumber,
           howToPayPage: activeTx.howToPayUrl,

@@ -167,12 +167,16 @@ export function PlanCheckoutModal({
           throw new Error(json.error?.message || t("plans.createPaymentFailed"));
         }
         setNeedsPhone(false);
-        setTripayResult(json.data);
         if (json.data) {
+          // Hand the invoice to the global tracker modal and close this one,
+          // so only a single payment popup is ever on screen
+          onClose();
           openTransaction({
             invoice: json.data.invoiceNumber,
             type: "tripay",
             amount: json.data.totalAmount || effectivePrice,
+            planPrice: json.data.amount,
+            fee: json.data.fee,
             vaNumber: json.data.payCode || undefined,
             methodName: json.data.paymentName,
             customerPhone: json.data.customerPhone || undefined,
@@ -205,12 +209,14 @@ export function PlanCheckoutModal({
         if (!res.ok) {
           throw new Error(json.error?.message || t("plans.createPaymentFailed"));
         }
-        setVaResult(json.data);
         if (json.data) {
+          onClose();
           openTransaction({
             invoice: json.data.invoiceNumber || invoiceNumber,
             type: "doku",
             amount: json.data.amount || effectivePrice,
+            planPrice: json.data.amount || effectivePrice,
+            fee: 0,
             vaNumber: json.data.virtualAccountNumber || json.data.paymentCode,
             bank: json.data.bank || selectedMethod.code,
             methodName: selectedMethod.name,
@@ -354,11 +360,13 @@ export function PlanCheckoutModal({
               invoice={pendingInvoice}
               formatRupiah={formatRupiah}
               onResumeTripay={(res) => {
-                setTripayResult(res);
+                onClose();
                 openTransaction({
                   invoice: res.invoiceNumber,
                   type: "tripay",
                   amount: res.totalAmount,
+                  planPrice: res.amount,
+                  fee: res.fee,
                   vaNumber: res.payCode || undefined,
                   methodName: res.paymentName,
                   customerPhone: res.customerPhone || undefined,
@@ -370,8 +378,10 @@ export function PlanCheckoutModal({
                 });
               }}
               onResumeVa={(res) => {
-                setVaResult(res);
+                onClose();
                 openTransaction({
+                  planPrice: res.planPrice,
+                  fee: res.fee,
                   invoice: res.invoiceNumber,
                   type: "doku",
                   amount: res.amount,

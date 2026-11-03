@@ -10,7 +10,10 @@ export interface PendingInvoice {
   invoice: string;
   type?: string;
   kind?: TripayPaymentResult["kind"];
+  /** Total due (plan price + fee) */
   amount: number;
+  planPrice?: number;
+  fee?: number;
   qrString?: string;
   vaNumber?: string;
   bank?: string;
@@ -36,6 +39,8 @@ export function PendingInvoiceBanner({
 }: PendingInvoiceBannerProps) {
   const { t } = useI18n();
   const label = invoice.methodName || invoice.bank?.toUpperCase() || "VA";
+  const fee = invoice.fee ?? 0;
+  const planPrice = invoice.planPrice ?? invoice.amount - fee;
 
   function handleResume() {
     if (invoice.type === "tripay" && invoice.kind && invoice.expiredAt) {
@@ -48,8 +53,8 @@ export function PendingInvoiceBanner({
         payCode: invoice.vaNumber || null,
         checkoutUrl: invoice.checkoutUrl || null,
         instructions: [],
-        amount: invoice.amount,
-        fee: 0,
+        amount: planPrice,
+        fee,
         totalAmount: invoice.amount,
         expiredAt: invoice.expiredAt,
       });
@@ -58,6 +63,9 @@ export function PendingInvoiceBanner({
     onResumeVa({
       invoiceNumber: invoice.invoice,
       amount: invoice.amount,
+      planPrice,
+      fee,
+      methodName: invoice.methodName,
       bank: invoice.bank || "briva",
       virtualAccountNumber: invoice.vaNumber,
       paymentCode: invoice.vaNumber,
