@@ -7,6 +7,7 @@ import {
   fetchOpenAiResetCreditsHistory,
   type ResetCreditsHistoryResult,
 } from "@/lib/oauth/quota/openai";
+import { fetchClaudeResetGrants } from "@/lib/oauth/quota/claude";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
 
@@ -30,13 +31,13 @@ export async function GET(request: Request, context: RouteContext) {
     await requireAdmin();
     const { providerId, connectionId: rawConnId } = await context.params;
 
-    if (providerId !== "openai") {
-      throw ApiError.badRequest("Reset credits history is only supported for OpenAI (ChatGPT) accounts");
+    if (providerId !== "openai" && providerId !== "claude") {
+      throw ApiError.badRequest("Reset credits history is only supported for OpenAI and Claude accounts");
     }
 
     const id = parseConnectionId(rawConnId);
     const conn = await db.providerConnection.findFirst({
-      where: { id, gateway: { oauthProvider: "openai" } },
+      where: { id, gateway: { oauthProvider: providerId } },
       select: {
         id: true,
         accessTokenCiphertext: true,
@@ -47,7 +48,7 @@ export async function GET(request: Request, context: RouteContext) {
     if (!conn) throw ApiError.notFound("Connection not found");
 
     // 5-minute cache; ?fresh=1 (the modal's refresh button) bypasses it
-    const cacheKey = CACHE_KEYS.openaiResetCreditsHistory(id);
+    const cacheKey = CACHE_KEYS.providerResetCreditsHistory(providerId, id);
     const fresh = new URL(request.url).searchParams.get("fresh") === "1";
     if (!fresh) {
       const cached = await getCachedJson<{ result: ResetCreditsHistoryResult; cachedAt: string }>(cacheKey);
@@ -62,12 +63,58 @@ export async function GET(request: Request, context: RouteContext) {
 
     let result: ResetCreditsHistoryResult;
     try {
-      result = await fetchOpenAiResetCreditsHistory(token, providerData);
+      if (providerId === "claude") {
+        const grantsData = await fetchClaudeResetGrants(token, providerData);
+        const items = (grantsData.rawGrants || []).map((g, idx) => ({
+          id: `claude_grant_${g.id || idx}`,
+          creditId: g.id,
+          kind: g.paused ? "paused" : g.resetsLeft > 0 ? "granted" : "used",
+          occurredAt: g.startsAt,
+          raw: {
+            label: g.label,
+            resetsLeft: g.resetsLeft,
+            resetsTotal: g.resetsTotal,
+            clears: g.clears,
+            expiresAt: g.endsAt,
+          },
+        }));
+        result = {
+          items,
+          windowStart: null,
+          asOf: new Date().toISOString(),
+          nextCursor: null,
+        };
+      } else {
+        result = await fetchOpenAiResetCreditsHistory(token, providerData);
+      }
     } catch (err: unknown) {
       const is401 = err instanceof CodexUpstreamError ? err.status === 401 : false;
-      if (is401 && conn.refreshTokenCiphertext) {
+      if ((is401 || (err instanceof Error && err.message.includes("401"))) && conn.refreshTokenCiphertext) {
         token = await refreshConnectionToken(id, { force: true });
-        result = await fetchOpenAiResetCreditsHistory(token, providerData);
+        if (providerId === "claude") {
+          const grantsData = await fetchClaudeResetGrants(token, providerData);
+          const items = (grantsData.rawGrants || []).map((g, idx) => ({
+            id: `claude_grant_${g.id || idx}`,
+            creditId: g.id,
+            kind: g.paused ? "paused" : g.resetsLeft > 0 ? "granted" : "used",
+            occurredAt: g.startsAt,
+            raw: {
+              label: g.label,
+              resetsLeft: g.resetsLeft,
+              resetsTotal: g.resetsTotal,
+              clears: g.clears,
+              expiresAt: g.endsAt,
+            },
+          }));
+          result = {
+            items,
+            windowStart: null,
+            asOf: new Date().toISOString(),
+            nextCursor: null,
+          };
+        } else {
+          result = await fetchOpenAiResetCreditsHistory(token, providerData);
+        }
       } else {
         throw err;
       }

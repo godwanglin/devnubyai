@@ -85,7 +85,7 @@ export function ConnectionCard({
                   {quota.plan}
                 </span>
               )}
-              {providerId === "openai" && quota?.resetCreditsAvailable !== undefined && (
+              {(providerId === "openai" || providerId === "claude") && quota?.resetCreditsAvailable !== undefined && (
                 <ResetCreditsControl
                   providerId={providerId}
                   connectionId={conn.id}

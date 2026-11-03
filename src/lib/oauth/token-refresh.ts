@@ -7,6 +7,7 @@ import {
   ANTIGRAVITY_CLIENT_SECRET,
   GOOGLE_OAUTH_TOKEN_URL,
 } from "./constants/antigravity";
+import { CLAUDE_OAUTH_CLIENT_ID, CLAUDE_TOKEN_URL } from "./constants/claude";
 
 interface TokenResponse {
   access_token: string;
@@ -77,25 +78,43 @@ export async function refreshConnectionToken(
       const provider = conn.gateway?.oauthProvider;
       const isOpenAi = provider === "openai";
       const isAntigravity = provider === "antigravity";
-      const tokenUrl = isAntigravity ? GOOGLE_OAUTH_TOKEN_URL : isOpenAi ? OPENAI_TOKEN_URL : XAI_TOKEN_URL;
-      const clientId = isAntigravity ? ANTIGRAVITY_CLIENT_ID : isOpenAi ? OPENAI_OAUTH_CLIENT_ID : XAI_CLIENT_ID;
+      const isClaude = provider === "claude";
 
-      const body = new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: clientId,
-        refresh_token: refreshToken,
-      });
-      // Google's installed-app client requires its (public) client secret on refresh
-      if (isAntigravity) body.set("client_secret", ANTIGRAVITY_CLIENT_SECRET);
+      let response: Response;
+      if (isClaude) {
+        response = await fetch(CLAUDE_TOKEN_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            grant_type: "refresh_token",
+            client_id: CLAUDE_OAUTH_CLIENT_ID,
+            refresh_token: refreshToken,
+          }),
+        });
+      } else {
+        const tokenUrl = isAntigravity ? GOOGLE_OAUTH_TOKEN_URL : isOpenAi ? OPENAI_TOKEN_URL : XAI_TOKEN_URL;
+        const clientId = isAntigravity ? ANTIGRAVITY_CLIENT_ID : isOpenAi ? OPENAI_OAUTH_CLIENT_ID : XAI_CLIENT_ID;
 
-      const response = await fetch(tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-        },
-        body,
-      });
+        const body = new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: clientId,
+          refresh_token: refreshToken,
+        });
+        // Google's installed-app client requires its (public) client secret on refresh
+        if (isAntigravity) body.set("client_secret", ANTIGRAVITY_CLIENT_SECRET);
+
+        response = await fetch(tokenUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
+          body,
+        });
+      }
 
       const data = (await response.json().catch(() => ({}))) as TokenResponse;
 

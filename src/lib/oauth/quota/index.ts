@@ -2,6 +2,7 @@ import type { OAuthProviderId } from "../providers";
 import { fetchGrokCliQuota, type ProviderQuotaResult } from "./grok-cli";
 import { fetchOpenAiQuota } from "./openai";
 import { fetchAntigravityQuota } from "./antigravity";
+import { fetchClaudeQuota } from "./claude";
 
 export type { ProviderQuotaResult, QuotaItem } from "./grok-cli";
 
@@ -12,6 +13,7 @@ const QUOTA_FETCHERS: Partial<
   "grok-cli": fetchGrokCliQuota,
   openai: fetchOpenAiQuota,
   antigravity: fetchAntigravityQuota,
+  claude: fetchClaudeQuota,
 };
 
 export function isQuotaSupported(provider: OAuthProviderId): boolean {

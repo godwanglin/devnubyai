@@ -13,6 +13,10 @@ export const CACHE_KEYS = {
     `cache:admin:provider_connection:${connectionId.toString()}:reset_credits`,
   openaiResetCreditsHistory: (connectionId: string | bigint) =>
     `cache:admin:provider_connection:${connectionId.toString()}:reset_credits_history`,
+  providerResetCredits: (provider: string, connectionId: string | bigint) =>
+    `cache:admin:provider_connection:${provider}:${connectionId.toString()}:reset_credits`,
+  providerResetCreditsHistory: (provider: string, connectionId: string | bigint) =>
+    `cache:admin:provider_connection:${provider}:${connectionId.toString()}:reset_credits_history`,
 } as const;
 
 export const CACHE_TTL = {
@@ -80,11 +84,20 @@ export async function invalidateUserSessionsCache(userId: string | bigint): Prom
 }
 
 /**
- * Invalidate OpenAI reset-credit availability & history cache for one connection
+ * Invalidate reset-credit availability & history cache for one connection
  */
-export async function invalidateOpenAiResetCreditsCache(connectionId: string | bigint): Promise<void> {
+export async function invalidateProviderResetCreditsCache(provider: string, connectionId: string | bigint): Promise<void> {
   await Promise.allSettled([
+    invalidateCacheKey(CACHE_KEYS.providerResetCredits(provider, connectionId)),
+    invalidateCacheKey(CACHE_KEYS.providerResetCreditsHistory(provider, connectionId)),
     invalidateCacheKey(CACHE_KEYS.openaiResetCredits(connectionId)),
     invalidateCacheKey(CACHE_KEYS.openaiResetCreditsHistory(connectionId)),
   ]);
+}
+
+/**
+ * Invalidate OpenAI reset-credit availability & history cache for one connection
+ */
+export async function invalidateOpenAiResetCreditsCache(connectionId: string | bigint): Promise<void> {
+  await invalidateProviderResetCreditsCache("openai", connectionId);
 }

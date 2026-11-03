@@ -273,6 +273,19 @@ async function buildAttempt(
       },
     };
   }
+  if (gateway.oauthProvider === "claude") {
+    return {
+      gateway: {
+        ...gateway,
+        apiKey: accessToken,
+        extraHeaders: {
+          ...(gateway.extraHeaders ?? {}),
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      request,
+    };
+  }
   return { gateway: { ...gateway, apiKey: accessToken }, request };
 }
 

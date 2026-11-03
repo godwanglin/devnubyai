@@ -60,8 +60,8 @@ export function inferCapabilitiesFromId(modelKey: string): ModelCapabilities {
     !nonReasoning &&
     !isImageGen &&
     !isVideoGen &&
-    (/reasoning|thinking|grok-build|grok-code|grok-[3-9](?:\.\d+)?-mini|grok-[4-9]/.test(id) || /-(low|medium|high|xhigh)$/.test(id));
-  const vision = !isImageGen && !isVideoGen && (/vision|grok-[4-9]/.test(id) || /-vl\b/.test(id));
+    (/reasoning|thinking|grok-build|grok-code|grok-[3-9](?:\.\d+)?-mini|grok-[4-9]|claude-3-7|claude-opus-5|claude-sonnet-5|claude-fable/.test(id) || /-(low|medium|high|xhigh)$/.test(id));
+  const vision = !isImageGen && !isVideoGen && (/vision|grok-[4-9]|claude-[3-9]/.test(id) || /-vl\b/.test(id));
 
   let output: Modality[] = ["text"];
   if (isImageGen) output = ["image"];

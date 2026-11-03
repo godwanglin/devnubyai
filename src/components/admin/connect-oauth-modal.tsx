@@ -169,7 +169,9 @@ export function ConnectOAuthModal({
   const isGrokCli = providerId === "grok-cli";
   const displayName =
     providerName ||
-    (providerId === "antigravity"
+    (providerId === "claude"
+      ? "Claude (Anthropic)"
+      : providerId === "antigravity"
       ? "Google Cloud Code Assist (Antigravity)"
       : providerId === "openai"
       ? "OpenAI (ChatGPT)"

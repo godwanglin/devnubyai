@@ -30,6 +30,15 @@ export function parseCallbackInput(input: string): { code: string; state: string
     return { code, state: params.get("state") };
   }
 
+  // Support Claude Code "code#state" format
+  if (trimmed.includes("#") && !trimmed.includes("://") && !trimmed.includes("?")) {
+    const [c, s] = trimmed.split("#");
+    if (c && s) {
+      if (/\s/.test(c) || /\s/.test(s)) throw ApiError.badRequest("Code must not contain spaces");
+      return { code: c, state: s };
+    }
+  }
+
   if (/\s/.test(trimmed)) throw ApiError.badRequest("Code must not contain spaces");
   return { code: trimmed, state: null };
 }

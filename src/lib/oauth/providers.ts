@@ -19,10 +19,11 @@ import {
 } from "./constants/grok-cli";
 import { CODEX_BASE_URL, OPENAI_DEFAULT_CUSTOM_HEADERS } from "./constants/openai";
 import { ANTIGRAVITY_STREAM_URL, ANTIGRAVITY_USER_AGENT } from "./constants/antigravity";
+import { CLAUDE_BASE_URL, CLAUDE_DEFAULT_CUSTOM_HEADERS } from "./constants/claude";
 import { generatePKCE } from "./pkce";
 import { extractEmailFromToken, extractUserIdFromToken } from "./token-refresh";
 
-export type OAuthProviderId = "xai" | "grok-cli" | "openai" | "antigravity";
+export type OAuthProviderId = "xai" | "grok-cli" | "openai" | "antigravity" | "claude";
 
 export interface OAuthProviderManifest {
   id: OAuthProviderId;
@@ -87,10 +88,23 @@ export const OAUTH_PROVIDERS: Record<OAuthProviderId, OAuthProviderManifest> = {
     defaultModelsPath: "/v1internal:fetchAvailableModels",
     defaultCustomHeaders: { "User-Agent": ANTIGRAVITY_USER_AGENT },
   },
+  claude: {
+    id: "claude",
+    name: "Claude (Anthropic)",
+    description: "Sign in with your Anthropic Claude account via PKCE (Claude Code CLI flow).",
+    flow: "pkce",
+    iconKey: "claude",
+    logoUrl: "/brand-logos/claude.svg",
+    defaultBaseUrl: CLAUDE_BASE_URL,
+    // The dispatcher routes claude to its own Claude Messages adapter
+    wireApi: "chat",
+    defaultModelsPath: "/models",
+    defaultCustomHeaders: CLAUDE_DEFAULT_CUSTOM_HEADERS,
+  },
 };
 
 export function isOAuthProviderId(id: string): id is OAuthProviderId {
-  return id === "xai" || id === "grok-cli" || id === "openai" || id === "antigravity";
+  return id === "xai" || id === "grok-cli" || id === "openai" || id === "antigravity" || id === "claude";
 }
 
 /** Builds the authorize URL shown in the xAI PKCE popup */

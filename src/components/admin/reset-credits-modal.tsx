@@ -180,8 +180,12 @@ export function ResetCreditsModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="OpenAI Reset Credits"
-      description={`Ketersediaan & riwayat reset credit untuk akun "${accountLabel}".`}
+      title={providerId === "claude" ? "Claude Limit Resets" : "OpenAI Reset Credits"}
+      description={
+        providerId === "claude"
+          ? `Ketersediaan & info limit reset rate limit untuk akun "${accountLabel}".`
+          : `Ketersediaan & riwayat reset credit untuk akun "${accountLabel}".`
+      }
       maxWidth="lg"
     >
       <div className="space-y-4 text-xs">

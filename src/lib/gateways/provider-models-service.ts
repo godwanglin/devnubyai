@@ -13,6 +13,7 @@ import {
   type ModelCapabilities,
 } from "@/lib/oauth/model-capabilities";
 import { isOAuthProviderId, type OAuthProviderId } from "@/lib/oauth/providers";
+import { CLAUDE_DEFAULT_MODELS } from "@/lib/oauth/constants/claude";
 import { getOrCreateOAuthGateway } from "./provider-service";
 import { discoverAntigravityModels, pingAntigravityModel } from "./antigravity-models";
 import { Prisma } from "@/generated/client";
@@ -146,9 +147,30 @@ export async function discoverProviderModels(
       }
     }
 
+    if (providerId === "claude" && list.length === 0) {
+      const fallbackList: DiscoveredModel[] = CLAUDE_DEFAULT_MODELS.map((m) => ({
+        modelKey: m.id,
+        displayName: m.name,
+        ownedBy: "anthropic",
+        capabilities: detectCapabilities(m.id, null),
+        raw: null,
+      }));
+      list = mergeModelLists(list, fallbackList);
+    }
+
     return { supported: true, models: list };
   } catch (err: unknown) {
     clearTimeout(timer);
+    if (providerId === "claude") {
+      const fallbackList: DiscoveredModel[] = CLAUDE_DEFAULT_MODELS.map((m) => ({
+        modelKey: m.id,
+        displayName: m.name,
+        ownedBy: "anthropic",
+        capabilities: detectCapabilities(m.id, null),
+        raw: null,
+      }));
+      return { supported: true, models: fallbackList };
+    }
     return {
       supported: false,
       models: [],

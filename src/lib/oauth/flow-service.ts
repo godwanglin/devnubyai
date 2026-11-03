@@ -16,6 +16,8 @@ import { XAI_CALLBACK_PATH, XAI_LOOPBACK_PORT } from "./constants/xai";
 import { OPENAI_CALLBACK_PATH, OPENAI_LOOPBACK_PORT } from "./constants/openai";
 import { exchangeAntigravityCode, startAntigravityPkceFlow } from "./antigravity-oauth";
 import { ANTIGRAVITY_CALLBACK_PATH, ANTIGRAVITY_LOOPBACK_PORT } from "./constants/antigravity";
+import { exchangeClaudeCode, startClaudePkceFlow } from "./claude-oauth";
+import { CLAUDE_CALLBACK_PATH, CLAUDE_LOOPBACK_PORT } from "./constants/claude";
 
 const DEFAULT_DEVICE_VERIFICATION_URI = "https://accounts.x.ai/oauth2/device";
 
@@ -68,6 +70,11 @@ const PKCE_PROVIDERS: Partial<
     start: startAntigravityPkceFlow,
     exchange: exchangeAntigravityCode,
     loopback: { port: ANTIGRAVITY_LOOPBACK_PORT, path: ANTIGRAVITY_CALLBACK_PATH },
+  },
+  claude: {
+    start: startClaudePkceFlow,
+    exchange: exchangeClaudeCode,
+    loopback: { port: CLAUDE_LOOPBACK_PORT, path: CLAUDE_CALLBACK_PATH },
   },
 };
 
