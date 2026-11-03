@@ -18,7 +18,7 @@ export const CLAUDE_SCOPES = [
   "user:inference",
 ];
 
-export const CLAUDE_CLI_VERSION = "0.80.0";
+export const CLAUDE_CLI_VERSION = "2.1.280";
 export const CLAUDE_API_VERSION = "2023-06-01";
 
 export const CLAUDE_BETAS = [

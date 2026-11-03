@@ -7,6 +7,7 @@ import {
   CODEX_DEFAULT_INSTRUCTIONS,
   OPENAI_DEFAULT_CUSTOM_HEADERS,
 } from "@/lib/oauth/constants/openai";
+import { CLAUDE_DEFAULT_CUSTOM_HEADERS } from "@/lib/oauth/constants/claude";
 import type { ProviderQuotaResult } from "@/lib/oauth/quota";
 import { isOtherAntigravityFamily } from "@/lib/oauth/quota/antigravity";
 import { buildAntigravityHeaders, resolveAntigravityProjectId } from "./antigravity-auth";
@@ -463,6 +464,9 @@ export async function resolveOAuthGatewayAuth(
   if (gateway.oauthProvider === "antigravity") {
     const projectId = await resolveAntigravityProjectId(conn, accessToken);
     Object.assign(headers, buildAntigravityHeaders(conn.id, projectId, gateway.extraHeaders));
+  }
+  if (gateway.oauthProvider === "claude") {
+    Object.assign(headers, CLAUDE_DEFAULT_CUSTOM_HEADERS, gateway.extraHeaders ?? {});
   }
   return { accessToken, headers };
 }

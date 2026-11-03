@@ -16,6 +16,7 @@ import { isOAuthProviderId, type OAuthProviderId } from "@/lib/oauth/providers";
 import { CLAUDE_DEFAULT_MODELS } from "@/lib/oauth/constants/claude";
 import { getOrCreateOAuthGateway } from "./provider-service";
 import { discoverAntigravityModels, pingAntigravityModel } from "./antigravity-models";
+import { pingClaudeModel } from "./claude-models";
 import { Prisma } from "@/generated/client";
 
 export interface ModelItemDto {
@@ -314,6 +315,7 @@ export async function pingProviderModel(
     };
   }
   if (providerId === "antigravity") return pingAntigravityModel(auth, modelKey);
+  if (providerId === "claude") return pingClaudeModel(auth, modelKey, decrypted.baseUrl);
 
   const isResponsesApi = providerId === "grok-cli" || providerId === "openai";
   const url = isResponsesApi ? `${decrypted.baseUrl}/responses` : `${decrypted.baseUrl}/chat/completions`;

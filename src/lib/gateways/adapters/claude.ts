@@ -16,6 +16,14 @@ function mapFinishReason(value: unknown): FinishReason {
   return "unknown";
 }
 
+export function isAdaptiveThinkingModel(model: string): boolean {
+  return /claude-(?:sonnet|opus|haiku|fable)-5|claude-opus-4-[78]/i.test(model);
+}
+
+export function isBudgetThinkingModel(model: string): boolean {
+  return /claude-3-7|claude-(?:sonnet|opus)-4-[56]/i.test(model);
+}
+
 function resolveThinkingBudget(effort?: string, maxTokens = 8192): number {
   switch (effort) {
     case "low":
@@ -117,9 +125,11 @@ function buildClaudeBody(request: GatewayExecutionRequest): Record<string, unkno
     normalizedMessages.unshift({ role: "user", content: [{ type: "text", text: "Hello" }] });
   }
 
-  const maxTokens = request.maxTokens ?? 8192;
+  let maxTokens = request.maxTokens ?? 8192;
   const effort = request.reasoningEffort;
-  const isReasoning = effort && effort !== "off";
+  const isAdaptive = isAdaptiveThinkingModel(request.model);
+  const isBudget = isBudgetThinkingModel(request.model);
+  const requestedReasoning = effort && effort !== "off";
 
   const body: Record<string, unknown> = {
     model: request.model,
@@ -132,16 +142,37 @@ function buildClaudeBody(request: GatewayExecutionRequest): Record<string, unkno
     body.system = systemParts.join("\n\n");
   }
 
-  if (isReasoning) {
-    const budget = resolveThinkingBudget(effort, maxTokens);
-    body.thinking = { type: "enabled", budget_tokens: budget };
-    // Temperature must be omitted or 1.0 when thinking is enabled
-  } else if (request.temperature !== undefined) {
-    body.temperature = request.temperature;
+  let thinkingActive = false;
+
+  // Claude 5/5.5 models use adaptive thinking with output_config.effort
+  if (isAdaptive) {
+    body.thinking = { type: "adaptive" };
+    if (requestedReasoning) {
+      const mappedEffort = effort === "xhigh" ? "high" : effort;
+      body.output_config = { effort: mappedEffort };
+    }
+    thinkingActive = true;
+  } else if (requestedReasoning || isBudget) {
+    // Claude 3.7 / 4.x budget-based thinking
+    if (requestedReasoning) {
+      const budget = resolveThinkingBudget(effort, maxTokens);
+      body.thinking = { type: "enabled", budget_tokens: budget };
+      if (maxTokens <= budget) {
+        maxTokens = budget + 1024;
+        body.max_tokens = maxTokens;
+      }
+      thinkingActive = true;
+    }
   }
 
-  if (request.topP !== undefined && !isReasoning) {
-    body.top_p = request.topP;
+  // Temperature and top_p must be omitted when thinking is enabled
+  if (!thinkingActive) {
+    if (request.temperature !== undefined) {
+      body.temperature = request.temperature;
+    }
+    if (request.topP !== undefined) {
+      body.top_p = request.topP;
+    }
   }
 
   if (request.tools?.length) {
@@ -152,7 +183,13 @@ function buildClaudeBody(request: GatewayExecutionRequest): Record<string, unkno
     }));
   }
 
-  return { ...body, ...(request.paramOverrides ?? {}), model: request.model };
+  // Strip parameters that Anthropic rejects
+  const cleanOverrides = { ...(request.paramOverrides ?? {}) };
+  delete cleanOverrides.reasoning_effort;
+  delete cleanOverrides.reasoningEffort;
+  delete cleanOverrides.thinking_budget;
+
+  return { ...body, ...cleanOverrides, model: request.model };
 }
 
 /** Parses Anthropic SSE event records into GatewayStreamEvent */
