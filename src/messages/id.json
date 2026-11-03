@@ -1102,7 +1102,7 @@
     "rateLimit": "{count} Permintaan / menit",
     "modelsIncluded": "Model AI yang didukung:",
     "allModelsIncluded": "Semua model di paket sebelumnya +",
-    "lockHint": "Tersedia di paket Pro",
+    "lockHint": "Tersedia di paket {plans}",
     "backToChat": "Kembali ke percakapan",
     "checkoutTitle": "Langganan {name}",
     "checkoutSubtitle": "Pilih siklus penagihan dan metode pembayaran untuk melanjutkan.",

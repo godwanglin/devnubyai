@@ -91,6 +91,8 @@ export interface ModelOption {
   category: "Powerful" | "Fast" | "Balanced" | "Flagship" | string;
   badge?: string | null;
   isLocked?: boolean;
+  /** Names of higher plans that unlock this model, in plan order (only set when locked) */
+  requiredPlans?: string[];
   provider?: {
     slug: string;
     name: string;

@@ -1102,7 +1102,7 @@
     "rateLimit": "{count} Requests / minute",
     "modelsIncluded": "Supported AI Models:",
     "allModelsIncluded": "All models from previous plans +",
-    "lockHint": "Available on Pro plan",
+    "lockHint": "Available on {plans} plan",
     "backToChat": "Back to chat",
     "checkoutTitle": "Subscribe to {name}",
     "checkoutSubtitle": "Select your billing cycle and payment method to continue.",

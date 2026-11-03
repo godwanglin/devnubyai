@@ -8,6 +8,7 @@ import {
 import { invalidatePlansCache } from "@/lib/redis/cache-keys";
 import { FREE_PLAN_SLUG } from "@/lib/plans/effective-plan";
 import { invalidateResolvedModelCache } from "@/lib/chat/generate";
+import { IMAGE_CATALOG_CATEGORY } from "@/lib/images/settings";
 import type { ApiModelItem } from "@/app/api/v1/models/route";
 
 const CATALOG_CACHE_KEY = "catalog:models:active";
@@ -40,6 +41,8 @@ export async function getActiveCatalogModels(): Promise<ApiModelItem[]> {
   const models = await db.catalogModel.findMany({
     where: {
       status: "active",
+      // Image models only serve the generate_image tool; never list them in the chat picker
+      category: { not: IMAGE_CATALOG_CATEGORY },
     },
     orderBy: {
       sortOrder: "asc",
@@ -121,7 +124,7 @@ export async function getActiveCatalogModelsForPlan(
     return allModels.map((m) => ({ ...m, isLocked: false }));
   }
 
-  const planKey = `catalog:models:plan:${effectivePlanId.toString()}`;
+  const planKey = `catalog:models:plan:v2:${effectivePlanId.toString()}`;
 
   // 1. Check local fast memory cache first (0.01ms)
   const memCached = localPlanCatalogFallback.get(planKey);
@@ -136,17 +139,42 @@ export async function getActiveCatalogModelsForPlan(
     return redisCached;
   }
 
-  // Get allowed model IDs for this plan
-  const allowed = await db.planModelAccess.findMany({
-    where: { planId: effectivePlanId },
-    include: { catalogModel: { select: { publicId: true } } },
+  // Active plans in display order, with the models each one grants
+  const plans = await db.plan.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      sortOrder: true,
+      modelAccesses: { select: { catalogModel: { select: { publicId: true } } } },
+    },
   });
-  const allowedPublicIds = new Set(allowed.map((a) => a.catalogModel.publicId));
+  const currentPlan = plans.find((p) => p.id === effectivePlanId);
+  const allowedPublicIds = new Set(
+    currentPlan?.modelAccesses.map((a) => a.catalogModel.publicId) ??
+      (
+        await db.planModelAccess.findMany({
+          where: { planId: effectivePlanId },
+          select: { catalogModel: { select: { publicId: true } } },
+        })
+      ).map((a) => a.catalogModel.publicId)
+  );
+  // Only plans above the user's current one are upgrade targets
+  const upgradePlans = plans
+    .filter((p) => !currentPlan || p.sortOrder > currentPlan.sortOrder)
+    .map((p) => ({ name: p.name, ids: new Set(p.modelAccesses.map((a) => a.catalogModel.publicId)) }));
 
-  const modelsWithLockState = allModels.map((m) => ({
-    ...m,
-    isLocked: !allowedPublicIds.has(m.id),
-  }));
+  const modelsWithLockState = allModels.map((m) => {
+    const isLocked = !allowedPublicIds.has(m.id);
+    return {
+      ...m,
+      isLocked,
+      ...(isLocked
+        ? { requiredPlans: upgradePlans.filter((p) => p.ids.has(m.id)).map((p) => p.name) }
+        : {}),
+    };
+  });
 
   localPlanCatalogFallback.set(planKey, {
     models: modelsWithLockState,

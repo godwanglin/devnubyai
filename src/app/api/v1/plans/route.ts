@@ -5,6 +5,7 @@ import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
 import { costLimit } from "@/lib/billing/cost";
 import { normalizePlanFeatures, type PlanFeature } from "@/lib/plans/features";
+import { IMAGE_CATALOG_CATEGORY } from "@/lib/images/settings";
 
 export interface PublicPlanModel {
   id: string;
@@ -104,7 +105,11 @@ export async function GET(request: Request) {
       const yearlyDiscount = { discountType: discountYearlyType, discountValue: discountYearlyValue };
 
       const activeModels: PublicPlanModel[] = p.modelAccesses
-        .filter((ma) => ma.catalogModel.status === "active")
+        .filter(
+          (ma) =>
+            ma.catalogModel.status === "active" &&
+            ma.catalogModel.category !== IMAGE_CATALOG_CATEGORY
+        )
         .map((ma) => ({
           id: ma.catalogModel.id.toString(),
           publicId: ma.catalogModel.publicId,

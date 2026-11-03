@@ -478,7 +478,9 @@ function ModelItem({
   onSelect: (id: string) => void;
   onLockedClick: () => void;
 }) {
+  const { t } = useI18n();
   const isLocked = Boolean(model.isLocked);
+  const planNames = model.requiredPlans?.length ? model.requiredPlans.join(" / ") : "Pro";
 
   return (
     <button
@@ -504,13 +506,13 @@ function ModelItem({
             {model.fullName}
           </span>
           {isLocked && (
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold tracking-wider bg-white/[0.08] text-[var(--placeholder)] border border-white/[0.08]">
-              PRO
+            <span className="shrink-0 px-1.5 py-0.2 rounded text-[10px] font-semibold tracking-wider uppercase bg-white/[0.08] text-[var(--placeholder)] border border-white/[0.08]">
+              {planNames}
             </span>
           )}
         </span>
         <span className="block text-xs text-[var(--muted)] truncate">
-          {isLocked ? "Tersedia di paket Pro" : model.description}
+          {isLocked ? t("plans.lockHint", { plans: planNames }) : model.description}
         </span>
       </span>
       {isLocked ? (
