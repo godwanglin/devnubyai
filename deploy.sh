@@ -55,6 +55,16 @@ npx prisma db push
 echo "[4/6] Building Next.js production bundle..."
 npm run build
 
+# Invalidate model catalog caches so newly deployed filtering takes effect immediately
+if command -v redis-cli >/dev/null 2>&1; then
+    echo "Flushing catalog Redis cache..."
+    REDIS_PASS=$(grep -E '^REDIS_URL=' .env 2>/dev/null | sed -E 's/.*:([^@]+)@.*/\1/' || true)
+    if [ -n "$REDIS_PASS" ]; then
+        redis-cli -a "$REDIS_PASS" del "catalog:models:active" 2>/dev/null || true
+        redis-cli -a "$REDIS_PASS" --scan --pattern "catalog:models:*" | xargs -r redis-cli -a "$REDIS_PASS" del 2>/dev/null || true
+    fi
+fi
+
 # 6. PM2 Process Management
 echo "[5/6] Starting / Reloading PM2 process..."
 if ! command -v pm2 >/dev/null 2>&1; then
