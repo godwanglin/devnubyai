@@ -8,6 +8,8 @@ import {
   OPENAI_DEFAULT_CUSTOM_HEADERS,
 } from "@/lib/oauth/constants/openai";
 import type { ProviderQuotaResult } from "@/lib/oauth/quota";
+import { isOtherAntigravityFamily } from "@/lib/oauth/quota/antigravity";
+import { buildAntigravityHeaders, resolveAntigravityProjectId } from "./antigravity-auth";
 import type {
   ChatMessageInput,
   DecryptedGatewayConfig,
@@ -60,14 +62,13 @@ export function isOpenAiModelAllowedForFree(rawModel: string): boolean {
   return OPENAI_FREE_PLAN_ALLOWED_MODELS.has(normalized);
 }
 
-/** Check if an account's cached quota is currently depleted. */
-export function isConnectionQuotaExhausted(conn: PoolConnection, now = Date.now()): boolean {
+/** Check if an account's cached quota is currently depleted for the requested model. */
+export function isConnectionQuotaExhausted(conn: PoolConnection, now = Date.now(), model?: string): boolean {
   const qc = conn.quotaCached;
   if (!qc || !qc.supported) return false;
 
-  // Explicit flag from quota fetcher
+  // Global flag: true only if every window on the account is depleted
   if (qc.exhausted) {
-    // If periodEnd is in the future, it's still exhausted; if past, it has reset
     if (qc.periodEnd) {
       const resetTime = Date.parse(qc.periodEnd);
       if (Number.isFinite(resetTime) && resetTime <= now) return false;
@@ -75,10 +76,12 @@ export function isConnectionQuotaExhausted(conn: PoolConnection, now = Date.now(
     return true;
   }
 
-  // Check individual windows (session / weekly)
+  // Check individual windows (session / weekly). For providers with multi-family quotas
+  // (Antigravity: gemini_* vs claude_gpt_*), windows of other families are ignored.
   const quotas = qc.quotas || {};
-  for (const q of Object.values(quotas)) {
+  for (const [key, q] of Object.entries(quotas)) {
     if (!q || q.unlimited) continue;
+    if (isOtherAntigravityFamily(key, model)) continue;
     if (q.remainingPercentage <= 0) {
       if (q.resetAt) {
         const resetTime = Date.parse(q.resetAt);
@@ -241,12 +244,19 @@ export function buildGrokCliParamOverrides(request: GatewayExecutionRequest): Re
   };
 }
 
-function buildAttempt(
+async function buildAttempt(
   gateway: DecryptedGatewayConfig,
   conn: PoolConnection,
   accessToken: string,
   request: GatewayExecutionRequest
-): { gateway: DecryptedGatewayConfig; request: GatewayExecutionRequest } {
+): Promise<{ gateway: DecryptedGatewayConfig; request: GatewayExecutionRequest }> {
+  if (gateway.oauthProvider === "antigravity") {
+    const projectId = await resolveAntigravityProjectId(conn, accessToken);
+    return {
+      gateway: { ...gateway, apiKey: accessToken, extraHeaders: buildAntigravityHeaders(conn.id, projectId, gateway.extraHeaders) },
+      request,
+    };
+  }
   if (gateway.oauthProvider === "grok-cli") {
     return {
       gateway: { ...gateway, apiKey: accessToken, extraHeaders: buildGrokCliHeaders(conn, request, gateway.extraHeaders) },
@@ -335,7 +345,7 @@ export async function* executeOAuthGateway(
   let skippedQuota = 0;
   let skippedPlan = 0;
   const pool = fullPool.filter((conn) => {
-    if (isConnectionQuotaExhausted(conn, nowMs)) {
+    if (isConnectionQuotaExhausted(conn, nowMs, request.model)) {
       skippedQuota += 1;
       return false;
     }
@@ -377,7 +387,7 @@ export async function* executeOAuthGateway(
     }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const prepared = buildAttempt(gateway, conn, accessToken, request);
+      const prepared = await buildAttempt(gateway, conn, accessToken, request);
       const stream = inner(prepared.gateway, prepared.request);
       let committed = false;
       try {
@@ -436,6 +446,10 @@ export async function resolveOAuthGatewayAuth(
     Object.assign(headers, OPENAI_DEFAULT_CUSTOM_HEADERS, gateway.extraHeaders ?? {});
     const accountId = conn.providerData?.chatgptAccountId;
     if (typeof accountId === "string" && accountId) headers["ChatGPT-Account-ID"] = accountId;
+  }
+  if (gateway.oauthProvider === "antigravity") {
+    const projectId = await resolveAntigravityProjectId(conn, accessToken);
+    Object.assign(headers, buildAntigravityHeaders(conn.id, projectId, gateway.extraHeaders));
   }
   return { accessToken, headers };
 }

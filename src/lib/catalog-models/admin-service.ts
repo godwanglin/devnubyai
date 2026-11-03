@@ -134,7 +134,7 @@ export async function listUpstreamOptions(): Promise<UpstreamModelOptionDto[]> {
       },
     },
     orderBy: [
-      { gateway: { isPrimary: "desc" } },
+      { gateway: { priority: "asc" } },
       { gateway: { name: "asc" } },
       { modelKey: "asc" },
     ],

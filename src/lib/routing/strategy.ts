@@ -139,12 +139,9 @@ export async function orderCandidates(
     ? await getRouteCooldowns(candidates.map((c) => c.candidateId), now)
     : new Map<string, number>();
 
+  // All gateways are equal: routing follows the per-model route priority set by the admin,
+  // so a direct OAuth route placed first is tried first instead of being pushed behind a "primary"
   let ordered = candidates;
-  if (!isRoundRobin && settings.primaryFirst) {
-    const primaries = candidates.filter((c) => c.gateway.isPrimary);
-    const others = candidates.filter((c) => !c.gateway.isPrimary);
-    ordered = [...primaries, ...others];
-  }
 
   // Skip open circuits. Cooling-down routes are not dropped, only moved to the
   // back as a last resort. If every route is unusable, fall back to the one

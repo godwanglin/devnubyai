@@ -14,6 +14,7 @@ import {
 } from "@/lib/oauth/model-capabilities";
 import { isOAuthProviderId, type OAuthProviderId } from "@/lib/oauth/providers";
 import { getOrCreateOAuthGateway } from "./provider-service";
+import { discoverAntigravityModels, pingAntigravityModel } from "./antigravity-models";
 import { Prisma } from "@/generated/client";
 
 export interface ModelItemDto {
@@ -91,6 +92,7 @@ export async function discoverProviderModels(
       warning: "No active OAuth account available to discover models. Connect an account first.",
     };
   }
+  if (providerId === "antigravity") return discoverAntigravityModels(auth);
 
   const modelsUrl = `${decrypted.baseUrl}${
     decrypted.modelsPath.startsWith("/") ? decrypted.modelsPath : `/${decrypted.modelsPath}`
@@ -289,6 +291,7 @@ export async function pingProviderModel(
       error: "No active OAuth account available to ping",
     };
   }
+  if (providerId === "antigravity") return pingAntigravityModel(auth, modelKey);
 
   const isResponsesApi = providerId === "grok-cli" || providerId === "openai";
   const url = isResponsesApi ? `${decrypted.baseUrl}/responses` : `${decrypted.baseUrl}/chat/completions`;

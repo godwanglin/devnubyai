@@ -2,6 +2,11 @@ import { db } from "@/lib/db";
 import { decryptSecret, encryptSecret } from "@/lib/crypto/vault";
 import { XAI_CLIENT_ID, XAI_TOKEN_URL } from "./constants/xai";
 import { OPENAI_OAUTH_CLIENT_ID, OPENAI_TOKEN_URL } from "./constants/openai";
+import {
+  ANTIGRAVITY_CLIENT_ID,
+  ANTIGRAVITY_CLIENT_SECRET,
+  GOOGLE_OAUTH_TOKEN_URL,
+} from "./constants/antigravity";
 
 interface TokenResponse {
   access_token: string;
@@ -27,8 +32,8 @@ export function needsTokenRefresh(expiresAt: Date | null, leadSeconds = 300): bo
 }
 
 /**
- * Perform OAuth refresh_token grant against xAI auth endpoint.
- * Works for both `xai` and `grok-cli` (both share the same xAI client_id and auth issuer).
+ * Perform OAuth refresh_token grant against the provider's auth endpoint:
+ * xAI (`xai`, `grok-cli`), auth.openai.com (`openai`) or Google (`antigravity`).
  */
 export async function refreshConnectionToken(
   connectionId: bigint,
@@ -71,14 +76,17 @@ export async function refreshConnectionToken(
 
       const provider = conn.gateway?.oauthProvider;
       const isOpenAi = provider === "openai";
-      const tokenUrl = isOpenAi ? OPENAI_TOKEN_URL : XAI_TOKEN_URL;
-      const clientId = isOpenAi ? OPENAI_OAUTH_CLIENT_ID : XAI_CLIENT_ID;
+      const isAntigravity = provider === "antigravity";
+      const tokenUrl = isAntigravity ? GOOGLE_OAUTH_TOKEN_URL : isOpenAi ? OPENAI_TOKEN_URL : XAI_TOKEN_URL;
+      const clientId = isAntigravity ? ANTIGRAVITY_CLIENT_ID : isOpenAi ? OPENAI_OAUTH_CLIENT_ID : XAI_CLIENT_ID;
 
       const body = new URLSearchParams({
         grant_type: "refresh_token",
         client_id: clientId,
         refresh_token: refreshToken,
       });
+      // Google's installed-app client requires its (public) client secret on refresh
+      if (isAntigravity) body.set("client_secret", ANTIGRAVITY_CLIENT_SECRET);
 
       const response = await fetch(tokenUrl, {
         method: "POST",

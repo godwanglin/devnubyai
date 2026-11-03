@@ -5,12 +5,16 @@ import type {
 } from "./types";
 import { executeChat } from "./adapters/chat";
 import { executeResponses } from "./adapters/responses";
+import { executeAntigravity } from "./adapters/antigravity";
 import { executeOAuthGateway } from "./oauth-dispatch";
 
 function dispatchWireApi(
   gateway: DecryptedGatewayConfig,
   request: GatewayExecutionRequest
 ): AsyncGenerator<GatewayStreamEvent> {
+  if (gateway.oauthProvider === "antigravity") {
+    return executeAntigravity(gateway, request);
+  }
   if (gateway.wireApi === "responses") {
     return executeResponses(gateway, request);
   }

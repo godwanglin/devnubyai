@@ -14,6 +14,8 @@ import { createOAuthSession, getOAuthSession, type OAuthSession } from "./sessio
 import { exchangeOpenAiCode, startOpenAiPkceFlow } from "./openai-oauth";
 import { XAI_CALLBACK_PATH, XAI_LOOPBACK_PORT } from "./constants/xai";
 import { OPENAI_CALLBACK_PATH, OPENAI_LOOPBACK_PORT } from "./constants/openai";
+import { exchangeAntigravityCode, startAntigravityPkceFlow } from "./antigravity-oauth";
+import { ANTIGRAVITY_CALLBACK_PATH, ANTIGRAVITY_LOOPBACK_PORT } from "./constants/antigravity";
 
 const DEFAULT_DEVICE_VERIFICATION_URI = "https://accounts.x.ai/oauth2/device";
 
@@ -61,6 +63,11 @@ const PKCE_PROVIDERS: Partial<
     start: startOpenAiPkceFlow,
     exchange: exchangeOpenAiCode,
     loopback: { port: OPENAI_LOOPBACK_PORT, path: OPENAI_CALLBACK_PATH },
+  },
+  antigravity: {
+    start: startAntigravityPkceFlow,
+    exchange: exchangeAntigravityCode,
+    loopback: { port: ANTIGRAVITY_LOOPBACK_PORT, path: ANTIGRAVITY_CALLBACK_PATH },
   },
 };
 

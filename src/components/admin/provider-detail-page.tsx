@@ -359,7 +359,7 @@ export function ProviderDetailPage({ providerId }: ProviderDetailPageProps) {
             </Button>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
             {connections.map((conn, idx) => (
               <ConnectionCard
                 key={conn.id}

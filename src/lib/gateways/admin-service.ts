@@ -137,7 +137,7 @@ export async function listSanitizedGateways(options?: { includeOAuth?: boolean }
 
   const gateways = await db.gateway.findMany({
     where,
-    orderBy: [{ isPrimary: "desc" }, { priority: "asc" }],
+    orderBy: [{ priority: "asc" }, { id: "asc" }],
   });
   return gateways.map(sanitizeGateway);
 }

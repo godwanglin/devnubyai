@@ -68,12 +68,12 @@ export function mapGateway(row: GatewayRow): DecryptedGatewayConfig {
 }
 
 /**
- * Find all enabled gateways ordered by primary first, then priority.
+ * Find all enabled gateways ordered by priority.
  */
 export async function getEnabledGateways(): Promise<DecryptedGatewayConfig[]> {
   const rows = await db.gateway.findMany({
     where: { isEnabled: true },
-    orderBy: [{ isPrimary: "desc" }, { priority: "asc" }],
+    orderBy: [{ priority: "asc" }, { id: "asc" }],
   });
   return rows.map(mapGateway);
 }

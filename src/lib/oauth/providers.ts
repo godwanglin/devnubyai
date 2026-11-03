@@ -18,10 +18,11 @@ import {
   GROK_CLI_VERSION,
 } from "./constants/grok-cli";
 import { CODEX_BASE_URL, OPENAI_DEFAULT_CUSTOM_HEADERS } from "./constants/openai";
+import { ANTIGRAVITY_STREAM_URL, ANTIGRAVITY_USER_AGENT } from "./constants/antigravity";
 import { generatePKCE } from "./pkce";
 import { extractEmailFromToken, extractUserIdFromToken } from "./token-refresh";
 
-export type OAuthProviderId = "xai" | "grok-cli" | "openai";
+export type OAuthProviderId = "xai" | "grok-cli" | "openai" | "antigravity";
 
 export interface OAuthProviderManifest {
   id: OAuthProviderId;
@@ -73,10 +74,23 @@ export const OAUTH_PROVIDERS: Record<OAuthProviderId, OAuthProviderManifest> = {
     defaultModelsPath: "/models",
     defaultCustomHeaders: OPENAI_DEFAULT_CUSTOM_HEADERS,
   },
+  antigravity: {
+    id: "antigravity",
+    name: "Antigravity (Google Cloud Code)",
+    description: "Sign in with your Google account via PKCE (Cloud Code Assist backend: Gemini & Claude).",
+    flow: "pkce",
+    iconKey: "antigravity",
+    logoUrl: "/brand-logos/gemini.svg",
+    defaultBaseUrl: new URL(ANTIGRAVITY_STREAM_URL).origin,
+    // Not used for inference: the dispatcher routes antigravity to its own Gemini adapter
+    wireApi: "chat",
+    defaultModelsPath: "/v1internal:fetchAvailableModels",
+    defaultCustomHeaders: { "User-Agent": ANTIGRAVITY_USER_AGENT },
+  },
 };
 
 export function isOAuthProviderId(id: string): id is OAuthProviderId {
-  return id === "xai" || id === "grok-cli" || id === "openai";
+  return id === "xai" || id === "grok-cli" || id === "openai" || id === "antigravity";
 }
 
 /** Builds the authorize URL shown in the xAI PKCE popup */

@@ -167,7 +167,15 @@ export function ConnectOAuthModal({
   }
 
   const isGrokCli = providerId === "grok-cli";
-  const displayName = providerName || (providerId === "openai" ? "OpenAI (ChatGPT)" : isGrokCli ? "Grok CLI" : "xAI");
+  const displayName =
+    providerName ||
+    (providerId === "antigravity"
+      ? "Google Cloud Code Assist (Antigravity)"
+      : providerId === "openai"
+      ? "OpenAI (ChatGPT)"
+      : isGrokCli
+      ? "Grok CLI"
+      : "xAI");
   const modalTitle = isGrokCli
     ? "Connect Grok CLI (Grok Build)"
     : `Connect ${displayName} OAuth`;
