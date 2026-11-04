@@ -1,39 +1,40 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { UIMessage } from "ai";
 import {
   mapApiMessagesToUIMessages,
   mapApiSessionToDomain,
   type ApiMessageItem,
   type ApiSessionItem,
 } from "@/lib/chat/client-mappers";
+import { getChat, isChatBusy, wasCreatedHere } from "@/lib/chat/chat-registry";
 import type { Session } from "@/types";
 
 interface UseChatHistoryOptions {
   currentChatId: string | null;
-  ownedChatId: string | null;
-  setOwnedChatId: (id: string | null) => void;
-  setUiMessages: (messages: UIMessage[] | ((messages: UIMessage[]) => UIMessage[])) => void;
   onNotFound: () => void;
   /** Called when the latest reply is still generating server-side (e.g. after a reload) */
   onStreamingReply?: (chatId: string) => void;
 }
 
-export function useChatHistory({
-  currentChatId,
-  ownedChatId,
-  setOwnedChatId,
-  setUiMessages,
-  onNotFound,
-  onStreamingReply,
-}: UseChatHistoryOptions) {
+/**
+ * Loads a chat's stored messages into that chat's own `Chat` instance (see
+ * chat-registry). Writes always target the chat they were fetched for, so a slow
+ * response for chat A can never land in chat B after the user switched, and a
+ * chat that is generating locally keeps its live messages instead of being
+ * overwritten by the stored (older) copy.
+ */
+export function useChatHistory({ currentChatId, onNotFound, onStreamingReply }: UseChatHistoryOptions) {
   const onStreamingReplyRef = useRef(onStreamingReply);
   useEffect(() => {
     onStreamingReplyRef.current = onStreamingReply;
   });
 
-  const [isLoadingMessages, setIsLoadingMessages] = useState(() => Boolean(currentChatId));
+  // A chat started in this tab has its messages locally from the first one on
+  const needsInitialLoad = (chatId: string | null) =>
+    Boolean(chatId) && !wasCreatedHere(chatId!) && getChat(chatId!).messages.length === 0;
+
+  const [isLoadingMessages, setIsLoadingMessages] = useState(() => needsInitialLoad(currentChatId));
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [fetchedSessionMeta, setFetchedSessionMeta] = useState<Session | null>(null);
@@ -47,45 +48,31 @@ export function useChatHistory({
   if (prevChatId !== currentChatId) {
     setPrevChatId(currentChatId);
     setFetchedSessionMeta(null);
-    if (!currentChatId && !ownedChatId) {
-      setUiMessages([]);
-      setOlderCursor(null);
-      setIsLoadingOlder(false);
-      setIsLoadingMessages(false);
-    } else if (currentChatId === ownedChatId || (!currentChatId && ownedChatId)) {
-      // Chat session was just created locally by the current user: do not reset messages,
-      // and do not set isLoadingMessages to true because the initial message is being streamed.
-      setIsLoadingOlder(false);
-      setIsLoadingMessages(false);
-    } else {
-      setUiMessages([]);
-      setOwnedChatId(null);
-      setOlderCursor(null);
-      setIsLoadingOlder(false);
-      setIsLoadingMessages(true);
-    }
+    setOlderCursor(null);
+    setIsLoadingOlder(false);
+    // A chat opened before (or still generating) shows its messages at once
+    setIsLoadingMessages(needsInitialLoad(currentChatId));
   }
 
   useEffect(() => {
-    if (!currentChatId || currentChatId === ownedChatId) return;
-
+    if (!currentChatId || wasCreatedHere(currentChatId)) return;
+    const chatId = currentChatId;
     let active = true;
 
     (async () => {
       try {
-        setIsLoadingMessages(true);
-        const messagesRes = await fetch(`/api/v1/chats/${currentChatId}/messages?limit=10`, {
+        const messagesRes = await fetch(`/api/v1/chats/${chatId}/messages?limit=10`, {
           credentials: "same-origin",
         });
 
         if (!messagesRes.ok) {
           if (messagesRes.status === 404) {
-            onNotFound();
+            if (active) onNotFound();
           } else if (messagesRes.status === 403) {
             const err = await messagesRes.json().catch(() => null);
             if (active && err?.error?.details?.reason === "CHAT_LOCKED") {
               lockedRef.current = true;
-              setLockedChatId(currentChatId);
+              setLockedChatId(chatId);
             }
           }
           return;
@@ -93,6 +80,12 @@ export function useChatHistory({
 
         const json = await messagesRes.json();
         const items: ApiMessageItem[] = json.data ?? [];
+
+        // Into this chat's own instance, unless it is generating right now (its
+        // local copy is newer than what the server has stored)
+        if (!isChatBusy(chatId)) {
+          getChat(chatId).messages = mapApiMessagesToUIMessages(items);
+        }
         if (!active) return;
 
         if (json.meta?.session) {
@@ -101,7 +94,7 @@ export function useChatHistory({
           );
         } else {
           // Graceful fallback for endpoints without embedded session meta
-          fetch(`/api/v1/chats/${currentChatId}`, { credentials: "same-origin" })
+          fetch(`/api/v1/chats/${chatId}`, { credentials: "same-origin" })
             .then((r) => (r.ok ? r.json() : null))
             .then((metaJson) => {
               if (active && metaJson?.data) {
@@ -113,32 +106,28 @@ export function useChatHistory({
             .catch(() => {});
         }
 
-        setUiMessages(mapApiMessagesToUIMessages(items));
         setOlderCursor(json.meta?.nextCursor ?? null);
 
+        // Still generating on the server (reload, other tab) and not attached here yet
         const latest = items[items.length - 1];
-        if (latest?.role === "assistant" && latest.status === "streaming") {
-          onStreamingReplyRef.current?.(currentChatId);
+        if (latest?.role === "assistant" && latest.status === "streaming" && !isChatBusy(chatId)) {
+          onStreamingReplyRef.current?.(chatId);
         }
       } catch {
         // Failed to load messages
       } finally {
-        if (active) {
-          setIsLoadingMessages(false);
-        }
+        if (active) setIsLoadingMessages(false);
       }
     })();
 
     return () => {
       active = false;
     };
-  }, [currentChatId, ownedChatId, onNotFound, setUiMessages, reloadTick]);
+  }, [currentChatId, onNotFound, reloadTick]);
 
-  async function handleLoadOlder(options?: {
-    limit?: number;
-    targetMessageId?: string;
-  }) {
+  async function handleLoadOlder(options?: { limit?: number; targetMessageId?: string }) {
     if (!currentChatId || !olderCursor || isLoadingOlder) return;
+    const chatId = currentChatId;
 
     const fetchLimit = Math.min(Math.max(1, options?.limit ?? 20), 500);
     const targetMessageId = options?.targetMessageId;
@@ -148,10 +137,9 @@ export function useChatHistory({
 
     try {
       setIsLoadingOlder(true);
-      const res = await fetch(
-        `/api/v1/chats/${currentChatId}/messages?limit=${fetchLimit}&cursor=${olderCursor}`,
-        { credentials: "same-origin" }
-      );
+      const res = await fetch(`/api/v1/chats/${chatId}/messages?limit=${fetchLimit}&cursor=${olderCursor}`, {
+        credentials: "same-origin",
+      });
       if (!res.ok) return;
 
       const json = await res.json();
@@ -161,12 +149,10 @@ export function useChatHistory({
         return;
       }
 
-      const olderUIMessages = mapApiMessagesToUIMessages(items);
-      setUiMessages((prev) => {
-        const existingIds = new Set(prev.map((m) => m.id));
-        const filteredOlder = olderUIMessages.filter((m) => !existingIds.has(m.id));
-        return [...filteredOlder, ...prev];
-      });
+      const chat = getChat(chatId);
+      const existingIds = new Set(chat.messages.map((m) => m.id));
+      const olderUIMessages = mapApiMessagesToUIMessages(items).filter((m) => !existingIds.has(m.id));
+      chat.messages = [...olderUIMessages, ...chat.messages];
       setOlderCursor(json.meta?.nextCursor ?? null);
 
       requestAnimationFrame(() => {

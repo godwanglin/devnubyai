@@ -20,6 +20,7 @@ import { DropdownItem, DropdownSeparator } from "@/components/ui/dropdown";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
+import { ChatActivityIndicator } from "./chat-activity-indicator";
 import type { Session } from "@/types";
 import type { ProjectDto } from "@/lib/projects/types";
 
@@ -74,6 +75,7 @@ export function SessionItem({
       >
         <span className="truncate">{session.title}</span>
         {isLocked && <Lock className="w-3 h-3 text-[var(--placeholder)] shrink-0" />}
+        <ChatActivityIndicator chatId={session.id} />
       </Link>
 
       <div

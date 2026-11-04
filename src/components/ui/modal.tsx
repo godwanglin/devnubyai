@@ -62,7 +62,7 @@ export function Modal({
     >
       <div
         className={cn(
-          "modal-panel w-full glass rounded-[16px] p-5 shadow-2xl border border-[var(--glass-border)] bg-[var(--panel)]",
+          "modal-panel relative w-full glass rounded-[16px] p-5 shadow-2xl border border-[var(--glass-border)] bg-[var(--panel)]",
           maxMap[maxWidth]
         )}
       >

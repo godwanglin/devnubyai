@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo, useSyncExternalStore } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Plus,
@@ -436,13 +435,7 @@ export function Sidebar({
           {!user && loading ? (
             <AccountSkeleton />
           ) : !user ? (
-            <Link
-              href="/login"
-              onClick={onCloseMobile}
-              className="flex items-center justify-center w-full py-2 rounded-[10px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-sm font-semibold text-[var(--accent-text)] transition-colors"
-            >
-              {t("nav.login")}
-            </Link>
+            <GuestLogin />
           ) : (
             <SidebarAccountCard
               user={user}
@@ -481,5 +474,21 @@ export function Sidebar({
         onPinSuccess={handlePinSuccess}
       />
     </>
+  );
+}
+
+function GuestLogin() {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/authenticate`);
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      }}
+      className="flex items-center justify-center w-full py-2 rounded-[10px] bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-sm font-semibold text-[var(--accent-text)] transition-colors cursor-pointer"
+    >
+      {t("nav.login")}
+    </button>
   );
 }

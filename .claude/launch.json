@@ -3,7 +3,8 @@
   "configurations": [
     {
       "name": "nextjs",
-      "url": "http://localhost:3000",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "-p", "3000"],
       "port": 3000
     }
   ]

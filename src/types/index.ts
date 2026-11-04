@@ -128,6 +128,10 @@ export interface UserProfile {
   quota?: UserQuota;
   /** Admin-only: `chat.tool_debug` is on, so tool calls in chat expose their input/output. */
   toolDebug?: boolean;
+  /** False until the user finished (or skipped) #/onboarding. Missing on old cached payloads. */
+  onboarded?: boolean;
+  /** Replies the user's plan may generate at once (Free 1, Pro 3, Max 6). */
+  maxParallelRequests?: number;
 }
 
 /** Response of /api/v1/me/quota, kept apart from /me so the account loads fast. */

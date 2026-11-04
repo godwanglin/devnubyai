@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { ArrowUpRight, Sparkles } from "lucide-react";
+import { ArrowUpRight, Loader2, Sparkles } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { useHomeSuggestions } from "@/hooks/use-home-suggestions";
 import { cn } from "@/lib/cn";
@@ -20,7 +20,7 @@ interface WelcomeProps {
 
 export function Welcome({ onSelectPrompt }: WelcomeProps) {
   const { t } = useI18n();
-  const { suggestions, isPersonalized, isSettled } = useHomeSuggestions();
+  const { headlines, prompts, isLoadingPrompts, isSettled, isRebuilding, version } = useHomeSuggestions();
   const stageRef = useRef<HTMLDivElement>(null);
   const typewriterRef = useRef<TypewriterState | null>(null);
   const mascotRef = useRef<PerchedMascotHandle>(null);
@@ -65,7 +65,7 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
             reserves two lines so wrapping headlines don't push the content around */}
         <div className="mt-12 min-h-[2.5em] text-3xl sm:text-4xl">
           <TypewriterHeadline
-            phrases={suggestions.headlines}
+            phrases={headlines}
             paused={!isSettled}
             slowed={isMascotPushing}
             stateRef={typewriterRef}
@@ -74,47 +74,67 @@ export function Welcome({ onSelectPrompt }: WelcomeProps) {
 
         <p className="text-sm text-[var(--muted)] mt-3 max-w-[55ch]">{t("welcome.hint")}</p>
 
-        <div className="mt-10">
-          <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-2.5">
-            {isPersonalized ? <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" /> : null}
-            <span data-perch="label">{t("welcome.quickPrompts")}</span>
-          </p>
+        {/* Quick prompts come only from the server: skeletons while fetching, and the
+            whole section is left out when the user has no personalized set */}
+        {(isLoadingPrompts || prompts) && (
+          <div className="mt-10">
+            <p className="flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-2.5">
+              {isRebuilding ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+              ) : prompts ? (
+                <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+              ) : null}
+              <span data-perch={prompts ? "label" : undefined}>
+                {isRebuilding ? t("welcome.preparingPrompts") : t("welcome.quickPrompts")}
+              </span>
+            </p>
 
-          <div
-            className={cn(
-              "grid grid-cols-1 sm:grid-cols-2 gap-2.5",
-              // No second click (or hover lift) while a card is being punched
-              punchedIndex !== null && "pointer-events-none"
-            )}
-          >
-            {suggestions.prompts.map((item, i) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={!isSettled}
-                data-perch={isSettled ? "card" : undefined}
-                onClick={() => void handleSelectCard(i, item.prompt)}
-                style={{ animationDelay: `${i * 60}ms` }}
-                className={cn(
-                  "relative flex flex-col gap-1 p-3.5 pr-9 rounded-[12px] border bg-[var(--panel)] text-left",
-                  isSettled
-                    ? "group border-[var(--border)] hover:border-[var(--accent)] hover:-translate-y-0.5 transition-[border-color,transform] cursor-pointer animate-[rise-in_380ms_ease-out_both]"
-                    : "border-[var(--border)] opacity-0",
-                  crack?.index === i && "overflow-hidden border-[var(--muted)]"
-                )}
-              >
-                {crack?.index === i ? <CardCrack crack={crack.shape} /> : null}
-                <span className="text-sm font-medium text-[var(--ink)] leading-snug line-clamp-1">
-                  {item.label}
-                </span>
-                <span className="text-[12.5px] text-[var(--muted)] leading-relaxed line-clamp-2">
-                  {item.prompt}
-                </span>
-                <ArrowUpRight className="absolute top-3.5 right-3 w-4 h-4 text-[var(--muted)] opacity-0 group-hover:opacity-100 group-hover:text-[var(--accent)] transition-opacity" />
-              </button>
-            ))}
+            <div
+              className={cn(
+                "grid grid-cols-1 sm:grid-cols-2 gap-2.5",
+                // No second click (or hover lift) while a card is being punched
+                punchedIndex !== null && "pointer-events-none"
+              )}
+            >
+              {prompts
+                ? prompts.map((item, i) => (
+                    <button
+                      key={`${version}-${item.id}`}
+                      type="button"
+                      data-perch="card"
+                      onClick={() => void handleSelectCard(i, item.prompt)}
+                      // Cards come in one at a time
+                      style={{ animationDelay: `${i * 220}ms` }}
+                      className={cn(
+                        "group relative flex flex-col gap-1 p-3.5 pr-9 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] text-left hover:border-[var(--accent)] hover:-translate-y-0.5 transition-[border-color,transform] cursor-pointer animate-[rise-in_380ms_ease-out_both]",
+                        crack?.index === i && "overflow-hidden border-[var(--muted)]"
+                      )}
+                    >
+                      {crack?.index === i ? <CardCrack crack={crack.shape} /> : null}
+                      <span className="text-sm font-medium text-[var(--ink)] leading-snug line-clamp-1">
+                        {item.label}
+                      </span>
+                      <span className="text-[12.5px] text-[var(--muted)] leading-relaxed line-clamp-2">
+                        {item.prompt}
+                      </span>
+                      <ArrowUpRight className="absolute top-3.5 right-3 w-4 h-4 text-[var(--muted)] opacity-0 group-hover:opacity-100 group-hover:text-[var(--accent)] transition-opacity" />
+                    </button>
+                  ))
+                : Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={`skeleton-${i}`}
+                      aria-hidden="true"
+                      className="flex flex-col gap-2.5 p-3.5 rounded-[12px] border border-[var(--border)] bg-[var(--panel)] animate-pulse"
+                      style={{ animationDelay: `${i * 150}ms` }}
+                    >
+                      <span className="h-3.5 w-3/5 rounded-full bg-[var(--hover)]" />
+                      <span className="h-3 w-full rounded-full bg-[var(--hover)]" />
+                      <span className="h-3 w-4/5 rounded-full bg-[var(--hover)]" />
+                    </div>
+                  ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

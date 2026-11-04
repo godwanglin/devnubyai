@@ -77,7 +77,7 @@ if command -v redis-cli >/dev/null 2>&1; then
         redis-cli -a "$REDIS_PASS" --scan --pattern "catalog:models:*" | xargs -r redis-cli -a "$REDIS_PASS" del 2>/dev/null || true
         # Chat caches derived from Postgres (rebuilt on first use). Never flush chat:v2:*:
         # those are turns not stored in Postgres yet.
-        for pattern in "quota:live:*" "chat:history:*" "cache:chat:session:*"; do
+        for pattern in "quota:live:*" "chat:history:*" "cache:chat:session:*" "cache:user:*:me"; do
             redis-cli -a "$REDIS_PASS" --scan --pattern "$pattern" | xargs -r redis-cli -a "$REDIS_PASS" del 2>/dev/null || true
         done
     fi

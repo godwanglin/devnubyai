@@ -169,8 +169,22 @@ export function LoginCard() {
           </button>
         </form>
 
-        <p className="text-[11px] text-[var(--placeholder)] text-center leading-relaxed mt-5">
-          {t("login.terms")}
+        <p className="text-xs text-center text-[var(--muted)] mt-5">
+          {t("login.noAccount")}{" "}
+          <Link
+            href={`/register${typeof window !== "undefined" ? window.location.search : ""}`}
+            className="font-semibold text-[var(--accent)] hover:underline"
+          >
+            {t("login.createAccount")}
+          </Link>
+        </p>
+
+        <p className="text-[11px] text-[var(--placeholder)] text-center leading-relaxed mt-3">
+          {t("login.termsLead")}{" "}
+          <Link href="/terms" className="underline hover:text-[var(--ink)]">{t("login.termsLink")}</Link>
+          {" "}{t("login.termsAnd")}{" "}
+          <Link href="/privacy" className="underline hover:text-[var(--ink)]">{t("login.privacyLink")}</Link>
+          {t("login.termsTail")}
         </p>
 
         {/* Legal & Support Links */}

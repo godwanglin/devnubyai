@@ -56,6 +56,8 @@ interface PendingAttachment {
 
 interface ComposerProps {
   chatId?: string | null;
+  /** Checked before sending; false keeps the draft (the check shows its own message) */
+  canSend?: () => boolean;
   onSend: (
     text: string,
     options?: {
@@ -93,6 +95,7 @@ interface ComposerProps {
 
 export function Composer({
   chatId,
+  canSend,
   onSend,
   onStop,
   disabled,
@@ -482,6 +485,9 @@ export function Composer({
       toast(t("composer.uploading") || "Please wait for files to finish uploading.");
       return;
     }
+
+    // Refused up front (e.g. plan's parallel reply limit): keep what the user typed
+    if (canSend && !canSend()) return;
 
     // If on initial page without a chatId, pass pending files to onSend;
     // chat-shell will create the session and upload files before sending.

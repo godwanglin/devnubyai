@@ -23,6 +23,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
 import type { ProjectDto, ProjectRecentChat } from "@/lib/projects/types";
+import { ChatActivityIndicator } from "./chat-activity-indicator";
 
 export interface ProjectSessionItemProps {
   chat: ProjectRecentChat;
@@ -81,6 +82,7 @@ export function ProjectSessionItem({
       >
         <span className="truncate">{chat.title}</span>
         {isLocked && <Lock className="w-3 h-3 text-[var(--placeholder)] shrink-0" />}
+        <ChatActivityIndicator chatId={chat.id} />
       </Link>
 
       <div

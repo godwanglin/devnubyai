@@ -38,7 +38,18 @@ import {
   messageSourceMentionsMap,
   messageFeedbackMap,
 } from "@/lib/chat/client-mappers";
-import { chatTransport, errorMessage } from "@/lib/chat/transport";
+import { errorMessage } from "@/lib/chat/transport";
+import {
+  countWorkingChats,
+  disposeChat,
+  getChat,
+  markWorking,
+  newDraftKey,
+  promoteDraft,
+  setChatEvents,
+  setViewedChat,
+  type ChatEvents,
+} from "@/lib/chat/chat-registry";
 import {
   OPEN_FILE_PREVIEW_EVENT,
   AI_EDIT_REQUEST_EVENT,
@@ -57,8 +68,19 @@ import { useProjectDetail } from "@/hooks/use-project-detail";
 import type { SourceMention } from "@/lib/chat/source-mentions";
 import { useAccount } from "@/providers/account-provider";
 import { setQuotaSnapshot, useQuota } from "@/hooks/use-quota";
+import { AuthModal } from "@/components/login/auth-modal";
+import {
+  OnboardingFlow,
+  stepFromHash as onboardingStepFromHash,
+} from "@/components/onboarding/onboarding-flow";
+import type { OnboardingStep } from "@/lib/onboarding/options";
 import { useToast } from "@/providers/toast-provider";
 import type { MessageAttachment, SessionFileItem, UserQuota } from "@/types";
+
+/** The server's 429 for "too many replies generating at once" (see claimGenerationSlot) */
+function isParallelLimitError(err: unknown): boolean {
+  return err instanceof Error && /generated at once/i.test(err.message);
+}
 
 export function ChatShell() {
   const { t } = useI18n();
@@ -187,8 +209,6 @@ export function ChatShell() {
     return () => window.removeEventListener("devnuby:undo-edit", onUndo);
   }, [handleUndoEdit]);
 
-  const lastTargetChatIdRef = useRef<string | null>(null);
-
   // Excerpts picked with "Tanya Devnuby", attached to the next message
   const [pendingQuotes, setPendingQuotes] = useState<string[]>([]);
   function handleAddQuote(text: string) {
@@ -263,8 +283,21 @@ export function ChatShell() {
       ? storedModelId
       : (models.find((m) => !m.isLocked)?.id ?? models[0]?.id ?? storedModelId);
 
-  const [ownedChatId, setOwnedChatId] = useState<string | null>(null);
-  const activeChatId = currentChatId || ownedChatId;
+  // A session created from the home page, until the URL has moved to /c/<id>
+  const [pendingChatId, setPendingChatId] = useState<string | null>(null);
+  // The URL now names a chat (the new one, or another the user opened): no longer needed
+  if (pendingChatId && currentChatId) setPendingChatId(null);
+  const activeChatId = currentChatId || (pathname === "/" || isProjectHome ? pendingChatId : null);
+
+  // The home page (and a project's home) types into a fresh draft; a new one after each use
+  const [draftKey, setDraftKey] = useState(newDraftKey);
+  const chatKey = activeChatId ?? draftKey;
+  const chat = getChat(chatKey);
+
+  // The sidebar dot of a finished reply goes away once its chat is open
+  useEffect(() => {
+    setViewedChat(activeChatId);
+  }, [activeChatId]);
 
   // Quota banner: from a rejected send, or from an exhausted window in the user's quota
   const { quota, refresh: refreshQuota } = useQuota(Boolean(user));
@@ -291,46 +324,51 @@ export function ChatShell() {
     void refreshQuota();
   }, [refreshQuota]);
 
+  // The open chat's own Chat instance; other sessions keep streaming in theirs
   const {
     messages: uiMessages,
     setMessages: setUiMessages,
-    sendMessage,
     regenerate,
-    resumeStream,
     stop,
     status,
-  } = useChat({
-    // id: activeChatId ?? undefined, // Removed! Our transport handles chatId via body.
-    // Stable id prevents useChat from resetting messages when we navigate from home to /c/[id].
-    id: "no-stream",
-    transport: chatTransport,
-    // No automatic `resume`: flipping it on mid-send (home -> /c/[id]) made the SDK fire a
-    // body-less resumeStream that 204s and forces status back to "ready", hiding the loader.
-    // Reattaching after a reload is done explicitly via useChatHistory -> handleStreamingReply.
-    throttle: 30,
+  } = useChat({ chat, throttle: 30 });
+
+  // Events of every session's Chat (see chat-registry), routed by the chat they belong to
+  const activeChatIdRef = useRef(activeChatId);
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  });
+  const chatEventsRef = useRef<ChatEvents>({});
+  chatEventsRef.current = {
     // The server charges spend while the reply streams and pushes the new quota
-    onData: (part) => {
+    onData: (_chatId, part) => {
       if (part.type === "data-quota" && part.data) setQuotaSnapshot(part.data as UserQuota);
     },
-    onError: (err) => {
-      // console.error("ChatShell useChat error:", err);
+    onError: (chatId, err) => {
       const quota = parseQuotaError(err);
       if (quota) {
         setRejectedQuota(quota);
         setDismissedQuotaKey(null);
         return;
       }
-      toast(readableErrorMessage(err, "Failed to process message"));
+      if (isParallelLimitError(err)) {
+        const max = maxParallel ?? Number(/max (\d+)/.exec(err.message)?.[1] ?? 1);
+        toast(t("chatSession.parallelLimit", { max }));
+        return;
+      }
+      // A background chat failing doesn't interrupt what the user is reading
+      if (chatId === activeChatIdRef.current || !chatId) {
+        toast(readableErrorMessage(err, "Failed to process message"));
+      }
     },
-    onFinish: ({ messages }) => {
+    onFinish: (chatId, { messages, isError }) => {
       fetchSessions();
       // Keeps sidebar usage current and surfaces the banner once the quota runs out
       void refreshQuota();
-      const targetChatId = lastTargetChatIdRef.current || currentChatId || ownedChatId;
       // Auto-title only after the very first turn of a chat
       const isFirstTurn = messages.filter((m) => m.role === "user").length === 1;
-      if (targetChatId && isFirstTurn) {
-        fetch(`/api/v1/chats/${targetChatId}/auto-title`, {
+      if (chatId && isFirstTurn && !isError) {
+        fetch(`/api/v1/chats/${chatId}/auto-title`, {
           method: "POST",
           credentials: "same-origin",
         })
@@ -338,15 +376,13 @@ export function ChatShell() {
           .then((data) => {
             if (data?.data?.title) {
               const newTitle: string = data.data.title;
-              setSessions((prev) =>
-                prev.map((s) => (s.id === targetChatId ? { ...s, title: newTitle } : s))
-              );
+              setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, title: newTitle } : s)));
             }
           })
           .catch(() => {});
       }
-      // AI live edit: if this turn was an edit request, tell the panel to refresh + highlight
-      if (editTargetFileId && pendingFileUpdate) {
+      // AI live edit: refresh + highlight the panel, only for the chat it belongs to
+      if (chatId === activeChatIdRef.current && editTargetFileId && pendingFileUpdate) {
         dispatchAIFileUpdated({
           fileId: editTargetFileId,
           filename: activePreviewFile?.filename ?? "",
@@ -359,14 +395,30 @@ export function ChatShell() {
         setEditTargetFileId(null);
       }
     },
-  });
+  };
+  useEffect(() => {
+    setChatEvents({
+      onData: (...args) => chatEventsRef.current.onData?.(...args),
+      onError: (...args) => chatEventsRef.current.onError?.(...args),
+      onFinish: (...args) => chatEventsRef.current.onFinish?.(...args),
+    });
+  }, []);
+
+  // Generation slots of the user's plan (Free 1, Pro 3, Max 6), counted in this tab
+  // (unknown on an older cached /me: then only the server's check applies)
+  const maxParallel = user?.maxParallelRequests;
+  function reachedParallelLimit(): boolean {
+    if (!maxParallel || countWorkingChats() < maxParallel) return false;
+    toast(t("chatSession.parallelLimit", { max: maxParallel }));
+    return true;
+  }
 
   const handleNotFound = useCallback(() => router.push("/"), [router]);
 
   // A reply interrupted by a reload keeps generating on the server; reattach to it
   function handleStreamingReply(chatId: string) {
-    lastTargetChatIdRef.current = chatId;
-    resumeStream({ body: { chatId } }).catch(() => {});
+    markWorking(chatId);
+    getChat(chatId).resumeStream({ body: { chatId } }).catch(() => {});
   }
 
   const {
@@ -382,9 +434,6 @@ export function ChatShell() {
     handleLoadOlder,
   } = useChatHistory({
     currentChatId,
-    ownedChatId,
-    setOwnedChatId,
-    setUiMessages,
     onNotFound: handleNotFound,
     onStreamingReply: handleStreamingReply,
   });
@@ -444,21 +493,31 @@ export function ChatShell() {
     stopStream: stop,
     onResetActiveChat: () => {
       setIsFilesFullscreen(false);
-      lastTargetChatIdRef.current = null;
-      setOwnedChatId(null);
+      if (activeChatId) disposeChat(activeChatId);
+      setPendingChatId(null);
       setFetchedSessionMeta(null);
-      setUiMessages([]);
     },
     setFetchedSessionMeta,
     renameSession,
     togglePinSession,
     archiveSession,
     duplicateSession,
-    deleteSession,
+    // A deleted chat that isn't open may still be generating in the background: drop it
+    deleteSession: async (chatId) => {
+      const ok = await deleteSession(chatId);
+      if (ok && chatId !== activeChatId) disposeChat(chatId);
+      return ok;
+    },
     updateSessionShareToken,
   });
 
   const currentTitle = activeSession?.title || t("welcome.title");
+
+  // Share modal target: the open chat, or one picked from the sidebar menu
+  const [shareTargetId, setShareTargetId] = useState<string | null>(null);
+  const shareChatId = shareTargetId ?? activeChatId;
+  const shareSession =
+    shareChatId === activeChatId ? activeSession : (sessions.find((s) => s.id === shareChatId) ?? null);
 
   async function handleSend(
     text: string,
@@ -478,7 +537,10 @@ export function ChatShell() {
       const draft = text.trim();
       if (!draft) return;
       const next = `/?prompt=${encodeURIComponent(draft.slice(0, 4000))}`;
-      router.push(`/login?next=${encodeURIComponent(next)}`);
+      const params = new URLSearchParams(window.location.search);
+      params.set("next", next);
+      window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}#/authenticate`);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
       return;
     }
 
@@ -527,7 +589,15 @@ export function ChatShell() {
       dispatchClearEditChips();
     }
 
-    let targetChatId = currentChatId || ownedChatId;
+    // The chat this message belongs to, fixed now: the user may open another chat (or
+    // start a new one) while the session is created or files upload, and the reply
+    // must still land here
+    const sendChat = chat;
+    const sendDraftKey = activeChatId ? null : chatKey;
+    let targetChatId = activeChatId;
+
+    // Plan limit on replies generating at once (the server enforces it too)
+    if (reachedParallelLimit()) return;
 
     try {
       if (!targetChatId) {
@@ -549,23 +619,22 @@ export function ChatShell() {
 
         const createData = await createRes.json();
         const createdSession = mapApiSessionToDomain(createData.data);
-        targetChatId = createdSession.id;
+        const newChatId = createdSession.id;
+        targetChatId = newChatId;
 
-        // Synchronously flush state before router navigation to prevent useChatHistory
-        // from clearing optimistic messages on route change
+        // The draft becomes this session's Chat; home gets a fresh draft next time
+        if (sendDraftKey) promoteDraft(sendDraftKey, newChatId);
+        const stillHere = activeChatIdRef.current === null;
         flushSync(() => {
-          setOwnedChatId(targetChatId);
-          setSessions((prev) => [
-            createdSession,
-            ...prev.filter((s) => s.id !== createdSession.id),
-          ]);
+          setSessions((prev) => [createdSession, ...prev.filter((s) => s.id !== newChatId)]);
+          setDraftKey(newDraftKey());
+          // Only follow the new chat if the user is still on the page it was started from
+          if (stillHere) setPendingChatId(newChatId);
         });
 
-        if (currentProjectId) {
-          dispatchProjectsUpdated();
-          router.replace(`/project/${currentProjectId}/c/${targetChatId}`);
-        } else {
-          router.replace(`/c/${targetChatId}`);
+        if (currentProjectId) dispatchProjectsUpdated();
+        if (stillHere) {
+          router.replace(currentProjectId ? `/project/${currentProjectId}/c/${newChatId}` : `/c/${newChatId}`);
         }
         fetchSessions();
       }
@@ -612,7 +681,6 @@ export function ChatShell() {
         window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
       }
 
-      lastTargetChatIdRef.current = targetChatId;
       setPendingQuotes([]);
 
       const optimisticMessageId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -627,7 +695,8 @@ export function ChatShell() {
         messageSourceMentionsMap.set(optimisticMessageId, options.sourceMentions);
       }
 
-      await sendMessage(
+      markWorking(targetChatId);
+      await sendChat.sendMessage(
         {
           id: optimisticMessageId,
           role: "user",
@@ -660,9 +729,30 @@ export function ChatShell() {
   }
 
   // After login, a guest draft comes back as `/?prompt=` and is sent once
+  const [authOpen, setAuthOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      setAuthOpen(window.location.hash.startsWith("#/authenticate"));
+      setOnboardingStep(onboardingStepFromHash(window.location.hash));
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  // A signed-in user who hasn't onboarded yet (new signup, Google or email) starts it here
+  const needsOnboarding = Boolean(user) && user?.onboarded === false;
+  useEffect(() => {
+    if (!needsOnboarding || window.location.hash.startsWith("#/onboarding/")) return;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/onboarding/name`);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  }, [needsOnboarding]);
+
   const pendingPromptSent = useRef(false);
   useEffect(() => {
-    if (!user || pendingPromptSent.current || pathname !== "/") return;
+    // A guest draft waits until onboarding is done, then goes out
+    if (!user || needsOnboarding || pendingPromptSent.current || pathname !== "/") return;
     const params = new URLSearchParams(window.location.search);
     const draft = params.get("prompt")?.trim();
     if (!draft) return;
@@ -673,7 +763,7 @@ export function ChatShell() {
     void handleSend(draft);
     // handleSend is recreated each render; the ref makes this fire only once
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, pathname]);
+  }, [user, needsOnboarding, pathname]);
 
   async function handleEditSubmit(messageId: string, content: string) {
     if (!activeChatId) return;
@@ -720,8 +810,9 @@ export function ChatShell() {
       setDismissedQuotaKey(null);
       return;
     }
-    lastTargetChatIdRef.current = activeChatId;
+    if (reachedParallelLimit()) return;
     messageFeedbackMap.delete(messageId);
+    markWorking(activeChatId);
     try {
       await regenerate({
         messageId,
@@ -823,6 +914,7 @@ export function ChatShell() {
       editChips={pendingEditChips}
       onRemoveEditChip={handleRemoveEditChip}
       chatId={activeChatId}
+      canSend={() => !reachedParallelLimit()}
       onSend={handleSend}
       onStop={handleStop}
       disabled={isStreamingOrSubmitted}
@@ -835,6 +927,10 @@ export function ChatShell() {
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--surface)]">
+      <AuthModal isOpen={authOpen && !user} onClose={() => setAuthOpen(false)} />
+      {user && onboardingStep && (
+        <OnboardingFlow step={onboardingStep} onFinished={() => setOnboardingStep(null)} />
+      )}
       <Sidebar
         sessions={sessions}
         isLoadingSessions={isLoadingSessions}
@@ -847,8 +943,8 @@ export function ChatShell() {
         onArchiveSession={(s) => handleArchive(s.id, Boolean(s.isArchived))}
         onDeleteSession={(s) => setDeletingTarget({ id: s.id, title: s.title })}
         onShareSession={(s) => {
-          setOwnedChatId(s.id);
-          setFetchedSessionMeta(s);
+          // Shares that chat without switching to it
+          setShareTargetId(s.id);
           setIsShareModalOpen(true);
         }}
       />
@@ -1004,11 +1100,20 @@ export function ChatShell() {
       />
 
       <ShareChatModal
-        isOpen={isShareModalOpen && Boolean(activeChatId)}
-        onClose={() => setIsShareModalOpen(false)}
-        chatId={activeChatId}
-        shareToken={activeSession?.shareToken ?? null}
-        onShareTokenChange={handleShareTokenChange}
+        isOpen={isShareModalOpen && Boolean(shareChatId)}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setShareTargetId(null);
+        }}
+        chatId={shareChatId}
+        shareToken={shareSession?.shareToken ?? null}
+        onShareTokenChange={(token) => {
+          if (!shareChatId || shareChatId === activeChatId) {
+            handleShareTokenChange(token);
+          } else {
+            updateSessionShareToken(shareChatId, token);
+          }
+        }}
       />
     </div>
   );

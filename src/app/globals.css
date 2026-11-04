@@ -254,6 +254,125 @@
     }
   }
 
+  /* Onboarding steps: slide in from the side the user is heading to,
+     then options rise in one after another (--i = item index) */
+  @keyframes onboarding-in-next {
+    from {
+      opacity: 0;
+      transform: translateX(32px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes onboarding-in-back {
+    from {
+      opacity: 0;
+      transform: translateX(-32px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes onboarding-pop {
+    0% {
+      opacity: 0;
+      transform: scale(0.6) rotate(-8deg);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.08) rotate(3deg);
+    }
+    100% {
+      transform: scale(1) rotate(0);
+    }
+  }
+
+  .onboarding-step-next {
+    animation: onboarding-in-next 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .onboarding-step-back {
+    animation: onboarding-in-back 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .onboarding-stagger > * {
+    animation: rise-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(120ms + var(--i, 0) * 35ms);
+  }
+
+  .onboarding-pop {
+    animation: onboarding-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  /* Onboarding finish: the mascot hops for joy (squash on landing, stretch on take-off),
+     its shadow shrinks while it's airborne, and confetti bursts out once */
+  @keyframes onboarding-hop {
+    0%,
+    100% {
+      transform: translateY(0) scale(1.12, 0.86);
+    }
+    12% {
+      transform: translateY(0) scale(0.9, 1.1);
+    }
+    45% {
+      transform: translateY(-52px) scale(1, 1) rotate(-6deg);
+    }
+    55% {
+      transform: translateY(-52px) scale(1, 1) rotate(6deg);
+    }
+    86% {
+      transform: translateY(0) scale(0.96, 1.04);
+    }
+  }
+
+  @keyframes onboarding-hop-shadow {
+    0%,
+    12%,
+    86%,
+    100% {
+      transform: scaleX(1);
+      opacity: 0.5;
+    }
+    45%,
+    55% {
+      transform: scaleX(0.45);
+      opacity: 0.18;
+    }
+  }
+
+  @keyframes onboarding-confetti {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0) rotate(0) scale(0.4);
+    }
+    12% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1);
+    }
+  }
+
+  .onboarding-hop {
+    transform-origin: 50% 100%;
+    animation: onboarding-hop 1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+
+  .onboarding-hop-shadow {
+    animation: onboarding-hop-shadow 1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+
+  .onboarding-confetti {
+    animation: onboarding-confetti 1.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--d, 0ms);
+  }
+
   @keyframes typewriter-fade {
     from {
       opacity: 0;

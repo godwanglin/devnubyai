@@ -86,6 +86,7 @@ model User {
   manualUpdatedTrans PaymentTransaction[] @relation("ManualTransactionUpdater")
   userNotes        UserNote[]
   memorySettings   UserMemorySettings?
+  preferences      UserPreference?
   homeSuggestions  UserHomeSuggestion[]
   projects         Project[]
   projectFiles     ProjectFile[]
@@ -607,6 +608,23 @@ model UserMemorySettings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_user_memory_settings_user")
 
   @@map("user_memory_settings")
+}
+
+/// Answers from onboarding (#/onboarding/*). Personalizes home quick prompts.
+/// No row, or onboardedAt null, means the user has not finished onboarding yet.
+model UserPreference {
+  userId      BigInt    @id @map("user_id")
+  /// One of ONBOARDING_ROLES (developer, student, teacher, ...)
+  role        String?   @db.VarChar(32)
+  /// string[] of ONBOARDING_INTERESTS ids
+  interests   Json?
+  onboardedAt DateTime? @map("onboarded_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_user_preferences_user")
+
+  @@map("user_preferences")
 }
 
 // ───────────── Personalized home page (AI-generated, refreshed every 5h) ─────────────

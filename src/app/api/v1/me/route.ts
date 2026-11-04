@@ -3,6 +3,8 @@ import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
 import { getChatSettings } from "@/lib/chat/settings";
+import { getUserPreferences } from "@/lib/onboarding/service";
+import { effectiveParallelLimit } from "@/lib/chat/concurrency";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -52,6 +54,10 @@ export async function GET(request: Request) {
         planLabel: user.plan?.name ?? "Free Plan",
         planExpiresAt: user.planExpiresAt?.toISOString() ?? null,
         avatarUrl: user.avatarUrl,
+        // Cached with the rest; finishing onboarding clears this cache
+        onboarded: (await getUserPreferences(user.id)).onboarded,
+        // Replies the plan may generate at once (server enforces it in claimGenerationSlot)
+        maxParallelRequests: effectiveParallelLimit(user.plan?.maxParallelRequests),
       },
     };
 
