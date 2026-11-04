@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { db } from "../db";
 import { downloadFromR2, sanitizeKey } from "../storage/r2";
 import { extractDocumentText } from "../files/extractors";
@@ -26,19 +27,26 @@ export interface ReadFileData {
   nextStartLine: number | null;
   content: string;
   mimeType: string;
+  /** Transient base64 data URI injected into the LLM multimodal turn for visual inspection, stripped before DB storage */
+  visualDataUrl?: string;
+}
+
+function isImageFile(filename: string, mimeType: string): boolean {
+  if (mimeType.toLowerCase().startsWith("image/")) return true;
+  return /\.(?:png|jpe?g|webp|gif)$/i.test(filename);
 }
 
 export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
   name: "read_file",
   description:
-    "Reads and extracts clean, human-readable text from files in session storage in line-delimited chunks (up to 100 lines per call). Automatically parses PDF documents (with page markers === [PAGE X] ===), Word DOCX (with page markers === [PAGE X] === when the file records page breaks), DOC, RTF, OpenDocument ODT, Excel/ODS spreadsheets (with sheet markers === [SHEET: X] ===), PowerPoint PPTX (with slide markers === [SLIDE X] ===), EPUB eBooks (with chapter markers === [CHAPTER X] ===), Markdown, CSV, and code files. ALWAYS use this tool to inspect uploaded documents.",
+    "Reads and extracts clean, human-readable text from files in session storage in line-delimited chunks (up to 100 lines per call), OR loads an image file (.png, .jpg, .webp) from session storage for direct visual inspection by vision-capable models (e.g. after running `convert_pdf_to_images.py` or `generate_image`). Automatically parses PDF documents (with page markers === [PAGE X] ===), Word DOCX (with page markers === [PAGE X] === when the file records page breaks), DOC, RTF, OpenDocument ODT, Excel/ODS spreadsheets (with sheet markers === [SHEET: X] ===), PowerPoint PPTX (with slide markers === [SLIDE X] ===), EPUB eBooks (with chapter markers === [CHAPTER X] ===), Markdown, CSV, code files, and images.",
   parameters: {
     type: "object",
     properties: {
       filename: {
         type: "string",
         description:
-          "The name, clean name, or unique file ID of the file to read from session storage (as listed in [Active Session Files]).",
+          "The name, clean name, or unique file ID of the file or image to read/inspect from session storage (as listed in [Active Session Files] or created by `run_skill_script` / `generate_image`).",
         required: true,
       },
       startLine: {
@@ -61,7 +69,7 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
     const startTime = Date.now();
     const rawFilename = (params.filename || "").trim().replace(/[.\s]+$/, "");
 
-    if (!rawFilename || rawFilename.includes("..") || /[\\/\0]/.test(rawFilename)) {
+    if (!rawFilename || rawFilename.includes("..") || /[\0]/.test(rawFilename)) {
       return {
         success: false,
         error: { code: "INVALID_PARAM", message: "Invalid or unsafe filename provided." },
@@ -69,7 +77,9 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
       };
     }
 
-    const safeFilename = sanitizeKey(rawFilename);
+    // Flatten relative paths like "poster_preview/page_1.png" -> "poster_preview_page_1.png"
+    const normalizedInput = rawFilename.replace(/^[./\\]+/, "").replace(/[/\\]/g, "_");
+    const safeFilename = sanitizeKey(normalizedInput);
 
     // 1. Resolve storage filename via session files in DB (supports unique file ID, clean name, or full storage name)
     let targetStorageFilename = safeFilename;
@@ -87,22 +97,17 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
       });
 
       if (sessionFiles.length > 0) {
-        const queryLower = rawFilename.toLowerCase();
+        const queryLower = normalizedInput.toLowerCase();
         const querySafe = safeFilename.toLowerCase();
 
         const match = sessionFiles.find((f) => {
-          // Direct publicId match
           if (f.publicId.toLowerCase() === queryLower) return true;
-          // Direct storage filename match
           if (f.filename.toLowerCase() === querySafe) return true;
-          // Clean name match (strip timestamp-random prefix like "1793345483582-ba80aa05-")
           const cleanName = f.filename.replace(/^\d+-[a-f0-9]+-/, "").toLowerCase();
           if (cleanName === querySafe || cleanName === queryLower) return true;
-          // Match if clean name without extension matches
-          const cleanStem = cleanName.replace(/\.[^/.]+$/, "");
-          const queryStem = queryLower.replace(/\.[^/.]+$/, "");
+          const cleanStem = cleanName.replace(/(?:\.(?:png|jpe?g|webp))?\.[^/.]+$/i, "");
+          const queryStem = queryLower.replace(/(?:\.(?:png|jpe?g|webp))?\.[^/.]+$/i, "");
           if (cleanStem === queryStem) return true;
-          // Match if filename ends with query (e.g. -Testing_Artificial_Intelligence.pdf)
           if (f.filename.toLowerCase().endsWith(`-${querySafe}`)) return true;
           if (f.filename.toLowerCase().endsWith(querySafe)) return true;
           return false;
@@ -128,6 +133,59 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
         sessionId: context.sessionId,
         filename: targetStorageFilename,
       });
+
+      // Handle visual image inspection (.png, .jpg, .jpeg, .webp, .gif)
+      if (isImageFile(targetStorageFilename, downloaded.contentType)) {
+        try {
+          const img = sharp(downloaded.content);
+          const meta = await img.metadata();
+          const width = meta.width ?? 0;
+          const height = meta.height ?? 0;
+          const resizedBuffer = await img
+            .resize({ width: 1200, height: 1200, fit: "inside", withoutEnlargement: true })
+            .png({ compressionLevel: 8 })
+            .toBuffer();
+          const visualDataUrl = `data:image/png;base64,${resizedBuffer.toString("base64")}`;
+          const infoText =
+            `1\t[Visual Image Loaded: '${safeFilename}' (${width}x${height} px, ${downloaded.contentType})]\n` +
+            `2\tThe rendered image has been attached directly to this conversation turn so you can visually inspect its layout, typography, contrast, alignment, and illustrations.`;
+          return {
+            success: true,
+            data: {
+              filename: safeFilename,
+              startLine: 1,
+              endLine: 2,
+              totalLines: 2,
+              hasMore: false,
+              nextStartLine: null,
+              content: infoText,
+              mimeType: downloaded.contentType || "image/png",
+              visualDataUrl,
+            },
+            metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2-vision" },
+          };
+        } catch {
+          const b64 = downloaded.content.toString("base64");
+          const mime = downloaded.contentType.startsWith("image/")
+            ? downloaded.contentType
+            : "image/png";
+          return {
+            success: true,
+            data: {
+              filename: safeFilename,
+              startLine: 1,
+              endLine: 1,
+              totalLines: 1,
+              hasMore: false,
+              nextStartLine: null,
+              content: `1\t[Visual Image Loaded: '${safeFilename}' (${mime})]`,
+              mimeType: mime,
+              visualDataUrl: `data:${mime};base64,${b64}`,
+            },
+            metadata: { durationMs: Date.now() - startTime, provider: "cloudflare-r2-vision" },
+          };
+        }
+      }
 
       // Extract clean text from the document (PDF, spreadsheets, Word, RTF, ODT, PPTX, EPUB, or plain text)
       const extraction = await extractDocumentText(

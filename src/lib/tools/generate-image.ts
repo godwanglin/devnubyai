@@ -118,7 +118,7 @@ export const generateImageTool: ToolDefinition<
         };
       }
 
-      // Filename resolution
+      // Filename resolution (strip any existing image extension before appending actual output extension)
       const ext = result.mimeType === "image/png" ? "png" : "jpg";
       let filename = (params.filename || "").trim().replace(/[.\s]+$/, "");
       if (!filename) {
@@ -128,8 +128,9 @@ export const generateImageTool: ToolDefinition<
           .slice(0, 30)
           .replace(/^-|-$/g, "");
         filename = `generated-${slug || "image"}-${Date.now().toString().slice(-6)}.${ext}`;
-      } else if (!filename.toLowerCase().endsWith(`.${ext}`)) {
-        filename = `${filename}.${ext}`;
+      } else {
+        const stem = filename.replace(/\.(?:png|jpe?g|webp|gif)$/i, "");
+        filename = `${stem}.${ext}`;
       }
 
       // Upload to Cloudflare R2

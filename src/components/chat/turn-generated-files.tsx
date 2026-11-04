@@ -7,6 +7,7 @@ import {
   type PreviewImageTarget,
 } from "@/components/modals/image-preview-modal";
 import { Tooltip } from "@/components/ui/tooltip";
+import { isHelperSkillArtifactName } from "@/lib/chat/turn-recovery";
 import { cn } from "@/lib/cn";
 import {
   classifyPreviewKind,
@@ -38,22 +39,6 @@ const FILE_TOOLS = new Set([
   "run_skill_script",
 ]);
 
-function isHelperSkillArtifact(filename: string, allFilenames: string[]): boolean {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".json")) return true;
-  const hasPrimaryDoc = allFilenames.some((f) =>
-    /\.(pdf|docx|dotx|xlsx|xlsm|pptx|potx|csv)$/i.test(f)
-  );
-  if (
-    hasPrimaryDoc &&
-    (/^(?:page[_-]?\d+|thumbnails?[_-]?\d*)\.(?:png|jpe?g)$/i.test(lower) ||
-      lower.includes("/page_"))
-  ) {
-    return true;
-  }
-  return false;
-}
-
 /** Running-state label per tool; keys match the ones in tool-activity.tsx. */
 const RUNNING_LABEL_KEY: Record<string, string> = {
   edit_file: "message.toolEditFile",
@@ -77,9 +62,11 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
       (tool) => FILE_TOOLS.has(tool.name) && tool.state !== "error"
     );
 
-    // Expand `run_skill_script` generatedFiles into individual file items
-    const list: ToolActivity[] = [];
-    for (const tool of rawList) {
+    const allTurnFilenames: string[] = [];
+    let lastDocSkillToolIdx = -1;
+
+    for (let tIdx = 0; tIdx < rawList.length; tIdx++) {
+      const tool = rawList[tIdx];
       if (tool.name === "run_skill_script") {
         const outObj =
           tool.output && typeof tool.output === "object"
@@ -92,13 +79,48 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
         const genFiles = Array.isArray(dataObj.generatedFiles)
           ? (dataObj.generatedFiles as Array<Record<string, unknown>>)
           : [];
-        const allNames = genFiles.map((gf) =>
-          String(gf.displayName || gf.filename || "")
-        );
+        for (const gf of genFiles) {
+          const fn = String(gf.displayName || gf.filename || "");
+          if (fn) {
+            allTurnFilenames.push(fn);
+            if (/\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(fn)) {
+              lastDocSkillToolIdx = tIdx;
+            }
+          }
+        }
+      }
+    }
+
+    // Expand `run_skill_script` generatedFiles into individual file items,
+    // hiding intermediate modular build files from earlier `run_skill_script` steps in the same turn.
+    const list: ToolActivity[] = [];
+    for (let tIdx = 0; tIdx < rawList.length; tIdx++) {
+      const tool = rawList[tIdx];
+      if (tool.name === "run_skill_script") {
+        const outObj =
+          tool.output && typeof tool.output === "object"
+            ? (tool.output as Record<string, unknown>)
+            : {};
+        const dataObj =
+          outObj.data && typeof outObj.data === "object"
+            ? (outObj.data as Record<string, unknown>)
+            : outObj;
+        const genFiles = Array.isArray(dataObj.generatedFiles)
+          ? (dataObj.generatedFiles as Array<Record<string, unknown>>)
+          : [];
         for (let idx = 0; idx < genFiles.length; idx++) {
           const gf = genFiles[idx];
           const fname = String(gf.displayName || gf.filename || "");
-          if (!fname || isHelperSkillArtifact(fname, allNames)) continue;
+          if (!fname || isHelperSkillArtifactName(fname, allTurnFilenames)) continue;
+          // If a later `run_skill_script` in this turn produced the final merged document,
+          // hide raw/partial documents produced by earlier `run_skill_script` calls.
+          if (
+            lastDocSkillToolIdx >= 0 &&
+            tIdx < lastDocSkillToolIdx &&
+            /\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(fname)
+          ) {
+            continue;
+          }
           list.push({
             ...tool,
             id: String(gf.id || `${tool.id}-gf-${idx}`),

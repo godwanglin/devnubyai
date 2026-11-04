@@ -127,7 +127,7 @@ function buildClaudeBody(request: GatewayExecutionRequest): Record<string, unkno
     normalizedMessages.unshift({ role: "user", content: [{ type: "text", text: "Hello" }] });
   }
 
-  let maxTokens = request.maxTokens ?? 8192;
+  let maxTokens = request.maxTokens ?? 32000;
   const effort = request.reasoningEffort;
   const isAdaptive = isAdaptiveThinkingModel(request.model);
   const isBudget = isBudgetThinkingModel(request.model);
@@ -159,8 +159,8 @@ function buildClaudeBody(request: GatewayExecutionRequest): Record<string, unkno
     if (requestedReasoning) {
       const budget = resolveThinkingBudget(effort, maxTokens);
       body.thinking = { type: "enabled", budget_tokens: budget };
-      if (maxTokens <= budget) {
-        maxTokens = budget + 1024;
+      if (maxTokens < budget + 16384) {
+        maxTokens = budget + 16384;
         body.max_tokens = maxTokens;
       }
       thinkingActive = true;

@@ -15,6 +15,7 @@ import {
 } from "@/lib/files/policy";
 import { stripFeedbackParts } from "./feedback";
 import { getChatSession, getUnlockedChatSession, type ChatMessageDto } from "./service";
+import { isHelperSkillArtifactName } from "./turn-recovery";
 
 export interface SessionFileItemDto {
   id: string;
@@ -38,7 +39,8 @@ export interface SharedChatDto {
 }
 
 /**
- * Lists all files uploaded or generated within a chat session, newest first.
+ * Lists all files uploaded or generated within a chat session, newest first,
+ * hiding internal skill verification previews and raw intermediate parts.
  */
 export async function listSessionFiles(
   userId: bigint,
@@ -51,21 +53,28 @@ export async function listSessionFiles(
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
 
-  return files.map((f) => {
-    const displayName = formatDisplayFilename(f.filename);
-    return {
-      id: f.publicId,
-      filename: f.filename,
-      displayName,
-      extension: getExtensionLabel(displayName),
-      mimeType: f.mimeType,
-      sizeBytes: Number(f.sizeBytes),
-      source: f.source,
-      isImage: isImageMimeType(f.mimeType),
-      url: `/api/v1/chats/${session.publicId}/files/${f.publicId}`,
-      createdAt: f.createdAt.toISOString(),
-    };
-  });
+  const allDisplayNames = files.map((f) => formatDisplayFilename(f.filename));
+
+  return files
+    .filter((f, idx) => {
+      if (f.source === "upload") return true;
+      return !isHelperSkillArtifactName(allDisplayNames[idx], allDisplayNames);
+    })
+    .map((f) => {
+      const displayName = formatDisplayFilename(f.filename);
+      return {
+        id: f.publicId,
+        filename: f.filename,
+        displayName,
+        extension: getExtensionLabel(displayName),
+        mimeType: f.mimeType,
+        sizeBytes: Number(f.sizeBytes),
+        source: f.source,
+        isImage: isImageMimeType(f.mimeType),
+        url: `/api/v1/chats/${session.publicId}/files/${f.publicId}`,
+        createdAt: f.createdAt.toISOString(),
+      };
+    });
 }
 
 /**
@@ -210,17 +219,17 @@ export async function getPublicSharedChat(shareToken: string): Promise<SharedCha
     };
   });
 
-    const result: SharedChatDto = {
-      id: session.publicId,
-      title: session.title,
-      sharedAt: session.sharedAt ? session.sharedAt.toISOString() : null,
-      updatedAt: session.updatedAt.toISOString(),
-      messages: formattedMessages,
-    };
+  const result: SharedChatDto = {
+    id: session.publicId,
+    title: session.title,
+    sharedAt: session.sharedAt ? session.sharedAt.toISOString() : null,
+    updatedAt: session.updatedAt.toISOString(),
+    messages: formattedMessages,
+  };
 
-    await setCachedJson(CACHE_KEYS.sharedChat(cleanToken), result, CACHE_TTL.SHARED_CHAT);
+  await setCachedJson(CACHE_KEYS.sharedChat(cleanToken), result, CACHE_TTL.SHARED_CHAT);
 
-    return result;
+  return result;
 }
 
 function rewriteSharedPartsUrls(

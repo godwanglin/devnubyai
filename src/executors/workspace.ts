@@ -14,6 +14,17 @@ export interface WorkspaceSnapshot {
   initialFileMap: Map<string, number>; // relativePath -> mtimeMs
 }
 
+const INTERMEDIATE_DOC_PATTERN =
+  /(?:^_|\b(?:part[_-]?\d+|bagian[_-]?\d+|draft|temp|tmp|raw)\b)/i;
+
+export function isIntermediateWorkspaceDoc(filename: string): boolean {
+  const base = path.basename(filename).replace(/^\d+-[a-f0-9]+-/, "");
+  return (
+    /\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(base) &&
+    INTERMEDIATE_DOC_PATTERN.test(base)
+  );
+}
+
 function isSafeRelativeWorkspacePath(relPath: string): boolean {
   if (!relPath || relPath.includes("..") || relPath.includes("\0")) {
     return false;
@@ -94,6 +105,24 @@ export async function prepareExecutionWorkspace(options: {
           const cleanName = sf.filename.replace(/^\d+-[a-f0-9]+-/, "");
           if (isSafeRelativeWorkspacePath(cleanName)) {
             await fs.writeFile(path.join(workspaceDir, cleanName), downloaded.content);
+            // If an image was saved as .jpg/.png.jpg while scripts reference .png (or vice versa),
+            // mount convenience aliases so PIL / ReportLab ImageReader("foo.png") always succeeds.
+            if (/\.(?:png|jpe?g|webp)$/i.test(cleanName)) {
+              const baseStem = cleanName
+                .replace(/\.(?:png|jpe?g|webp)$/i, "")
+                .replace(/\.(?:png|jpe?g|webp)$/i, "");
+              for (const aliasExt of ["png", "jpg"]) {
+                const aliasName = `${baseStem}.${aliasExt}`;
+                if (aliasName !== cleanName && isSafeRelativeWorkspacePath(aliasName)) {
+                  const aliasPath = path.join(workspaceDir, aliasName);
+                  try {
+                    await fs.access(aliasPath);
+                  } catch {
+                    await fs.writeFile(aliasPath, downloaded.content);
+                  }
+                }
+              }
+            }
           }
           if (
             sf.filename !== cleanName &&
@@ -146,10 +175,20 @@ export async function collectAndSyncWorkspaceOutputs(options: {
 }> {
   const { snapshot, userId, sessionId, syncToR2 = true } = options;
   const afterFiles = await walkWorkspaceFiles(snapshot.workspaceDir);
+  const afterRelSet = new Set(afterFiles.map((f) => f.relPath));
+
   const changed = afterFiles.filter((f) => {
     const prevMtime = snapshot.initialFileMap.get(f.relPath);
     return prevMtime === undefined || f.mtimeMs > prevMtime;
   });
+
+  // Track files that existed before the script ran and were explicitly removed (e.g. os.remove("_part1.pdf"))
+  const deletedRelPaths: string[] = [];
+  for (const initRel of snapshot.initialFileMap.keys()) {
+    if (!afterRelSet.has(initRel)) {
+      deletedRelPaths.push(initRel);
+    }
+  }
 
   const generatedFiles: ExportedWorkspaceFile[] = [];
   const jsonOutputs: Record<string, unknown> = {};
@@ -165,6 +204,14 @@ export async function collectAndSyncWorkspaceOutputs(options: {
       sessionRow = null;
     }
   }
+
+  const producedFinalDeliverableDoc = changed.some((f) => {
+    const flat = sanitizeKey(f.relPath.replace(/\//g, "_"));
+    return (
+      /\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(flat) &&
+      !isIntermediateWorkspaceDoc(flat)
+    );
+  });
 
   for (const file of changed.slice(0, EXECUTOR_CONFIG.maxGeneratedFiles)) {
     if (file.size <= 0 || file.size > EXECUTOR_CONFIG.maxWorkspaceFileBytes) {
@@ -182,6 +229,12 @@ export async function collectAndSyncWorkspaceOutputs(options: {
       } catch {
         // Ignore invalid JSON
       }
+    }
+
+    // If the same script already produced the final merged document alongside a raw _part* file,
+    // skip syncing the raw _part* file so only the final deliverable is exported.
+    if (producedFinalDeliverableDoc && isIntermediateWorkspaceDoc(flatDisplayName)) {
+      continue;
     }
 
     if (syncToR2 && sessionRow) {
@@ -245,6 +298,36 @@ export async function collectAndSyncWorkspaceOutputs(options: {
       sizeBytes: buffer.length,
       url: "",
     });
+  }
+
+  // Clean up any explicitly deleted files or intermediate partial documents from session_files
+  // once the final merged deliverable document has been created.
+  if (syncToR2 && sessionRow && (deletedRelPaths.length > 0 || producedFinalDeliverableDoc)) {
+    try {
+      const existingSessionFiles = await db.sessionFile.findMany({
+        where: { sessionId: sessionRow.id, source: "tool" },
+        select: { id: true, filename: true },
+      });
+      const deletedSet = new Set(deletedRelPaths.map((p) => sanitizeKey(p.replace(/\//g, "_"))));
+      const idsToDelete: bigint[] = [];
+      for (const sf of existingSessionFiles) {
+        const cleanName = sf.filename.replace(/^\d+-[a-f0-9]+-/, "");
+        if (
+          deletedSet.has(sf.filename) ||
+          deletedSet.has(cleanName) ||
+          (producedFinalDeliverableDoc && isIntermediateWorkspaceDoc(cleanName))
+        ) {
+          idsToDelete.push(sf.id);
+        }
+      }
+      if (idsToDelete.length > 0) {
+        await db.sessionFile.deleteMany({
+          where: { id: { in: idsToDelete } },
+        });
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 
   return { generatedFiles, jsonOutputs };

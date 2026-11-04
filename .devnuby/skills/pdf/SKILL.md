@@ -312,3 +312,21 @@ with open("encrypted.pdf", "wb") as output:
 - For JavaScript libraries (pdf-lib), see REFERENCE.md
 - If you need to fill out a PDF form, follow the instructions in FORMS.md
 - For troubleshooting guides, see REFERENCE.md
+
+## Professional Design, AI Poster Generation, Identity & Single Final Deliverable Rules
+
+1. **Strict Zero Identity Hallucination**:
+   - NEVER invent, guess, or fabricate personal identity details (student/author names, NIM/NPM, employee IDs, institutions, class codes, phone numbers, or signatures) if the user has not explicitly provided them!
+   - Always use clean placeholders such as `[Nama Lengkap]` and `[NIM / NPM]` (or `..............................`) on cover pages and footers, and remind the user to fill them in.
+
+2. **Posters = Pure AI Image Generator (`generate_image`)**:
+   - Treat every user as a general, non-technical user (NOT a web developer — never create `.html` files for posters or documents unless explicitly asked for HTML/website code, and never expose library/coding jargon in your response).
+   - When the user asks for a poster (either standalone or as part of a combined PDF assignment):
+     - **Standalone Poster**: Call `generate_image` (`aspectRatio: "3:4"` or `"9:16"`) with a deeply thought-out visual concept, hierarchy, layout, illustrations, and clear headlines/points so the AI image generator produces a complete, ready-to-use high-resolution poster directly.
+     - **Poster Inside a Combined PDF Assignment**: First call `generate_image` (`filename: "poster_edukasi.png"`, `aspectRatio: "3:4"`) to generate the complete visual poster using the AI image generator. Then, inside your `reportlab` PDF script, embed `poster_edukasi.png` full-page onto the dedicated A4 poster page (`c.drawImage("poster_edukasi.png", 0, 0, width=A4[0], height=A4[1], preserveAspectRatio=True, anchor='c')`) so the final PDF includes the rich AI-generated poster!
+   - **Visual Self-Inspection**:
+     After generating a visual PDF, you can render pages to PNG using `run_skill_script` (`{"skill": "pdf", "script": "convert_pdf_to_images.py", "args": ["Output.pdf", "preview"]}`) and inspect with `read_file({"filename": "preview_page_1.png"})`.
+
+3. **Modular Build for Long Documents — Deliver ONLY the Single Final File**:
+   - When creating a long multi-page PDF (e.g., exam/assignment answers + poster + justification + bibliography), you may pass structured text via `inputFiles: {"answers.json": "..."}` OR build modular raw parts across 2–3 fast `run_skill_script` calls.
+   - **CRITICAL**: If you build modular parts across multiple steps, ALWAYS prefix temporary raw parts with `_part` (e.g., `_part1_answers.pdf`, `_part2_justifikasi.pdf`) and **delete all `_part*.pdf` files (`os.remove(...)`) in the final merge script** after writing the single merged PDF! Never deliver raw/partial files to the user — the user must ONLY ever receive the 1 final completed PDF.

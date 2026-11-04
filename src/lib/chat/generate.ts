@@ -411,8 +411,9 @@ export function createChatGenerationStream(
             content: [
               "# Tools & Operating Protocol",
               "",
-              "## 1. Document Reading (`read_file`)",
-              "- You have persistent access to files in this chat session via `read_file`. ALWAYS use `read_file` when the user asks about an uploaded document, previous file, page count, or specific facts.",
+              "## 1. Document & Visual Image Inspection (`read_file`)",
+              "- You have persistent access to files and images in this chat session via `read_file`. ALWAYS use `read_file` when the user asks about an uploaded document, previous file, page count, specific facts, or when you need to visually inspect a rendered image (`.png`, `.jpg`, `.webp`).",
+              "- Visual Inspection of Images: Calling `read_file` on any `.png`, `.jpg`, `.jpeg`, or `.webp` in session storage (including page previews rendered by `convert_pdf_to_images.py` or illustrations created by `generate_image`) automatically attaches the rendered image directly to your multimodal vision input so you can SEE the layout, typography, contrast, and image proportions with your own eyes!",
               "- NEVER guess document contents, NEVER use `web_search` to substitute user documents, and NEVER use `execute_code` (Python) to read or parse files (the code sandbox cannot access storage files).",
               "- Document structure markers:",
               "  * PDF files: marked per page with `=== [PAGE X] ===`. Use these exact page numbers when referencing pages.",
@@ -461,19 +462,25 @@ export function createChatGenerationStream(
               "- If the user asks to revert or undo a change, you can call `edit_file` to invert the diff or restore the previous text snippet.",
               "- Do NOT edit raw binary files with `edit_file`.",
               "",
-              "## 9. Creating & Editing Office / PDF Documents (Skills-First Architecture + Fallback)",
+              "## 9. Creating & Editing Office / PDF Documents (Skills-First Architecture + Layperson-Friendly Output)",
+              "- TREAT EVERY USER AS A NON-DEVELOPER / LAYPERSON: Always assume the user is a general layperson who does NOT know HTML, web development, Python, or programming libraries. NEVER create `.html` files when a user asks for a document, poster, assignment, table, or presentation unless they explicitly ask for HTML/website code! NEVER mention internal technical jargon (`reportlab`, `pypdf`, `openpyxl`, `python`, `script`, `font belum terdaftar di lingkungan ini`, `render PNG`, `piksel`) in your user-facing chat response — speak naturally in simple everyday language.",
               "- PRIMARY WORKFLOW (`.devnuby/skills` + `run_skill_script`): Always check `Specialized AI Skills (.devnuby/skills)` first whenever the user asks to create, edit, inspect, or fill `.pdf`, `.docx`, `.xlsx`, or `.pptx` files.",
               "  * PDF (.pdf) & Word (.docx): When `pdf` or `docx` exists in `.devnuby/skills`, ALWAYS call `load_skill` (`pdf` or `docx`) first, then call `run_skill_script` (`runtime: 'python'` with `reportlab`/`pypdf`/`pdfplumber` or `scripts/*.py` for PDF; `runtime: 'node'` with `require('docx')` or `scripts/*.py` for DOCX).",
               "  * Excel (.xlsx): When `xlsx` exists in `.devnuby/skills`, ALWAYS call `load_skill` (`xlsx`) first, then call `run_skill_script` (`runtime: 'python'` with `openpyxl` or `pandas`).",
               "  * PowerPoint (.pptx): When `pptx` exists in `.devnuby/skills`, ALWAYS call `load_skill` (`pptx`) first, then call `run_skill_script` (`runtime: 'node'` with `require('pptxgenjs')` or `scripts/*.py`).",
+              "  * NEVER STOP MID-WORKFLOW OR ROLEPLAY TOOL EXECUTION: Never end your turn after saying 'Saya buat PDF-nya sekarang' or 'Skill PDF sudah aktif' without calling `run_skill_script` in that exact turn! Never pretend or claim in plain text that a file was created/updated without actually executing `run_skill_script` (or `write_file`).",
+              "  * SINGLE FINAL DELIVERABLE RULE (NEVER SEND RAW/PARTIAL FILES TO USER): The user must ONLY ever receive the 1 final completed document! When building a long multi-page document (e.g., answering 5+ exam questions + poster + justification + bibliography), you may pass structured text via `inputFiles: {'content.json': '...'}` OR build modular raw parts across 2–3 fast `run_skill_script` calls. If you build modular parts across multiple steps, ALWAYS prefix temporary raw files with `_part` (e.g. `_part1_answers.pdf`, `_part2_justifikasi.pdf`), merge them into the single final PDF using `pypdf.PdfWriter`, and delete all `_part*.pdf` files (`os.remove(...)`) in the merge script so only the final PDF is delivered!",
+              "  * STRICT ZERO IDENTITY HALLUCINATION RULE: NEVER invent, guess, or fabricate personal identity details (person/student names, NIM/NPM, employee IDs, institutions, class codes, phone numbers, emails, or signatures) when not explicitly given by the user! Always use clean placeholders such as `[Nama Lengkap]` and `[NIM / NPM]` (or `..............................`) and remind the user to fill them in.",
+              "  * POSTERS = PURE AI IMAGE GENERATOR (`generate_image`): When the user asks for a poster (standalone or inside a combined PDF assignment), ALWAYS use `generate_image` (`aspectRatio: '3:4'` or `'9:16'`, `filename: 'poster_edukasi.png'`) with a well-planned visual concept, hierarchy, illustration, and accurate headline/points to generate the complete visual poster directly with the AI image generator (never draw manual boxes/stick-figures in `reportlab`). If the poster is part of a combined PDF assignment, embed `poster_edukasi.png` full-page onto the poster page inside the single final PDF!",
               "  * FALLBACK ONLY (`create_document`, `create_spreadsheet`, `create_presentation`): ONLY use these legacy tools if no matching skill exists in `.devnuby/skills/` or if `run_skill_script` is unavailable in an emergency. NEVER write fake mock binary strings into `write_file`. If a `run_skill_script` call returns an error, silently fix your script and re-run it — NEVER paste raw stack traces, error codes, or file paths to the user.",
               "",
-              "## 10. Generating Images (`generate_image`)",
-              "- When the user asks to generate, draw, illustrate, design, or create an image, illustration, photo, logo, or icon:",
-              "  * ALWAYS call `generate_image` with a rich visual prompt describing subject, composition, lighting, and style.",
-              "  * If the user specifies an aspect ratio (e.g. 16:9 widescreen, 9:16 vertical/story, 1:1 square), set `aspectRatio`.",
+              "## 10. Generating Images & Posters (`generate_image`)",
+              "- When the user asks to generate, draw, illustrate, design, or create an image, poster, flyer, infographic, illustration, photo, logo, or icon:",
+              "  * ALWAYS call `generate_image` with a rich visual prompt describing subject, layout hierarchy, composition, lighting, and style.",
+              "  * For standalone posters or poster pages in assignments, use `aspectRatio: '3:4'` (A4 portrait proportion) or `'9:16'` so the AI image generator produces a complete, publication-ready visual poster.",
+              "  * When generating a background/spot illustration to place next to body text in a slide/document, include `'no text, no words, no letters anywhere'` in your `generate_image` prompt.",
               "  * If the user asks for a transparent background, cutout, sticker, or logo without background, set `transparentBackground: true`. The system automatically isolates the subject into an authentic transparent PNG.",
-              "  * Do NOT use `write_file` or mock base64 for images; use `generate_image` so real images are rendered and previewable in chat."
+              "  * Do NOT use `write_file`, HTML, or mock base64 for images/posters; use `generate_image` so real high-resolution visuals are rendered.",
             ].join("\n"),
           });
 
@@ -541,6 +548,8 @@ export function createChatGenerationStream(
         // Whether the last model pass wrote any prose, and whether it was cut off by an error
         let lastTurnHadText = false;
         let interruptedAfterTools = false;
+        let stepErrorRetries = 0;
+        let unfulfilledPromiseNudges = 0;
 
         while (true) {
           if (combinedSignal.aborted) {
@@ -816,6 +825,34 @@ export function createChatGenerationStream(
                 dynamic: true,
               });
             }
+
+            // If we still have tool budget and the client hasn't aborted, auto-recover instead of
+            // breaking out and leaving the user with only "Saya buat PDF-nya sekarang..."!
+            if (
+              !combinedSignal.aborted &&
+              stepErrorRetries < 2 &&
+              (remainingToolRounds > 0 || remainingGraceRounds > 0) &&
+              !forceFinalAnswer
+            ) {
+              stepErrorRetries += 1;
+              stepIndex += 1;
+              if (remainingToolRounds > 0) remainingToolRounds -= 1;
+              else if (remainingGraceRounds > 0) remainingGraceRounds -= 1;
+
+              if (turnContent.trim()) {
+                currentMessages.push({
+                  role: "assistant",
+                  content: turnContent,
+                });
+              }
+              currentMessages.push({
+                role: "user",
+                content:
+                  "[SYSTEM RECOVERY: Your previous response/tool call stream was interrupted (likely because the single script payload was too long). Do NOT repeat preliminary searches or re-read files you already read. Immediately execute your pending file-creation step via `run_skill_script` NOW — if the document is large, split it into smaller modular steps (e.g. build `part1.pdf`, then `part2.pdf`, then merge with `pypdf.PdfWriter`) or pass large text via `inputFiles`.]",
+              });
+              continue;
+            }
+
             interruptedAfterTools = true;
             break;
           }
@@ -892,6 +929,8 @@ export function createChatGenerationStream(
               })),
             });
 
+            const pendingVisionInspections: Array<{ filename: string; dataUrl: string }> = [];
+
             for (const tool of toolInputs) {
               const effectiveCallId = tool.id;
 
@@ -906,7 +945,7 @@ export function createChatGenerationStream(
                 argsError =
                   `Tool arguments are not valid JSON (${reason}; received ${tool.arguments.length} chars, ` +
                   `possibly truncated by the output token limit). Call the tool again with complete, ` +
-                  `valid JSON; for large content, send less per call.`;
+                  `valid JSON; for large content, split into modular calls or pass data via inputFiles.`;
               }
 
               const toolStart = tool.startedAt;
@@ -931,6 +970,23 @@ export function createChatGenerationStream(
                   });
               const toolEnd = Date.now();
               const toolDurationSec = Math.max(1, Math.round((toolEnd - toolStart) / 1000));
+
+              // Extract transient visualDataUrl from read_file on images before logging/streaming
+              if (
+                tool.name === "read_file" &&
+                result.success &&
+                result.data &&
+                typeof result.data === "object" &&
+                typeof (result.data as Record<string, unknown>).visualDataUrl === "string"
+              ) {
+                const dataRec = result.data as Record<string, unknown>;
+                const dataUrl = String(dataRec.visualDataUrl);
+                const imgName = String(dataRec.filename || parsedArgs.filename || "image.png");
+                delete dataRec.visualDataUrl;
+                if (resolvedModel.supportsVision && dataUrl.startsWith("data:image/")) {
+                  pendingVisionInspections.push({ filename: imgName, dataUrl });
+                }
+              }
 
               // Record tool run to database if and only if debug mode is turned on
               if (chatSettings.toolDebug) {
@@ -1004,6 +1060,23 @@ export function createChatGenerationStream(
               });
             }
 
+            // Inject multimodal image parts for any images inspected via `read_file`
+            if (pendingVisionInspections.length > 0 && resolvedModel.supportsVision) {
+              currentMessages.push({
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `[Visual Inspection: ${pendingVisionInspections.map((v) => v.filename).join(", ")} — examine layout, typography, contrast, and proportions directly]:`,
+                  },
+                  ...pendingVisionInspections.map((v) => ({
+                    type: "image_url" as const,
+                    image_url: { url: v.dataUrl },
+                  })),
+                ],
+              });
+            }
+
             // If a grace period directive triggered on this round, inject it as a strict user turn
             if (graceDirective) {
               currentMessages.push({
@@ -1031,27 +1104,68 @@ export function createChatGenerationStream(
             continue;
           }
 
-          // Check if model ended with an unfulfilled promise to create/save/write a file
-          const lowerTurn = turnContent.toLowerCase();
+          // Check if model ended with an unfulfilled promise to create/save/write a file,
+          // loaded a document skill without producing any document, or roleplayed creating a file without calling tools.
+          const producedFilesSoFar = listProducedFiles(executedToolParts);
+          const producedOfficeOrPdfDoc = producedFilesSoFar.some((f) =>
+            /\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(f)
+          );
+          const loadedDocSkill = executedToolParts.some(
+            (p) =>
+              p.type === "dynamic-tool" &&
+              p.toolName === "load_skill" &&
+              p.state === "output-available" &&
+              /^(?:pdf|docx|xlsx|pptx)$/i.test(
+                String((p.input as Record<string, unknown> | undefined)?.name ?? "")
+              )
+          );
+          const ranAnyCreationTool = executedToolParts.some(
+            (p) =>
+              p.type === "dynamic-tool" &&
+              p.state === "output-available" &&
+              [
+                "run_skill_script",
+                "write_file",
+                "edit_file",
+                "create_document",
+                "create_spreadsheet",
+                "create_presentation",
+              ].includes(String(p.toolName))
+          );
+          const announcesImminentBuild =
+            /(?:saya\s+(?:buat(?:kan)?|susun(?:\s+ulang)?|kerjakan|rancang\s+ulang)\s+[^.!\n]{0,80}(?:sekarang|pdf|dokumen|poster|file|reportlab|python|node)|sekarang\s+saya\s+(?:buat|susun|kerjakan|gabungkan)|skill\s+(?:pdf|docx|xlsx|pptx)\s+sudah\s+aktif|mari\s+kita\s+(?:simpan|buat\s+file)|buatkan\s+file\s+html|simpan\s+dan\s+buat\s+file)/i.test(
+              turnContent
+            );
+          const roleplayedFileCreation =
+            !ranAnyCreationTool &&
+            /(?:file\s+(?:yang\s+bisa\s+diunduh|terbaru)|berikut\s+file-?nya|posternya\s+sudah\s+jadi|ilustrasi\s+baru\s+sudah\s+terpasang|semua\s+(?:komponen\s+)?sudah\s+selesai\.\s*satu\s+pdf)/i.test(
+              turnContent
+            );
+
           const seemsUnfulfilledFilePromise =
-            stepIndex === 0 &&
-            remainingToolRounds > 0 &&
+            unfulfilledPromiseNudges < 2 &&
+            (remainingToolRounds > 0 || remainingGraceRounds > 0) &&
             resolvedModel.supportsTools &&
-            (lowerTurn.includes("mari kita simpan") ||
-              lowerTurn.includes("mari kita buat file") ||
-              lowerTurn.includes("buatkan file html") ||
-              lowerTurn.includes("simpan dan buat file"));
+            ((loadedDocSkill && !producedOfficeOrPdfDoc) ||
+              (announcesImminentBuild && !producedOfficeOrPdfDoc && producedFilesSoFar.length === 0) ||
+              (announcesImminentBuild && loadedDocSkill && !producedOfficeOrPdfDoc) ||
+              roleplayedFileCreation);
 
           if (seemsUnfulfilledFilePromise && !forceFinalAnswer) {
+            unfulfilledPromiseNudges += 1;
             stepIndex += 1;
-            remainingToolRounds -= 1;
+            if (remainingToolRounds > 0) remainingToolRounds -= 1;
+            else if (remainingGraceRounds > 0) remainingGraceRounds -= 1;
+
             currentMessages.push({
               role: "assistant",
               content: turnContent,
             });
             currentMessages.push({
               role: "user",
-              content: "Panggil tool `write_file` sekarang untuk membuat file lengkapnya.",
+              content: loadedDocSkill || /pdf|docx|xlsx|pptx|poster|reportlab/i.test(turnContent)
+                ? "[SYSTEM ENFORCEMENT: You announced or claimed that you are creating/updating a document or poster (or loaded a document skill), but you ended your turn without executing `run_skill_script` (or `generate_image`)! Never stop after announcing your plan and never simulate tool execution in text. Call `run_skill_script` (and `generate_image` if a poster is requested) NOW to actually generate the final deliverable file. If you build modular raw parts (`_part1.pdf`, `_part2.pdf`), merge them and delete the `_part*.pdf` files so the user only receives the 1 final document.]"
+                : "Panggil tool `write_file`, `generate_image`, atau `run_skill_script` sekarang untuk membuat file lengkapnya.",
             });
             continue;
           }
@@ -1077,7 +1191,7 @@ export function createChatGenerationStream(
 
         // Tools did the work but no closing prose came (empty final pass or a failed one):
         // finish with a reply built from the tool results instead of leaving the turn hanging
-        if (!lastTurnHadText && hasSuccessfulToolResult(executedToolParts)) {
+        if ((!lastTurnHadText || interruptedAfterTools) && hasSuccessfulToolResult(executedToolParts)) {
           const fallbackText = buildFallbackAnswer(executedToolParts, interruptedAfterTools);
           const fallbackPartId = `text_${assistantMessagePublicId}_fallback`;
           writer.write({ type: "text-start", id: fallbackPartId });

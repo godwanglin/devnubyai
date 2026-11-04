@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -179,6 +180,29 @@ def _init_devnuby_sandbox():
     win_dir = os.environ.get("WINDIR") or os.environ.get("SystemRoot") or r"C:\\Windows"
     fonts_dir = os.path.normcase(os.path.realpath(os.path.join(win_dir, "Fonts")))
     linux_fonts_dir = os.path.normcase("/usr/share/fonts")
+    linux_local_fonts_dir = os.path.normcase("/usr/local/share/fonts")
+
+    # Safe Linux read-only system & virtual paths required by Python/NumPy/Pillow/Fontconfig/OpenBLAS
+    linux_ro_prefixes = tuple(
+        os.path.normcase(p)
+        for p in (
+            "/usr",
+            "/lib",
+            "/lib64",
+            "/etc/fonts",
+            "/etc/localtime",
+            "/etc/timezone",
+            "/etc/ld.so.cache",
+            "/etc/ld.so.conf",
+            "/etc/mime.types",
+            "/var/cache/fontconfig",
+            "/proc/cpuinfo",
+            "/proc/meminfo",
+            "/proc/stat",
+            "/proc/version",
+            "/sys/devices/system/cpu",
+        )
+    )
 
     # Wipe environment variables inside process memory so os.environ has zero secrets
     safe_env = {
@@ -208,8 +232,18 @@ def _init_devnuby_sandbox():
         except Exception:
             p_str = str(raw_path)
 
-        # Allow standard streams or special nul device
-        if p_str in ("<stdin>", "<stdout>", "<stderr>", "nul", "NUL", "/dev/null"):
+        # Allow standard streams or special character devices (/dev/null, /dev/urandom, /dev/random, /dev/zero)
+        if p_str in (
+            "<stdin>",
+            "<stdout>",
+            "<stderr>",
+            "nul",
+            "NUL",
+            "/dev/null",
+            "/dev/urandom",
+            "/dev/random",
+            "/dev/zero",
+        ):
             return
 
         real = os.path.normcase(os.path.realpath(p_str))
@@ -222,7 +256,7 @@ def _init_devnuby_sandbox():
             return
 
         # Read access check:
-        # 1. Always allow inside workspaceDir, skillDir, venvDir, Python stdlib, or system fonts
+        # 1. Always allow inside workspaceDir, skillDir, venvDir, customFontsDir, Python stdlib, or system fonts
         if (
             _is_under(real, ws_dir)
             or _is_under(real, skill_dir)
@@ -232,6 +266,7 @@ def _init_devnuby_sandbox():
             or _is_under(real, py_base_prefix)
             or _is_under(real, fonts_dir)
             or _is_under(real, linux_fonts_dir)
+            or _is_under(real, linux_local_fonts_dir)
         ):
             return
 
@@ -241,7 +276,12 @@ def _init_devnuby_sandbox():
                 f"[Devnuby Sandbox] Read access to internal application path is strictly forbidden: {p_str}"
             )
 
-        # 3. Block arbitrary host filesystem reads outside allowed directories
+        # 3. Allow read-only Linux system shared libraries, fontconfig caches, and CPU/memory info
+        for ro_prefix in linux_ro_prefixes:
+            if _is_under(real, ro_prefix):
+                return
+
+        # 4. Block arbitrary host filesystem reads outside allowed directories
         raise PermissionError(
             f"[Devnuby Sandbox] Read access outside isolated workspace is forbidden: {p_str}"
         )
@@ -351,10 +391,12 @@ def _init_devnuby_sandbox():
     try:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.lib import fonts as rl_fonts
+        from reportlab.platypus import paraparser as rl_paraparser
 
         def _reg_family(fam_name, reg_p, bold_p=None, it_p=None, bi_p=None):
             if not reg_p or not os.path.exists(reg_p):
-                return
+                return False
             b_p = bold_p if (bold_p and os.path.exists(bold_p)) else reg_p
             i_p = it_p if (it_p and os.path.exists(it_p)) else reg_p
             bi_p_final = bi_p if (bi_p and os.path.exists(bi_p)) else (b_p if b_p != reg_p else i_p)
@@ -370,6 +412,7 @@ def _init_devnuby_sandbox():
                 italic=f"{fam_name}-Italic",
                 boldItalic=f"{fam_name}-BoldItalic",
             )
+            return True
 
         # 1. Register cached Google Fonts from .devnuby/fonts/
         for gf in cfg.get("cachedFonts", []):
@@ -382,7 +425,6 @@ def _init_devnuby_sandbox():
                     gf.get("italic"),
                     gf.get("boldItalic"),
                 )
-                # Also register no-space variant (e.g. "LexendDeca")
                 no_space = fam.replace(" ", "")
                 if no_space != fam:
                     _reg_family(
@@ -393,27 +435,128 @@ def _init_devnuby_sandbox():
                         gf.get("boldItalic"),
                     )
 
-        # 2. Register common system font aliases (Times New Roman, Arial, Calibri)
-        win_times = os.path.join(win_dir, "Fonts", "times.ttf")
-        if os.path.exists(win_times):
-            _reg_family(
-                "Times New Roman",
-                win_times,
+        # 2. Register cross-platform system font families (Windows + Linux parity)
+        def _first_existing(candidates):
+            for c_reg, c_bold, c_it, c_bi in candidates:
+                if c_reg and os.path.exists(c_reg):
+                    return (c_reg, c_bold, c_it, c_bi)
+            return None
+
+        serif_candidates = [
+            (
+                os.path.join(win_dir, "Fonts", "times.ttf"),
                 os.path.join(win_dir, "Fonts", "timesbd.ttf"),
                 os.path.join(win_dir, "Fonts", "timesi.ttf"),
                 os.path.join(win_dir, "Fonts", "timesbi.ttf"),
-            )
-        win_arial = os.path.join(win_dir, "Fonts", "arial.ttf")
-        if os.path.exists(win_arial):
-            _reg_family(
-                "Arial",
-                win_arial,
+            ),
+            (
+                "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/crosextra/Caladea-Regular.ttf",
+                "/usr/share/fonts/truetype/crosextra/Caladea-Bold.ttf",
+                "/usr/share/fonts/truetype/crosextra/Caladea-Italic.ttf",
+                "/usr/share/fonts/truetype/crosextra/Caladea-BoldItalic.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf",
+            ),
+        ]
+        serif_files = _first_existing(serif_candidates)
+        if serif_files:
+            for alias in ("Times New Roman", "TimesNewRoman", "Times", "Georgia", "Cambria", "Liberation Serif", "Caladea", "DejaVu Serif"):
+                if alias.lower() not in pdfmetrics._fonts:
+                    _reg_family(alias, *serif_files)
+
+        sans_candidates = [
+            (
+                os.path.join(win_dir, "Fonts", "arial.ttf"),
                 os.path.join(win_dir, "Fonts", "arialbd.ttf"),
                 os.path.join(win_dir, "Fonts", "ariali.ttf"),
                 os.path.join(win_dir, "Fonts", "arialbi.ttf"),
-            )
+            ),
+            (
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf",
+                "/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf",
+                "/usr/share/fonts/truetype/crosextra/Carlito-Italic.ttf",
+                "/usr/share/fonts/truetype/crosextra/Carlito-BoldItalic.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/lato/Lato-Regular.ttf",
+                "/usr/share/fonts/truetype/lato/Lato-Bold.ttf",
+                "/usr/share/fonts/truetype/lato/Lato-Italic.ttf",
+                "/usr/share/fonts/truetype/lato/Lato-BoldItalic.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            ),
+        ]
+        sans_files = _first_existing(sans_candidates)
+        if sans_files:
+            for alias in ("Arial", "Calibri", "Verdana", "Tahoma", "Segoe UI", "Liberation Sans", "Carlito", "Lato", "DejaVu Sans"):
+                if alias.lower() not in pdfmetrics._fonts:
+                    _reg_family(alias, *sans_files)
 
-        # 3. Graceful getFont fallback so "Times New Roman" on Linux or unknown font names never crash reportlab
+        calibri_candidates = [
+            (
+                os.path.join(win_dir, "Fonts", "calibri.ttf"),
+                os.path.join(win_dir, "Fonts", "calibrib.ttf"),
+                os.path.join(win_dir, "Fonts", "calibrii.ttf"),
+                os.path.join(win_dir, "Fonts", "calibriz.ttf"),
+            ),
+            (
+                "/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf",
+                "/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf",
+                "/usr/share/fonts/truetype/crosextra/Carlito-Italic.ttf",
+                "/usr/share/fonts/truetype/crosextra/Carlito-BoldItalic.ttf",
+            ),
+        ]
+        calibri_files = _first_existing(calibri_candidates)
+        if calibri_files:
+            _reg_family("Calibri", *calibri_files)
+
+        mono_candidates = [
+            (
+                os.path.join(win_dir, "Fonts", "cour.ttf"),
+                os.path.join(win_dir, "Fonts", "courbd.ttf"),
+                os.path.join(win_dir, "Fonts", "couri.ttf"),
+                os.path.join(win_dir, "Fonts", "courbi.ttf"),
+            ),
+            (
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-Italic.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationMono-BoldItalic.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Oblique.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-BoldOblique.ttf",
+            ),
+        ]
+        mono_files = _first_existing(mono_candidates)
+        if mono_files:
+            for alias in ("Courier New", "Consolas", "Liberation Mono", "DejaVu Sans Mono"):
+                if alias.lower() not in pdfmetrics._fonts:
+                    _reg_family(alias, *mono_files)
+
+        # 3. Graceful getFont & ps2tt/tt2ps fallback so ANY font name (even unregistered) never crashes ReportLab Paragraph/Canvas
         _orig_get_font = pdfmetrics.getFont
         _STD_FALLBACKS = {
             "times new roman": "Times-Roman",
@@ -437,15 +580,17 @@ def _init_devnuby_sandbox():
                 return _orig_get_font(font_name)
             except Exception:
                 key = str(font_name or "").strip().lower()
-                target_std = "Helvetica"
+                is_serif = any(k in key for k in ("times", "georgia", "serif", "cambria", "garamond", "palatino", "caladea"))
+                is_mono = any(k in key for k in ("courier", "consolas", "mono", "menlo", "fira code"))
+                target_std = "Times-Roman" if is_serif else ("Courier" if is_mono else "Helvetica")
                 if key in _STD_FALLBACKS:
                     target_std = _STD_FALLBACKS[key]
                 elif "bold" in key and ("italic" in key or "oblique" in key):
-                    target_std = "Helvetica-BoldOblique"
+                    target_std = "Times-BoldItalic" if is_serif else ("Courier-BoldOblique" if is_mono else "Helvetica-BoldOblique")
                 elif "bold" in key:
-                    target_std = "Helvetica-Bold"
+                    target_std = "Times-Bold" if is_serif else ("Courier-Bold" if is_mono else "Helvetica-Bold")
                 elif "italic" in key or "oblique" in key:
-                    target_std = "Helvetica-Oblique"
+                    target_std = "Times-Italic" if is_serif else ("Courier-Oblique" if is_mono else "Helvetica-Oblique")
                 resolved = _orig_get_font(target_std)
                 try:
                     pdfmetrics._fonts[font_name] = resolved
@@ -453,6 +598,30 @@ def _init_devnuby_sandbox():
                     pass
                 return resolved
         pdfmetrics.getFont = _safe_get_font
+
+        _orig_ps2tt = rl_fonts.ps2tt
+        def _safe_ps2tt(psfn):
+            try:
+                return _orig_ps2tt(psfn)
+            except Exception:
+                key = str(psfn or "").strip().lower()
+                b = 1 if ("bold" in key or key.endswith("-b")) else 0
+                i = 1 if ("italic" in key or "oblique" in key or key.endswith("-i") or key.endswith("-bi")) else 0
+                fam = "times" if any(k in key for k in ("times", "georgia", "serif", "cambria", "garamond")) else ("courier" if ("courier" in key or "mono" in key or "consolas" in key) else "helvetica")
+                return (fam, b, i)
+        rl_fonts.ps2tt = _safe_ps2tt
+        rl_paraparser.ps2tt = _safe_ps2tt
+
+        _orig_tt2ps = rl_fonts.tt2ps
+        def _safe_tt2ps(fn, b, i):
+            try:
+                return _orig_tt2ps(fn, b, i)
+            except Exception:
+                key = str(fn or "").strip().lower()
+                fam = "times" if any(k in key for k in ("times", "georgia", "serif", "cambria", "garamond")) else ("courier" if ("courier" in key or "mono" in key or "consolas" in key) else "helvetica")
+                return _orig_tt2ps(fam, b, i)
+        rl_fonts.tt2ps = _safe_tt2ps
+        rl_paraparser.tt2ps = _safe_tt2ps
 
         # Also patch Canvas.setFont so unknown psfontname resolves to registered fontName
         from reportlab.pdfgen.canvas import Canvas
@@ -481,7 +650,7 @@ runpy.run_path(_target, run_name="__main__")
  * Writes a Node.js CommonJS preload script (`_devnuby_node_preload.cjs`) and builds
  * Node.js 24 native `--permission` flags so the child Node process is strictly isolated
  * at the C++ runtime level:
- * - Can ONLY read from `workspaceDir`, `skillDir`, and `node_modules`
+ * - Can ONLY read from `workspaceDir`, `skillDir`, `fontsDir`, and `node_modules`
  * - Can ONLY write to `workspaceDir`
  * - Cannot read `.env`, `src/`, `prisma/`, `package.json`, or host files
  * - Cannot spawn child processes, worker threads, or network connections
@@ -501,6 +670,7 @@ export async function prepareNodeSandbox(params: {
 // Wipe and freeze process.env so no secrets can ever be read or mutated
 const safeEnv = Object.freeze({
   NODE_ENV: "production",
+  NODE_PATH: ${JSON.stringify(path.resolve(EXECUTOR_CONFIG.nodeModulesDir))},
   HOME: ${JSON.stringify(params.workspaceDir)},
   USERPROFILE: ${JSON.stringify(params.workspaceDir)},
   TMP: ${JSON.stringify(params.workspaceDir)},
@@ -523,18 +693,42 @@ globalThis.WebSocket = denyNet;
 
   await fsPromises.writeFile(preloadPath, preloadContent, "utf-8");
 
-  // Node 24 native permission model flags
-  const readPaths = [
+  // Node 24 native permission model flags (include both resolved paths and realpaths for Linux symlinks)
+  const rawReadPaths = [
     path.resolve(params.workspaceDir),
     path.resolve(params.skillDir),
     path.resolve(EXECUTOR_CONFIG.nodeModulesDir),
+    path.resolve(EXECUTOR_CONFIG.fontsDir),
     path.resolve(params.targetScriptPath),
   ];
+  if (process.platform !== "win32" && fs.existsSync("/usr/share/fonts")) {
+    rawReadPaths.push("/usr/share/fonts");
+  }
+
+  const readPathSet = new Set<string>();
+  for (const p of rawReadPaths) {
+    readPathSet.add(p);
+    try {
+      readPathSet.add(fs.realpathSync(p));
+    } catch {
+      // ignore if path does not exist yet
+    }
+  }
+
+  let writePath = path.resolve(params.workspaceDir);
+  try {
+    writePath = fs.realpathSync(writePath);
+  } catch {
+    // ignore
+  }
 
   const nodeFlags: string[] = [
     "--permission",
-    ...readPaths.map((p) => `--allow-fs-read=${p}`),
+    ...Array.from(readPathSet).map((p) => `--allow-fs-read=${p}`),
     `--allow-fs-write=${path.resolve(params.workspaceDir)}`,
+    ...(writePath !== path.resolve(params.workspaceDir)
+      ? [`--allow-fs-write=${writePath}`]
+      : []),
     "--require",
     preloadPath,
     params.targetScriptPath,

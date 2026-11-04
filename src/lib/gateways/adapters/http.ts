@@ -10,8 +10,8 @@ import { validateSafeUrlCached } from "@/lib/tools/ssrf";
 
 /**
  * Shared POST + SSE pipeline for wire adapters.
- * - `gateway.timeoutMs` bounds the whole request.
- * - `gateway.firstTokenTimeoutMs` bounds the wait for the first normalized event.
+ * - `gateway.timeoutMs` bounds per-chunk inactivity (resets on every SSE chunk so long tool calls never get killed mid-stream).
+ * - `gateway.firstTokenTimeoutMs` bounds the wait for the first normalized content event.
  */
 export async function* streamFromGateway(
   gateway: DecryptedGatewayConfig,
@@ -32,21 +32,48 @@ export async function* streamFromGateway(
       ? body.reasoning_effort.toLowerCase()
       : typeof (body.reasoning as Record<string, unknown> | undefined)?.effort === "string"
         ? String((body.reasoning as Record<string, unknown>).effort).toLowerCase()
-        : "";
-  const isDeepReasoning = rawEffort === "high" || rawEffort === "xhigh" || rawEffort === "ultra" || rawEffort === "max";
-  const isModerateReasoning = rawEffort === "medium" || rawEffort === "low";
+        : typeof (body.output_config as Record<string, unknown> | undefined)?.effort === "string"
+          ? String((body.output_config as Record<string, unknown>).effort).toLowerCase()
+          : "";
+  const hasClaudeThinking = Boolean(body.thinking && typeof body.thinking === "object");
+  const hasGeminiThinking = Boolean(
+    ((body.request as Record<string, unknown> | undefined)?.generationConfig as Record<string, unknown> | undefined)
+      ?.thinkingConfig
+  );
+  const isDeepReasoning =
+    rawEffort === "high" ||
+    rawEffort === "xhigh" ||
+    rawEffort === "ultra" ||
+    rawEffort === "max";
+  const isModerateReasoning =
+    rawEffort === "medium" ||
+    rawEffort === "low" ||
+    hasClaudeThinking ||
+    hasGeminiThinking;
 
   const effectiveFirstTokenTimeoutMs = isDeepReasoning
-    ? Math.max(gateway.firstTokenTimeoutMs, 60_000)
+    ? Math.max(gateway.firstTokenTimeoutMs, 75_000)
     : isModerateReasoning
-      ? Math.max(gateway.firstTokenTimeoutMs, 35_000)
-      : gateway.firstTokenTimeoutMs;
+      ? Math.max(gateway.firstTokenTimeoutMs, 45_000)
+      : Math.max(gateway.firstTokenTimeoutMs, 30_000);
 
-  const effectiveTotalTimeoutMs = isDeepReasoning
+  // Per-chunk inactivity timeout: resets every time the stream yields data so long
+  // tool calls (e.g. multi-page PDF/DOCX scripts) are never killed at 120s mid-stream.
+  const chunkIdleTimeoutMs = isDeepReasoning
     ? Math.max(gateway.timeoutMs, 180_000)
-    : gateway.timeoutMs;
+    : Math.max(gateway.timeoutMs, 120_000);
+  // Absolute wall-clock ceiling (10 minutes) to guard against infinite slow-drip streams.
+  const maxWallTimeoutMs = Math.max(gateway.timeoutMs * 5, 600_000);
 
-  const totalTimer = setTimeout(abortOnTimeout, effectiveTotalTimeoutMs);
+  const wallTimer = setTimeout(abortOnTimeout, maxWallTimeoutMs);
+  let idleTimer: ReturnType<typeof setTimeout> | null = setTimeout(
+    abortOnTimeout,
+    chunkIdleTimeoutMs
+  );
+  const refreshIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(abortOnTimeout, chunkIdleTimeoutMs);
+  };
   let firstTokenTimer: ReturnType<typeof setTimeout> | null = setTimeout(
     abortOnTimeout,
     effectiveFirstTokenTimeoutMs
@@ -103,7 +130,12 @@ export async function* streamFromGateway(
     const initialBuffer: GatewayStreamEvent[] = [];
 
     for await (const record of parseSseStream(response.body)) {
+      refreshIdleTimer();
       for (const event of parseRecord(record)) {
+        // Clear firstTokenTimer only once real model output (reasoning, delta, tool_call) arrives,
+        // not on the initial empty message_start usage frame.
+        const isContentEvent =
+          event.type === "delta" || event.type === "reasoning" || event.type === "tool_call";
         if (isCheckingInitial) {
           if (event.type === "delta" && typeof event.text === "string") {
             accumulatedText += event.text;
@@ -139,7 +171,7 @@ export async function* streamFromGateway(
 
           // If non-delta arrives while buffer is empty, yield normally
           if (initialBuffer.length === 0) {
-            if (firstTokenTimer) {
+            if (isContentEvent && firstTokenTimer) {
               clearTimeout(firstTokenTimer);
               firstTokenTimer = null;
             }
@@ -151,7 +183,7 @@ export async function* streamFromGateway(
           }
         }
 
-        if (firstTokenTimer) {
+        if (isContentEvent && firstTokenTimer) {
           clearTimeout(firstTokenTimer);
           firstTokenTimer = null;
         }
@@ -183,7 +215,8 @@ export async function* streamFromGateway(
       clientAborted: Boolean(signal?.aborted),
     });
   } finally {
-    clearTimeout(totalTimer);
+    clearTimeout(wallTimer);
+    if (idleTimer) clearTimeout(idleTimer);
     if (firstTokenTimer) clearTimeout(firstTokenTimer);
     signal?.removeEventListener("abort", abortFromClient);
   }

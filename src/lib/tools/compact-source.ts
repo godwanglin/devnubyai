@@ -100,7 +100,24 @@ export function sanitizeToolOutputForStorage(
       totalLines: data.totalLines,
       hasMore: data.hasMore,
       mimeType: data.mimeType,
-      // Omit heavy raw text content from database JSON storage
+      // Omit heavy raw text content and visualDataUrl from database JSON storage
+    };
+  }
+
+  if (toolName === "load_skill") {
+    const data = rawOutput as {
+      name?: string;
+      title?: string;
+      file?: string;
+      availableDocs?: string[];
+      availableScripts?: string[];
+    };
+    return {
+      name: data.name,
+      title: data.title,
+      file: data.file,
+      availableDocs: data.availableDocs,
+      availableScripts: data.availableScripts,
     };
   }
 
