@@ -62,7 +62,8 @@ export function Modal({
     >
       <div
         className={cn(
-          "modal-panel relative w-full glass rounded-[16px] p-5 shadow-2xl border border-[var(--glass-border)] bg-[var(--panel)]",
+          // Never taller than the screen (small phones): the panel scrolls instead of clipping its top
+          "modal-panel relative w-full max-h-[calc(100dvh-2rem)] overflow-y-auto glass rounded-[16px] p-5 shadow-2xl border border-[var(--glass-border)] bg-[var(--panel)]",
           maxMap[maxWidth]
         )}
       >

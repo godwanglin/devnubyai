@@ -314,7 +314,7 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
         </>
       )}
 
-      <main className="flex items-center justify-center min-h-[520px] px-1 sm:px-10 py-8">
+      <main className="flex items-center justify-center sm:min-h-[520px] px-0 sm:px-10 pt-6 pb-1 sm:py-8">
         <div
           key={step}
           className={cn(
@@ -328,11 +328,11 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
                 e.preventDefault();
                 if (name.trim()) go("role");
               }}
-              className="space-y-8"
+              className="space-y-5 sm:space-y-8"
             >
-              <div className="space-y-2">
+              <div className="space-y-1.5 sm:space-y-2">
                 <p className="text-sm font-medium text-[var(--accent)]">{t("onboarding.nameEyebrow")}</p>
-                <h1 className="text-2xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">{t("onboarding.nameTitle")}</h1>
+                <h1 className="text-xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">{t("onboarding.nameTitle")}</h1>
                 <p className="text-sm text-[var(--muted)]">{t("onboarding.nameSubtitle")}</p>
               </div>
               <input
@@ -355,16 +355,16 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
           )}
 
           {step === "role" && (
-            <div className="space-y-8">
-              <div className="space-y-2">
+            <div className="space-y-5 sm:space-y-8">
+              <div className="space-y-1.5 sm:space-y-2">
                 <p className="text-sm font-medium text-[var(--accent)]">
                   {firstName ? t("onboarding.roleEyebrow", { name: firstName }) : t("onboarding.roleEyebrowNoName")}
                 </p>
-                <h1 className="text-2xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">{t("onboarding.roleTitle")}</h1>
+                <h1 className="text-xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">{t("onboarding.roleTitle")}</h1>
                 <p className="text-sm text-[var(--muted)]">{t("onboarding.roleSubtitle")}</p>
               </div>
               <div
-                className="onboarding-stagger grid grid-cols-2 sm:grid-cols-4 gap-2.5"
+                className="onboarding-stagger grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5"
                 role="radiogroup"
                 aria-label={t("onboarding.roleTitle")}
               >
@@ -380,7 +380,7 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
                       onClick={() => chooseRole(id)}
                       style={{ "--i": i } as React.CSSProperties}
                       className={cn(
-                        "relative flex flex-col items-start gap-3 p-3.5 rounded-[14px] border text-left transition-all cursor-pointer",
+                        "relative flex flex-row sm:flex-col items-center sm:items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3.5 rounded-[12px] sm:rounded-[14px] border text-left transition-all cursor-pointer",
                         active
                           ? "border-[var(--accent)] bg-[var(--accent-soft)] shadow-sm"
                           : "border-[var(--border)] bg-[var(--panel)] hover:border-[var(--muted)]/50 hover:-translate-y-0.5"
@@ -388,14 +388,14 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
                     >
                       <span
                         className={cn(
-                          "grid place-items-center w-9 h-9 rounded-[10px]",
+                          "grid place-items-center shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-[10px]",
                           active ? "bg-[var(--accent)] text-[var(--accent-text)]" : "bg-[var(--hover)] text-[var(--ink)]"
                         )}
                       >
                         <Icon className="w-4.5 h-4.5" />
                       </span>
-                      <span className="text-sm font-medium text-[var(--ink)] leading-snug">{t(`onboarding.roles.${id}`)}</span>
-                      {active && <Check className="absolute top-3 right-3 w-4 h-4 text-[var(--accent)]" />}
+                      <span className="text-[13px] sm:text-sm font-medium text-[var(--ink)] leading-snug pr-4 sm:pr-0">{t(`onboarding.roles.${id}`)}</span>
+                      {active && <Check className="absolute top-2 right-2 sm:top-3 sm:right-3 w-4 h-4 text-[var(--accent)]" />}
                     </button>
                   );
                 })}
@@ -414,10 +414,10 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
           )}
 
           {step === "interests" && (
-            <div className="space-y-8">
-              <div className="space-y-2">
+            <div className="space-y-5 sm:space-y-8">
+              <div className="space-y-1.5 sm:space-y-2">
                 <p className="text-sm font-medium text-[var(--accent)]">{t("onboarding.interestsEyebrow")}</p>
-                <h1 className="text-2xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">{t("onboarding.interestsTitle")}</h1>
+                <h1 className="text-xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">{t("onboarding.interestsTitle")}</h1>
                 <p className="text-sm text-[var(--muted)]">{t("onboarding.interestsSubtitle", { max: MAX_INTERESTS })}</p>
               </div>
               <div className="onboarding-stagger flex flex-wrap gap-2">
@@ -489,8 +489,8 @@ export function OnboardingFlow({ step, onFinished }: { step: OnboardingStep; onF
                   <DevnubyIcon bare mood="happy-chevrons" autoCycle={false} interactive={false} className="w-24 h-24" />
                 </div>
               </div>
-              <div className="space-y-2">
-                <h1 className="text-2xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">
+              <div className="space-y-1.5 sm:space-y-2">
+                <h1 className="text-xl sm:text-3xl font-bold text-[var(--ink)] tracking-tight">
                   {firstName ? t("onboarding.doneTitle", { name: firstName }) : t("onboarding.doneTitleNoName")}
                 </h1>
                 <p className="text-sm text-[var(--muted)] max-w-[400px]">{t("onboarding.doneSubtitle")}</p>
