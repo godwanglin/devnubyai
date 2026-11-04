@@ -95,7 +95,11 @@ function buildBody(request: GatewayExecutionRequest): Record<string, unknown> {
       parameters: sanitizeParametersSchema(tool.parameters as unknown as Record<string, unknown>),
     }));
     if (request.toolChoice !== undefined) {
-      body.tool_choice = request.toolChoice;
+      // Responses API names a forced function flat ({type, name}); the nested Chat Completions shape is rejected
+      body.tool_choice =
+        typeof request.toolChoice === "string"
+          ? request.toolChoice
+          : { type: "function", name: request.toolChoice.function.name };
     }
   }
   return { ...body, ...(request.paramOverrides ?? {}), model: request.model };
