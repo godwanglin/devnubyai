@@ -55,7 +55,8 @@ if command -v python3 >/dev/null 2>&1; then
     if [ -f ".devnuby/.venv/bin/pip" ]; then
         .devnuby/.venv/bin/pip install -q --disable-pip-version-check \
             pypdf pdfplumber reportlab Pillow pypdfium2 \
-            openpyxl pandas python-pptx python-docx lxml defusedxml XlsxWriter || true
+            openpyxl pandas python-pptx python-docx lxml defusedxml XlsxWriter \
+            matplotlib PyMuPDF beautifulsoup4 markdown pdf2image || true
     fi
 fi
 

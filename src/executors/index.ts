@@ -6,7 +6,26 @@ export {
   resolvePythonExecutable,
   resolveSkillDirectory,
   resolveSkillScriptPath,
+  SANDBOX_CONFIG,
 } from "./config";
+export {
+  type ExecCommandRequest,
+  type ExecCommandResult,
+  executeSandboxCommand,
+  isExecCommandAvailable,
+} from "./exec-command";
+export { type ExecCommandParams, execCommandTool } from "./exec-command-tool";
+export { runInSandbox, type SandboxRunOptions, type SandboxRunOutcome } from "./sandbox";
+export { executeSkillScriptInSandbox } from "./skill-sandbox-runner";
+export {
+  acquireUserWorkspace,
+  getSandboxSupport,
+  getWorkspaceUsage,
+  type SandboxSupport,
+  type UserWorkspaceLease,
+  WorkspaceError,
+  type WorkspaceUsage,
+} from "./user-workspace";
 export {
   type CachedFontFamilyVariants,
   ensureFontsForExecution,
@@ -19,6 +38,7 @@ export {
   executePythonSkillScript,
 } from "./python-executor";
 export {
+  buildPythonRunnerSource,
   prepareNodeSandbox,
   sanitizeSandboxOutput,
   validateInlineCodeSecurity,

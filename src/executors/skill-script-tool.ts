@@ -5,7 +5,9 @@ import type {
 } from "../lib/tools/types";
 import { executeNodeSkillScript } from "./node-executor";
 import { executePythonSkillScript } from "./python-executor";
+import { executeSkillScriptInSandbox } from "./skill-sandbox-runner";
 import type { SkillExecutionResult, SkillScriptRuntime } from "./types";
+import { getSandboxSupport } from "./user-workspace";
 
 export interface RunSkillScriptParams {
   skill: string;
@@ -93,10 +95,7 @@ export const runSkillScriptTool: ToolDefinition<
       runtime === "node" ? "devnuby-node-executor" : "devnuby-python-executor";
 
     try {
-      const executorFn =
-        runtime === "node" ? executeNodeSkillScript : executePythonSkillScript;
-
-      const result = await executorFn({
+      const request = {
         skill: params.skill,
         runtime,
         script: params.script,
@@ -105,7 +104,15 @@ export const runSkillScriptTool: ToolDefinition<
         inputFiles: params.inputFiles,
         userId: context.userId,
         sessionId: context.sessionId,
-      });
+      };
+
+      // Prefer the OS sandbox (real isolation, no code restrictions); fall back to the
+      // in-process sandboxes on hosts without it (e.g. local Windows development).
+      const result = (await getSandboxSupport()).ok
+        ? await executeSkillScriptInSandbox(request, runtime)
+        : runtime === "node"
+          ? await executeNodeSkillScript(request)
+          : await executePythonSkillScript(request);
 
       if (!result.ok) {
         return {

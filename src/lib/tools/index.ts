@@ -20,7 +20,7 @@ import { memoryNoteTool } from "./memory-note";
 import { searchPastChatsTool } from "./search-past-chats";
 import { loadSkillTool } from "./load-skill";
 import { generateImageTool } from "./generate-image";
-import { runSkillScriptTool } from "@/executors";
+import { execCommandTool, runSkillScriptTool } from "@/executors";
 
 export * from "./types";
 export * from "./ssrf";
@@ -42,7 +42,7 @@ export * from "./memory-note";
 export * from "./search-past-chats";
 export * from "./load-skill";
 export * from "./generate-image";
-export { runSkillScriptTool } from "@/executors";
+export { execCommandTool, runSkillScriptTool } from "@/executors";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RegisteredTool = ToolDefinition<any, any>;
@@ -72,6 +72,7 @@ export const devnubyTools: RegisteredTool[] = [
   searchPastChatsTool,
   loadSkillTool,
   runSkillScriptTool,
+  execCommandTool,
   generateImageTool,
 ];
 

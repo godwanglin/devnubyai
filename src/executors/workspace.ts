@@ -33,6 +33,41 @@ function isSafeRelativeWorkspacePath(relPath: string): boolean {
   return !normalized.startsWith("..") && !path.isAbsolute(normalized);
 }
 
+/** Dependency / cache folders that are never exported as deliverables. */
+const SKIPPED_WORKSPACE_DIRS = new Set(["__pycache__", "unpacked", "node_modules", "venv", "site-packages"]);
+
+export interface WorkspaceFileOwner {
+  uid: number;
+  gid: number;
+}
+
+/**
+ * Writes a file without ever following a symlink at the destination. Persistent sandbox
+ * workspaces are writable by sandboxed code, which could plant `report.pdf -> /etc/...`.
+ */
+export async function writeFileNoFollow(dest: string, content: string | Buffer, owner?: WorkspaceFileOwner): Promise<void> {
+  const flags =
+    fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | (fs.constants.O_NOFOLLOW ?? 0);
+  const handle = await fs.open(dest, flags, 0o644);
+  try {
+    await handle.writeFile(content);
+    if (owner) await handle.chown(owner.uid, owner.gid);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Reads a regular file without following a symlink at its final path component. */
+async function readFileNoFollow(fullPath: string): Promise<Buffer | null> {
+  const handle = await fs.open(fullPath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+  try {
+    const stat = await handle.stat();
+    return stat.isFile() ? await handle.readFile() : null;
+  } finally {
+    await handle.close();
+  }
+}
+
 async function walkWorkspaceFiles(
   rootDir: string,
   currentDir = rootDir
@@ -43,8 +78,7 @@ async function walkWorkspaceFiles(
     if (
       entry.name.startsWith(".") ||
       entry.name.startsWith("_devnuby_") ||
-      entry.name === "__pycache__" ||
-      entry.name === "unpacked"
+      SKIPPED_WORKSPACE_DIRS.has(entry.name)
     ) {
       continue;
     }
@@ -54,7 +88,7 @@ async function walkWorkspaceFiles(
       const nested = await walkWorkspaceFiles(rootDir, fullPath);
       results.push(...nested);
     } else if (entry.isFile()) {
-      const stat = await fs.stat(fullPath);
+      const stat = await fs.lstat(fullPath);
       results.push({
         relPath,
         fullPath,
@@ -67,20 +101,42 @@ async function walkWorkspaceFiles(
 }
 
 /**
- * Creates an isolated temporary workspace directory, mounts session files from R2
- * (or inline JSON input files), and takes a pre-execution snapshot.
+ * Prepares the execution workspace, mounts session files from R2 (or inline JSON
+ * input files), and takes a pre-execution snapshot.
+ *
+ * Without `workspaceDir` a fresh temporary directory is created. With it (the persistent
+ * per-user sandbox workspace), files already present are kept as they are, so work in
+ * progress survives between runs, and new files are handed to `owner`.
  */
 export async function prepareExecutionWorkspace(options: {
   userId: string;
   sessionId: string;
   inputFiles?: Record<string, string>;
+  workspaceDir?: string;
+  owner?: WorkspaceFileOwner;
 }): Promise<WorkspaceSnapshot> {
-  const runId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
-  const workspaceDir = path.join(
-    os.tmpdir(),
-    `${EXECUTOR_CONFIG.tempDirPrefix}${runId}`
-  );
-  await fs.mkdir(workspaceDir, { recursive: true });
+  const persistent = Boolean(options.workspaceDir);
+  let workspaceDir: string;
+  if (options.workspaceDir) {
+    workspaceDir = options.workspaceDir;
+  } else {
+    const runId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+    workspaceDir = path.join(os.tmpdir(), `${EXECUTOR_CONFIG.tempDirPrefix}${runId}`);
+    await fs.mkdir(workspaceDir, { recursive: true });
+  }
+
+  const mountFile = async (relName: string, content: string | Buffer, overwrite: boolean) => {
+    const dest = path.join(workspaceDir, relName);
+    if (!overwrite && (await fs.lstat(dest).catch(() => null))) return;
+    if (persistent) {
+      // Persistent workspaces only take flat names; nested paths could traverse planted symlinks
+      if (relName.includes("/")) return;
+      await writeFileNoFollow(dest, content, options.owner);
+      return;
+    }
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.writeFile(dest, content);
+  };
 
   // 1. Download session files from R2 into workspace (both clean name & storage name)
   if (options.userId && options.sessionId) {
@@ -96,15 +152,19 @@ export async function prepareExecutionWorkspace(options: {
 
       for (const sf of sessionFiles) {
         if (Number(sf.sizeBytes) > EXECUTOR_CONFIG.maxWorkspaceFileBytes) continue;
+        const cleanName = sf.filename.replace(/^\d+-[a-f0-9]+-/, "");
+        // Persistent workspace already holds this file (possibly a newer local edit)
+        if (persistent && (await fs.lstat(path.join(workspaceDir, cleanName)).catch(() => null))) {
+          continue;
+        }
         try {
           const downloaded = await downloadFromR2({
             userId: options.userId,
             sessionId: options.sessionId,
             filename: sf.filename,
           });
-          const cleanName = sf.filename.replace(/^\d+-[a-f0-9]+-/, "");
           if (isSafeRelativeWorkspacePath(cleanName)) {
-            await fs.writeFile(path.join(workspaceDir, cleanName), downloaded.content);
+            await mountFile(cleanName, downloaded.content, true);
             // If an image was saved as .jpg/.png.jpg while scripts reference .png (or vice versa),
             // mount convenience aliases so PIL / ReportLab ImageReader("foo.png") always succeeds.
             if (/\.(?:png|jpe?g|webp)$/i.test(cleanName)) {
@@ -114,12 +174,7 @@ export async function prepareExecutionWorkspace(options: {
               for (const aliasExt of ["png", "jpg"]) {
                 const aliasName = `${baseStem}.${aliasExt}`;
                 if (aliasName !== cleanName && isSafeRelativeWorkspacePath(aliasName)) {
-                  const aliasPath = path.join(workspaceDir, aliasName);
-                  try {
-                    await fs.access(aliasPath);
-                  } catch {
-                    await fs.writeFile(aliasPath, downloaded.content);
-                  }
+                  await mountFile(aliasName, downloaded.content, false);
                 }
               }
             }
@@ -128,7 +183,7 @@ export async function prepareExecutionWorkspace(options: {
             sf.filename !== cleanName &&
             isSafeRelativeWorkspacePath(sf.filename)
           ) {
-            await fs.writeFile(path.join(workspaceDir, sf.filename), downloaded.content);
+            await mountFile(sf.filename, downloaded.content, false);
           }
         } catch {
           // Skip unreadable storage file without failing the workspace mount
@@ -144,9 +199,7 @@ export async function prepareExecutionWorkspace(options: {
     for (const [rawName, content] of Object.entries(options.inputFiles)) {
       const cleanRel = rawName.trim().replace(/\\/g, "/");
       if (!isSafeRelativeWorkspacePath(cleanRel)) continue;
-      const dest = path.join(workspaceDir, cleanRel);
-      await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.writeFile(dest, String(content ?? ""), "utf-8");
+      await mountFile(cleanRel, String(content ?? ""), true);
     }
   }
 
@@ -169,24 +222,34 @@ export async function collectAndSyncWorkspaceOutputs(options: {
   userId: string;
   sessionId: string;
   syncToR2?: boolean;
+  /** Only export changed files this predicate accepts (default: all changed files) */
+  include?: (relPath: string) => boolean;
+  /** Per-file export size limit (default: `EXECUTOR_CONFIG.maxWorkspaceFileBytes`) */
+  maxFileBytes?: number;
+  /** Remove session files whose workspace copy was deleted during the run (default: true) */
+  syncDeletions?: boolean;
 }): Promise<{
   generatedFiles: ExportedWorkspaceFile[];
   jsonOutputs: Record<string, unknown>;
 }> {
-  const { snapshot, userId, sessionId, syncToR2 = true } = options;
+  const { snapshot, userId, sessionId, syncToR2 = true, syncDeletions = true } = options;
+  const maxFileBytes = options.maxFileBytes ?? EXECUTOR_CONFIG.maxWorkspaceFileBytes;
   const afterFiles = await walkWorkspaceFiles(snapshot.workspaceDir);
   const afterRelSet = new Set(afterFiles.map((f) => f.relPath));
 
   const changed = afterFiles.filter((f) => {
     const prevMtime = snapshot.initialFileMap.get(f.relPath);
-    return prevMtime === undefined || f.mtimeMs > prevMtime;
+    const isChanged = prevMtime === undefined || f.mtimeMs > prevMtime;
+    return isChanged && (!options.include || options.include(f.relPath));
   });
 
   // Track files that existed before the script ran and were explicitly removed (e.g. os.remove("_part1.pdf"))
   const deletedRelPaths: string[] = [];
-  for (const initRel of snapshot.initialFileMap.keys()) {
-    if (!afterRelSet.has(initRel)) {
-      deletedRelPaths.push(initRel);
+  if (syncDeletions) {
+    for (const initRel of snapshot.initialFileMap.keys()) {
+      if (!afterRelSet.has(initRel)) {
+        deletedRelPaths.push(initRel);
+      }
     }
   }
 
@@ -214,11 +277,12 @@ export async function collectAndSyncWorkspaceOutputs(options: {
   });
 
   for (const file of changed.slice(0, EXECUTOR_CONFIG.maxGeneratedFiles)) {
-    if (file.size <= 0 || file.size > EXECUTOR_CONFIG.maxWorkspaceFileBytes) {
+    if (file.size <= 0 || file.size > maxFileBytes) {
       continue;
     }
 
-    const buffer = await fs.readFile(file.fullPath);
+    const buffer = await readFileNoFollow(file.fullPath).catch(() => null);
+    if (!buffer) continue;
     const flatDisplayName = sanitizeKey(file.relPath.replace(/\//g, "_"));
     const mimeType = getMimeTypeForFilename(flatDisplayName);
 

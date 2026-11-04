@@ -160,6 +160,12 @@ function describeTool(tool: ToolActivity, t: Translate): string {
         target: typeof input.language === "string" ? input.language : "code",
       });
     }
+    case "exec_command": {
+      if (typeof input.description === "string" && input.description.trim()) {
+        return input.description.trim().slice(0, 80);
+      }
+      return t("message.toolExecCommand");
+    }
     case "interactive_quiz":
       return t("message.toolQuiz");
     case "calculate":
@@ -254,7 +260,8 @@ function ToolGlyph({
     case "create_presentation": return <FaRegFilePowerpoint className={className} />;
     case "generate_image":
     case "vision_tool": return <ImageIcon className={className} />;
-    case "execute_code": return <Terminal className={className} />;
+    case "execute_code":
+    case "exec_command": return <Terminal className={className} />;
     case "interactive_quiz": return <HelpCircle className={className} />;
     case "calculate": return <Hash className={className} />;
     case "fetch_url": return <Globe className={className} />;

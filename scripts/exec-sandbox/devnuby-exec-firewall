@@ -1,0 +1,42 @@
+#!/bin/bash
+# Egress policy for the devnuby-exec user: block loopback, private/internal
+# ranges and this host's own public addresses; allow everything else (public internet).
+set -euo pipefail
+USER_NAME=devnuby-exec
+CHAIN=DEVNUBY_EXEC_OUT
+UID_NUM=$(id -u "$USER_NAME")
+
+V4_BLOCK="0.0.0.0/8 127.0.0.0/8 10.0.0.0/8 100.64.0.0/10 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 192.0.0.0/24 198.18.0.0/15 224.0.0.0/4 240.0.0.0/4"
+V6_BLOCK="::/128 ::1/128 ::ffff:0:0/96 64:ff9b::/96 fc00::/7 fe80::/10 ff00::/8"
+
+clear() {
+  for ipt in iptables ip6tables; do
+    while $ipt -D OUTPUT -m owner --uid-owner "$UID_NUM" -j $CHAIN 2>/dev/null; do :; done
+    $ipt -F $CHAIN 2>/dev/null || true
+    $ipt -X $CHAIN 2>/dev/null || true
+  done
+}
+
+apply() {
+  clear
+  # this host's own global addresses (services bound to 0.0.0.0 are reachable through them)
+  local own4 own6
+  own4=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | sed 's#$#/32#')
+  own6=$(ip -6 -o addr show scope global | awk '{print $4}')
+  for ipt in iptables ip6tables; do
+    $ipt -N $CHAIN
+    if [ $ipt = iptables ]; then list="$V4_BLOCK $own4"; else list="$V6_BLOCK $own6"; fi
+    for net in $list; do
+      $ipt -A $CHAIN -d "$net" -p tcp -j REJECT --reject-with tcp-reset
+      $ipt -A $CHAIN -d "$net" -j REJECT
+    done
+    $ipt -A $CHAIN -j RETURN
+    $ipt -I OUTPUT 1 -m owner --uid-owner "$UID_NUM" -j $CHAIN
+  done
+}
+
+case "${1:-start}" in
+  start|reload) apply ;;
+  stop) clear ;;
+  *) echo "usage: $0 start|stop|reload" >&2; exit 2 ;;
+esac

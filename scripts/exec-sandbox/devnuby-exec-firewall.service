@@ -1,0 +1,14 @@
+[Unit]
+Description=Egress firewall for devnuby-exec (block internal, allow public)
+After=network-online.target ufw.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/devnuby-exec-firewall start
+ExecReload=/usr/local/sbin/devnuby-exec-firewall reload
+ExecStop=/usr/local/sbin/devnuby-exec-firewall stop
+
+[Install]
+WantedBy=multi-user.target

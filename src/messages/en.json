@@ -363,6 +363,7 @@
     "toolEditFile": "Edited {target}",
     "toolVision": "Analyzing {target}",
     "toolExecuteCode": "Running {target}",
+    "toolExecCommand": "Working in the workspace",
     "toolQuiz": "Interactive quiz",
     "toolCalculate": "Calculating {target}",
     "toolFetchUrl": "Fetching {target}",

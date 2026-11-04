@@ -363,6 +363,7 @@
     "toolEditFile": "Mengedit {target}",
     "toolVision": "Menganalisis {target}",
     "toolExecuteCode": "Menjalankan {target}",
+    "toolExecCommand": "Mengerjakan di workspace",
     "toolQuiz": "Kuis interaktif",
     "toolCalculate": "Menghitung {target}",
     "toolFetchUrl": "Membaca {target}",

@@ -12,7 +12,11 @@ const FILE_TOOL_NAMES = new Set([
   "create_presentation",
   "generate_image",
   "run_skill_script",
+  "exec_command",
 ]);
+
+/** File tools whose output lists several files in `data.generatedFiles` */
+export const GENERATED_FILES_TOOL_NAMES = new Set(["run_skill_script", "exec_command"]);
 
 type StoredPart = Record<string, unknown>;
 
@@ -71,7 +75,7 @@ export function listProducedFiles(parts: unknown): string[] {
     const raw = parts[i];
     if (!raw || typeof raw !== "object") continue;
     const part = raw as StoredPart;
-    if (!isSuccessfulToolPart(part) || String(part.toolName) !== "run_skill_script") continue;
+    if (!isSuccessfulToolPart(part) || !GENERATED_FILES_TOOL_NAMES.has(String(part.toolName))) continue;
     const output = (part.output && typeof part.output === "object" ? part.output : {}) as StoredPart;
     const dataObj =
       output.data && typeof output.data === "object" ? (output.data as StoredPart) : output;
@@ -93,7 +97,7 @@ export function listProducedFiles(parts: unknown): string[] {
     const output = (part.output && typeof part.output === "object" ? part.output : {}) as StoredPart;
     const input = (part.input && typeof part.input === "object" ? part.input : {}) as StoredPart;
 
-    if (String(part.toolName) === "run_skill_script") {
+    if (GENERATED_FILES_TOOL_NAMES.has(String(part.toolName))) {
       const dataObj =
         output.data && typeof output.data === "object" ? (output.data as StoredPart) : output;
       const genFiles = Array.isArray(dataObj.generatedFiles)

@@ -7,7 +7,7 @@ import {
   type PreviewImageTarget,
 } from "@/components/modals/image-preview-modal";
 import { Tooltip } from "@/components/ui/tooltip";
-import { isHelperSkillArtifactName } from "@/lib/chat/turn-recovery";
+import { GENERATED_FILES_TOOL_NAMES, isHelperSkillArtifactName } from "@/lib/chat/turn-recovery";
 import { cn } from "@/lib/cn";
 import {
   classifyPreviewKind,
@@ -37,6 +37,7 @@ const FILE_TOOLS = new Set([
   "create_presentation",
   "generate_image",
   "run_skill_script",
+  "exec_command",
 ]);
 
 /** Running-state label per tool; keys match the ones in tool-activity.tsx. */
@@ -67,7 +68,7 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
 
     for (let tIdx = 0; tIdx < rawList.length; tIdx++) {
       const tool = rawList[tIdx];
-      if (tool.name === "run_skill_script") {
+      if (GENERATED_FILES_TOOL_NAMES.has(tool.name)) {
         const outObj =
           tool.output && typeof tool.output === "object"
             ? (tool.output as Record<string, unknown>)
@@ -91,12 +92,12 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
       }
     }
 
-    // Expand `run_skill_script` generatedFiles into individual file items,
-    // hiding intermediate modular build files from earlier `run_skill_script` steps in the same turn.
+    // Expand `run_skill_script` / `exec_command` generatedFiles into individual file items,
+    // hiding intermediate modular build files from earlier steps in the same turn.
     const list: ToolActivity[] = [];
     for (let tIdx = 0; tIdx < rawList.length; tIdx++) {
       const tool = rawList[tIdx];
-      if (tool.name === "run_skill_script") {
+      if (GENERATED_FILES_TOOL_NAMES.has(tool.name)) {
         const outObj =
           tool.output && typeof tool.output === "object"
             ? (tool.output as Record<string, unknown>)

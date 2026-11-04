@@ -150,18 +150,43 @@ export async function writePythonSandboxRunner(params: {
   cachedFonts?: CachedFontFamilyVariants[];
 }): Promise<string> {
   const runnerPath = path.join(params.workspaceDir, "_devnuby_py_runner.py");
+  await fsPromises.writeFile(
+    runnerPath,
+    buildPythonRunnerSource({
+      workspaceDir: path.resolve(params.workspaceDir),
+      skillDir: path.resolve(params.skillDir),
+      venvDir: path.resolve(EXECUTOR_CONFIG.pythonVenvDir),
+      customFontsDir: path.resolve(EXECUTOR_CONFIG.fontsDir),
+      projectRootDir: path.resolve(EXECUTOR_CONFIG.projectRootDir),
+      targetScriptPath: path.resolve(params.targetScriptPath),
+      cachedFonts: params.cachedFonts ?? [],
+      enforce: true,
+    }),
+    "utf-8"
+  );
+  return runnerPath;
+}
 
-  const configPayload = JSON.stringify({
-    workspaceDir: path.resolve(params.workspaceDir),
-    skillDir: path.resolve(params.skillDir),
-    venvDir: path.resolve(EXECUTOR_CONFIG.pythonVenvDir),
-    customFontsDir: path.resolve(EXECUTOR_CONFIG.fontsDir),
-    projectRootDir: path.resolve(EXECUTOR_CONFIG.projectRootDir),
-    targetScriptPath: path.resolve(params.targetScriptPath),
-    cachedFonts: params.cachedFonts ?? [],
-  });
+/**
+ * Source of the CPython startup runner. With `enforce: false` (inside the OS sandbox,
+ * which already isolates the process) it only does the font registration and ReportLab
+ * fallbacks: no env wipe and no audit hook, so subprocesses, network and pip work.
+ * All paths must be as seen by the Python process.
+ */
+export function buildPythonRunnerSource(config: {
+  workspaceDir: string;
+  skillDir: string;
+  venvDir: string;
+  customFontsDir: string;
+  projectRootDir: string;
+  targetScriptPath: string;
+  cachedFonts: CachedFontFamilyVariants[];
+  enforce: boolean;
+}): string {
+  // Embedded as a Python dict literal, so no JSON booleans/null in here
+  const configPayload = JSON.stringify({ ...config, enforce: config.enforce ? 1 : 0 });
 
-  const runnerSource = `# -*- coding: utf-8 -*-
+  return `# -*- coding: utf-8 -*-
 import os
 import runpy
 import sys
@@ -204,22 +229,26 @@ def _init_devnuby_sandbox():
         )
     )
 
+    enforce = bool(cfg.get("enforce", 1))
+
     # Wipe environment variables inside process memory so os.environ has zero secrets
-    safe_env = {
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONUTF8": "1",
-        "HOME": cfg["workspaceDir"],
-        "USERPROFILE": cfg["workspaceDir"],
-        "TMP": cfg["workspaceDir"],
-        "TEMP": cfg["workspaceDir"],
-        "TMPDIR": cfg["workspaceDir"],
-    }
-    if "SystemRoot" in os.environ:
-        safe_env["SystemRoot"] = os.environ["SystemRoot"]
-    if "WINDIR" in os.environ:
-        safe_env["WINDIR"] = os.environ["WINDIR"]
-    os.environ.clear()
-    os.environ.update(safe_env)
+    # (inside the OS sandbox the environment is already clean and must keep pip/PATH settings)
+    if enforce:
+        safe_env = {
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+            "HOME": cfg["workspaceDir"],
+            "USERPROFILE": cfg["workspaceDir"],
+            "TMP": cfg["workspaceDir"],
+            "TEMP": cfg["workspaceDir"],
+            "TMPDIR": cfg["workspaceDir"],
+        }
+        if "SystemRoot" in os.environ:
+            safe_env["SystemRoot"] = os.environ["SystemRoot"]
+        if "WINDIR" in os.environ:
+            safe_env["WINDIR"] = os.environ["WINDIR"]
+        os.environ.clear()
+        os.environ.update(safe_env)
 
     def _is_under(child, parent):
         return child == parent or child.startswith(parent + os.sep)
@@ -385,7 +414,8 @@ def _init_devnuby_sandbox():
 
     sys.argv = [target_script] + sys.argv[1:]
     sys.path.insert(0, os.path.dirname(target_script))
-    sys.addaudithook(_audit_hook)
+    if enforce:
+        sys.addaudithook(_audit_hook)
 
     # Pre-register system fonts ("Times New Roman", "Arial", etc.) & cached Google Fonts in reportlab
     try:
@@ -641,9 +671,6 @@ def _init_devnuby_sandbox():
 _target = _init_devnuby_sandbox()
 runpy.run_path(_target, run_name="__main__")
 `;
-
-  await fsPromises.writeFile(runnerPath, runnerSource, "utf-8");
-  return runnerPath;
 }
 
 /**

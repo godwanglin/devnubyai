@@ -29,6 +29,43 @@ export const EXECUTOR_CONFIG: ExecutorConfig = {
 };
 
 /**
+ * OS-level sandbox (Linux only): every command runs as the restricted `devnuby-exec`
+ * account inside bubblewrap, on a per-user loop-mounted ext4 image that caps disk usage.
+ * Host setup (user, ACLs, egress firewall) lives outside the app; see `scripts/exec-sandbox/`.
+ */
+export const SANDBOX_CONFIG = {
+  /** Set DEVNUBY_EXEC_SANDBOX=off to force the legacy in-process sandbox */
+  enabled: process.env.DEVNUBY_EXEC_SANDBOX?.trim().toLowerCase() !== "off",
+  execUser: "devnuby-exec",
+  /** Root-only directory holding one `<userKey>.img` per user */
+  imagesDir: "/var/lib/devnuby-exec/images",
+  /** Mount points: `<mountRoot>/<userKey>` */
+  mountRoot: "/home/devnuby-exec/mnt",
+  quotaBytes: 250 * 1024 * 1024, // 250 MB per user
+  /** A new image is refused when the host disk would drop below this */
+  minHostFreeBytes: 2 * 1024 * 1024 * 1024,
+  idleUnmountMs: 15 * 60_000,
+  sessionRetentionMs: 7 * 24 * 60 * 60_000,
+  defaultTimeoutMs: 60_000,
+  maxTimeoutMs: 300_000,
+  memoryMax: "1536M",
+  tasksMax: 256,
+  cpuQuota: "150%",
+  maxPublishedFileBytes: 50 * 1024 * 1024, // 50 MB
+  /** Paths as seen from inside the sandbox */
+  paths: {
+    workspace: "/workspace",
+    home: "/home/user",
+    tmp: "/tmp",
+    skills: "/opt/devnuby/skills",
+    fonts: "/opt/devnuby/xdg/fonts",
+    xdgData: "/opt/devnuby/xdg",
+    venv: "/opt/devnuby/venv",
+    nodeModules: "/opt/devnuby/node_modules",
+  },
+} as const;
+
+/**
  * Resolves the Python executable path.
  * Prioritizes:
  * 1. `DEVNUBY_PYTHON_BIN` env variable if explicitly configured

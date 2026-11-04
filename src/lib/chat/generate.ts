@@ -5,6 +5,7 @@ import { GatewayError, isUpstreamRateLimitText } from "@/lib/routing/errors";
 import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool, type ToolExecutionResult } from "@/lib/tools";
+import { isExecCommandAvailable } from "@/executors";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
 import { buildSkillsSystemPromptBlock } from "@/lib/skills/runtime";
 import {
@@ -396,12 +397,15 @@ export function createChatGenerationStream(
 
         // Tools the current chat can't use are dropped: `read_project_source` outside a
         // project, `memory_note` when memory is off, `search_past_chats` when the user
-        // hasn't allowed searching earlier chats (Settings → Memory)
+        // hasn't allowed searching earlier chats (Settings → Memory), `exec_command` on hosts
+        // without the OS sandbox (e.g. local Windows development)
+        const execCommandAvailable = await isExecCommandAvailable();
         const availableTools = devnubyTools.filter(
           (t) =>
             (t.name !== "read_project_source" || Boolean(sessionProject?.files.length)) &&
             (t.name !== "memory_note" || memoryEnabled) &&
-            (t.name !== "search_past_chats" || memory.settings.chatSearchEnabled)
+            (t.name !== "search_past_chats" || memory.settings.chatSearchEnabled) &&
+            (t.name !== "exec_command" || execCommandAvailable)
         );
 
         // If tools are supported, inject comprehensive tool guidelines and active session files
@@ -474,6 +478,17 @@ export function createChatGenerationStream(
               "  * POSTERS = PURE AI IMAGE GENERATOR (`generate_image`): When the user asks for a poster (standalone or inside a combined PDF assignment), ALWAYS use `generate_image` (`aspectRatio: '3:4'` or `'9:16'`, `filename: 'poster_edukasi.png'`) with a well-planned visual concept, hierarchy, illustration, and accurate headline/points to generate the complete visual poster directly with the AI image generator (never draw manual boxes/stick-figures in `reportlab`). If the poster is part of a combined PDF assignment, embed `poster_edukasi.png` full-page onto the poster page inside the single final PDF!",
               "  * FALLBACK ONLY (`create_document`, `create_spreadsheet`, `create_presentation`): ONLY use these legacy tools if no matching skill exists in `.devnuby/skills/` or if `run_skill_script` is unavailable in an emergency. NEVER write fake mock binary strings into `write_file`. If a `run_skill_script` call returns an error, silently fix your script and re-run it — NEVER paste raw stack traces, error codes, or file paths to the user.",
               "",
+              ...(execCommandAvailable
+                ? [
+                    "## 9b. Real Linux Workspace (`exec_command`)",
+                    "- `exec_command` runs any bash command in this chat's private, persistent `/workspace` on a real Linux machine (the user's uploaded files are already there). Use it freely whenever a task needs real tools: converting between formats (LibreOffice `soffice --headless --convert-to`, pandoc), rendering PDF pages to images (`pdftoppm`), OCR (`tesseract`), merging/splitting PDFs (`qpdf`), image processing (ImageMagick), data work with pandas, unzipping archives, or installing a missing library with `pip install` / `npm install`.",
+                    "- `run_skill_script` and `exec_command` share the same `/workspace`, so you can mix them: build a document with the skill, then convert, inspect, or post-process it with `exec_command`.",
+                    "- Work step by step: run a command, read its output, fix and re-run. Verify your deliverable (e.g. `pdfinfo`, `pdftoppm -png -r 60` + `read_file`) before telling the user it is done.",
+                    "- Only finished documents, images, media, CSV and ZIP files are shown to the user automatically; prefix scratch files with `_` and delete large temporary files when done (disk is limited per user).",
+                    "- Never show commands, paths, or raw errors to the user; describe the result in plain language.",
+                    "",
+                  ]
+                : []),
               "## 10. Generating Images & Posters (`generate_image`)",
               "- When the user asks to generate, draw, illustrate, design, or create an image, poster, flyer, infographic, illustration, photo, logo, or icon:",
               "  * ALWAYS call `generate_image` with a rich visual prompt describing subject, layout hierarchy, composition, lighting, and style.",
@@ -1125,6 +1140,7 @@ export function createChatGenerationStream(
               p.state === "output-available" &&
               [
                 "run_skill_script",
+                "exec_command",
                 "write_file",
                 "edit_file",
                 "create_document",

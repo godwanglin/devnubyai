@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isExecCommandAvailable } from "@/executors";
 
 export interface DevnubySkillMeta {
   name: string;
@@ -141,6 +142,7 @@ export async function loadDevnubySkill(
     const mainRaw = await fs.readFile(mainSkillFile, "utf-8");
     const { meta } = parseFrontmatter(mainRaw);
     const assets = await inspectSkillAssets(skillDir);
+    const execCommandAvailable = await isExecCommandAvailable();
 
     // Match doc filename case-insensitively (e.g. FORMS.md -> forms.md)
     const matchedDoc =
@@ -165,6 +167,11 @@ export async function loadDevnubySkill(
       `- **NON-DEVELOPER / LAYPERSON USER PERSONA & PURE AI POSTERS (\`generate_image\`)**: Always assume the user is a general layperson (NOT a web developer). Never generate \`.html\` files for posters/documents unless explicitly asked for HTML/web code, and never mention internal library/coding jargon (\`reportlab\`, \`pypdf\`, \`python\`, \`font belum terdaftar\`, \`piksel\`, \`render PNG\`) in your chat response. When asked for a poster (standalone or inside an assignment PDF), use \`generate_image\` (\`aspectRatio: "3:4"\` or \`"9:16"\`, \`filename: "poster_edukasi.png"\`) with deep conceptual planning to generate the complete visual poster directly with the AI image generator! If the poster belongs inside a combined PDF assignment, embed \`poster_edukasi.png\` full-page onto the poster page of the single final PDF.`,
       `- **Visual Self-Inspection (\`convert_pdf_to_images.py\` + \`read_file\`)**: After rendering a visual PDF, you can run \`{"skill": "pdf", "script": "convert_pdf_to_images.py", "args": ["My_Doc.pdf", "preview"]}\` and call \`read_file({"filename": "preview_page_1.png"})\` to visually inspect the rendered page with your multimodal vision capability.`,
       `- **Custom & System Fonts (Linux & Windows Parity)**: Standard fonts (\`"Times New Roman"\`, \`"Arial"\`, \`"Calibri"\`, \`"Georgia"\`) and Google Fonts (\`"Lexend Deca"\`, \`"Poppins"\`, \`"Inter"\`, \`"Plus Jakarta Sans"\`, \`"Montserrat"\`) are pre-registered with full Bold/Italic family mappings on both Linux and Windows.`,
+      ...(execCommandAvailable
+        ? [
+            `- **Shell access (\`exec_command\`)**: Skill scripts run in the same persistent \`/workspace\` as \`exec_command\`, without import restrictions. Whenever these instructions mention a CLI (\`soffice\`, \`pdftoppm\`, \`qpdf\`, \`pandoc\`, \`tesseract\`, \`python scripts/<script>.py\`), you can run it directly with \`exec_command\` (helper scripts live at \`/opt/devnuby/skills/${sanitized}/scripts/\`).`,
+          ]
+        : []),
     ].join("\n");
 
     return {
