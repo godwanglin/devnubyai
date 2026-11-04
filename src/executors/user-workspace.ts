@@ -327,6 +327,11 @@ export async function acquireUserWorkspace(userId: string, sessionId: string): P
   };
 }
 
+/** Whether this user already has a workspace image (never creates one). */
+export function hasUserWorkspace(userId: string): boolean {
+  return fs.existsSync(path.join(SANDBOX_CONFIG.imagesDir, `${toWorkspaceKey(userId)}.img`));
+}
+
 /** Disk usage of a mounted workspace image. */
 export async function getWorkspaceUsage(mountDir: string): Promise<WorkspaceUsage> {
   const stats = await fsPromises.statfs(mountDir);

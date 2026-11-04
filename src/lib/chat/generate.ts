@@ -6,6 +6,7 @@ import { getRoutingSettings } from "@/lib/routing/settings";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool, type ToolExecutionResult } from "@/lib/tools";
 import { isExecCommandAvailable } from "@/executors";
+import { buildSafetyRefusal, screenUserRequest } from "@/lib/safety/classifier";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
 import { buildSkillsSystemPromptBlock } from "@/lib/skills/runtime";
 import {
@@ -343,6 +344,17 @@ export function createChatGenerationStream(
           },
         });
 
+        // Safety gate (admin-configured classifier model): clearly illegal or harmful requests
+        // get a fixed refusal and never reach the chat model's provider. It runs alongside
+        // the prompt assembly below and is awaited before the first model call.
+        const safetyCheck = screenUserRequest({
+          conversation: conversationHistory,
+          requestId,
+          userId,
+          signal: combinedSignal,
+        });
+        safetyCheck.catch(() => {});
+
         // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
         // Text only: base64 image parts would inflate the estimate by megabytes
@@ -484,7 +496,7 @@ export function createChatGenerationStream(
                     "- `exec_command` runs any bash command in this chat's private, persistent `/workspace` on a real Linux machine (the user's uploaded files are already there). Use it freely whenever a task needs real tools: converting between formats (LibreOffice `soffice --headless --convert-to`, pandoc), rendering PDF pages to images (`pdftoppm`), OCR (`tesseract`), merging/splitting PDFs (`qpdf`), image processing (ImageMagick), data work with pandas, unzipping archives, or installing a missing library with `pip install` / `npm install`.",
                     "- `run_skill_script` and `exec_command` share the same `/workspace`, so you can mix them: build a document with the skill, then convert, inspect, or post-process it with `exec_command`.",
                     "- Work step by step: run a command, read its output, fix and re-run. Verify your deliverable (e.g. `pdfinfo`, `pdftoppm -png -r 60` + `read_file`) before telling the user it is done.",
-                    "- Only finished documents, images, media, CSV and ZIP files are shown to the user automatically; prefix scratch files with `_` and delete large temporary files when done (disk is limited per user).",
+                    "- The user only ever sees FINAL deliverables. Every helper script, preview render, check output, or intermediate part must be named with a leading `_` (`_build_report.py`, `_check/page-1.png`, `_part1.pdf`): those are hidden from the user but stay in `/workspace`, and `read_file` can open them for your own inspection. Create helper scripts inside `exec_command` (heredoc), never with `write_file`. Delete large temporary files when done (disk is limited per user).",
                     "- Never show commands, paths, or raw errors to the user; describe the result in plain language.",
                     "",
                   ]
@@ -546,6 +558,22 @@ export function createChatGenerationStream(
         });
         if (adminPrompt) {
           currentMessages.unshift({ role: "system", content: adminPrompt });
+        }
+
+        const safetyVerdict = await safetyCheck;
+        if (safetyVerdict?.blocked) {
+          console.warn(`[SAFETY_GATE_BLOCKED] [${requestId}] user=${userId} category=${safetyVerdict.category ?? "-"}`);
+          const refusal = buildSafetyRefusal(safetyVerdict.language);
+          const refusalPartId = `text_${assistantMessagePublicId}_safety`;
+          writer.write({ type: "text-start", id: refusalPartId });
+          writer.write({ type: "text-delta", id: refusalPartId, delta: refusal });
+          writer.write({ type: "text-end", id: refusalPartId });
+          fullContent = refusal;
+          fillTurn("completed", null);
+          await finishTurn(null);
+          writer.write({ type: "finish", finishReason: "stop" });
+          writer.setOutcome({ status: "completed" });
+          return;
         }
 
         // Round budget is admin-managed (app_settings `chat.max_tool_rounds`),

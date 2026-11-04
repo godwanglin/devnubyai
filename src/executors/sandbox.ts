@@ -136,7 +136,8 @@ export async function runInSandbox(options: SandboxRunOptions): Promise<SandboxR
     "--ro-bind", "/etc", "/etc",
   ];
   for (const secretDir of ["/etc/ssh", "/etc/letsencrypt", "/etc/ssl/private"]) {
-    if (fs.existsSync(secretDir)) bwrapArgs.push("--tmpfs", secretDir);
+    // turbopackIgnore: host paths, not bundle inputs (see config.ts)
+    if (fs.existsSync(/* turbopackIgnore: true */ secretDir)) bwrapArgs.push("--tmpfs", secretDir);
   }
   if (nodeRoot) {
     bwrapArgs.push(...ancestorDirs(nodeRoot), "--ro-bind", nodeRoot, nodeRoot);

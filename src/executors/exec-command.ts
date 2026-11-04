@@ -95,8 +95,8 @@ export async function executeSandboxCommand(request: ExecCommandRequest): Promis
   );
   const include = (relPath: string) => {
     if (publish.has(relPath)) return true;
-    // `_scratch.png`, `_part1.pdf`: working files, not deliverables
-    if (path.posix.basename(relPath).startsWith("_")) return false;
+    // `_scratch.png`, `_cek/page-1.png`: working files, not deliverables
+    if (relPath.split("/").some((segment) => segment.startsWith("_"))) return false;
     const ext = path.posix.extname(relPath).slice(1).toLowerCase();
     return AUTO_PUBLISH_EXTENSIONS.has(ext);
   };

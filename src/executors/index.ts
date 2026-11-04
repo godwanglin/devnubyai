@@ -17,6 +17,7 @@ export {
 export { type ExecCommandParams, execCommandTool } from "./exec-command-tool";
 export { runInSandbox, type SandboxRunOptions, type SandboxRunOutcome } from "./sandbox";
 export { executeSkillScriptInSandbox } from "./skill-sandbox-runner";
+export { readSessionWorkspaceFile, type WorkspaceFileContent } from "./workspace-reader";
 export {
   acquireUserWorkspace,
   getSandboxSupport,

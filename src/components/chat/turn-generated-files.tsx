@@ -7,7 +7,11 @@ import {
   type PreviewImageTarget,
 } from "@/components/modals/image-preview-modal";
 import { Tooltip } from "@/components/ui/tooltip";
-import { GENERATED_FILES_TOOL_NAMES, isHelperSkillArtifactName } from "@/lib/chat/turn-recovery";
+import {
+  GENERATED_FILES_TOOL_NAMES,
+  isHelperSkillArtifactName,
+  isScratchFileName,
+} from "@/lib/chat/turn-recovery";
 import { cn } from "@/lib/cn";
 import {
   classifyPreviewKind,
@@ -84,7 +88,7 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
           const fn = String(gf.displayName || gf.filename || "");
           if (fn) {
             allTurnFilenames.push(fn);
-            if (/\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(fn)) {
+            if (/\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(fn) && !isScratchFileName(fn)) {
               lastDocSkillToolIdx = tIdx;
             }
           }
@@ -147,6 +151,11 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
           : {};
       // While arguments are just starting to stream, wait until filename is parsed so we never flash "document.txt"
       if (tool.state === "streaming" && !outObj.filename && !inObj.filename) {
+        continue;
+      }
+      // Working files (`_buat_data.py`, `_cek_preview.png`) stay out of the chat
+      const shownName = String(outObj.displayName || outObj.filename || inObj.filename || "");
+      if (shownName && isScratchFileName(shownName)) {
         continue;
       }
       const key = String(outObj.id || outObj.filename || inObj.filename || tool.id);

@@ -2,6 +2,8 @@ import sharp from "sharp";
 import { db } from "../db";
 import { downloadFromR2, sanitizeKey } from "../storage/r2";
 import { extractDocumentText } from "../files/extractors";
+import { getMimeTypeForFilename } from "../files/policy";
+import { readSessionWorkspaceFile } from "@/executors/workspace-reader";
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -83,6 +85,7 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
 
     // 1. Resolve storage filename via session files in DB (supports unique file ID, clean name, or full storage name)
     let targetStorageFilename = safeFilename;
+    let matchedSessionFile = false;
 
     try {
       const sessionFiles = await db.sessionFile.findMany({
@@ -115,6 +118,7 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
 
         if (match) {
           targetStorageFilename = match.filename;
+          matchedSessionFile = true;
         }
       }
     } catch {
@@ -128,11 +132,21 @@ export const readFileTool: ToolDefinition<ReadFileParams, ReadFileData> = {
     const maxLines = Math.min(Math.max(rawMax, 1), MAX_LINES_PER_READ);
 
     try {
-      const downloaded = await downloadFromR2({
-        userId: context.userId,
-        sessionId: context.sessionId,
-        filename: targetStorageFilename,
-      });
+      // Not in session storage: it may be a scratch file in the chat's sandbox workspace
+      // (e.g. `_cek/page-1.png` rendered by `exec_command`), which is never uploaded
+      const workspaceFile = matchedSessionFile
+        ? null
+        : await readSessionWorkspaceFile(context.userId, context.sessionId, rawFilename).catch(() => null);
+      if (workspaceFile) {
+        targetStorageFilename = workspaceFile.relPath.split("/").pop() || targetStorageFilename;
+      }
+      const downloaded = workspaceFile
+        ? { content: workspaceFile.content, contentType: getMimeTypeForFilename(targetStorageFilename) }
+        : await downloadFromR2({
+            userId: context.userId,
+            sessionId: context.sessionId,
+            filename: targetStorageFilename,
+          });
 
       // Handle visual image inspection (.png, .jpg, .jpeg, .webp, .gif)
       if (isImageFile(targetStorageFilename, downloaded.contentType)) {

@@ -13,6 +13,7 @@ import { DatabasePoolConfigCard } from "./database-pool-config-card";
 import { NetworkRulesConfigCard } from "./network-rules-config-card";
 import { LegalSettingsCard } from "./legal-settings-card";
 import { ImageSettingsCard } from "./image-settings-card";
+import { SafetySettingsCard } from "./safety-settings-card";
 
 /** Sentinel for "no explicit model" (CustomSelect values are non-empty strings) */
 const AUTO_MODEL = "__auto__";
@@ -244,6 +245,9 @@ export function SettingsTab() {
 
         {/* Card 4: Image generation catalog model */}
         <ImageSettingsCard />
+
+        {/* Card 4b: Safety gate classifier model */}
+        <SafetySettingsCard />
 
         {/* Card 5: Support contact & public legal pages */}
         <LegalSettingsCard />

@@ -58,7 +58,7 @@ export async function writeFileNoFollow(dest: string, content: string | Buffer, 
 }
 
 /** Reads a regular file without following a symlink at its final path component. */
-async function readFileNoFollow(fullPath: string): Promise<Buffer | null> {
+export async function readFileNoFollow(fullPath: string): Promise<Buffer | null> {
   const handle = await fs.open(fullPath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
   try {
     const stat = await handle.stat();

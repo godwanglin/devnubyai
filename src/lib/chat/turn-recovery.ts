@@ -28,6 +28,15 @@ export function hasSuccessfulToolResult(parts: StoredPart[]): boolean {
   return parts.some(isSuccessfulToolPart);
 }
 
+/**
+ * Working files are named with a leading underscore (also on any folder, which the
+ * workspace export flattens to `_folder_file.ext`).
+ */
+export function isScratchFileName(filename: string): boolean {
+  const clean = filename.replace(/^\d+-[a-f0-9]+-/, "").replace(/\\/g, "/");
+  return clean.split("/").some((segment) => segment.startsWith("_"));
+}
+
 const INTERMEDIATE_DOC_NAME_RE =
   /(?:^_|(?:^|[_-])(?:part[_-]?\d+|bagian[_-]?\d+|draft|temp|tmp|raw)(?:[_.-]|$))/i;
 
@@ -39,6 +48,8 @@ const INTERMEDIATE_DOC_NAME_RE =
 export function isHelperSkillArtifactName(filename: string, allFilenames: string[] = []): boolean {
   const clean = filename.replace(/^\d+-[a-f0-9]+-/, "");
   const lower = clean.toLowerCase();
+  // `_scratch.py`, `_cek_preview.png`, `_part1.pdf`: the AI's working files, never deliverables
+  if (isScratchFileName(clean)) return true;
   if (lower.endsWith(".json")) return true;
   if (
     /(?:^|[_/-])(?:page[_-]?\d+|thumbnails?[_-]?\d*|slide[_-]?\d+)\.(?:png|jpe?g)$/i.test(lower) ||
@@ -82,9 +93,10 @@ export function listProducedFiles(parts: unknown): string[] {
     const genFiles = Array.isArray(dataObj.generatedFiles)
       ? (dataObj.generatedFiles as StoredPart[])
       : [];
+    // Only a real deliverable counts: a scratch check like `_cek_word.pdf` must not hide the .docx before it
     const hasDoc = genFiles.some((gf) => {
       const fn = String((gf && typeof gf === "object" ? gf.displayName || gf.filename : "") || "");
-      return /\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(fn);
+      return /\.(?:pdf|docx|dotx|xlsx|xlsm|pptx|potx)$/i.test(fn) && !isScratchFileName(fn);
     });
     if (hasDoc) lastDocSkillPartIdx = i;
   }

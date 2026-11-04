@@ -146,6 +146,11 @@ export async function executeSkillScriptInSandbox(
           snapshot,
           userId: request.userId,
           sessionId: request.sessionId,
+          // Scratch files (`_part1.pdf`, `_preview.png`) stay in the workspace, where
+          // `read_file` and later runs still see them; JSON results still come back
+          include: (relPath) =>
+            relPath.toLowerCase().endsWith(".json") ||
+            !relPath.split("/").some((segment) => segment.startsWith("_")),
         });
 
         return {
@@ -164,7 +169,9 @@ export async function executeSkillScriptInSandbox(
         };
       } finally {
         for (const name of RUNNER_FILES) {
-          await fsPromises.rm(path.join(lease.workspaceDir, name), { force: true }).catch(() => undefined);
+          await fsPromises
+            .rm(path.join(/* turbopackIgnore: true */ lease.workspaceDir, name), { force: true })
+            .catch(() => undefined);
         }
       }
     });

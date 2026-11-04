@@ -12,6 +12,7 @@ import {
   FaRegFilePowerpoint,
   FaRegFileWord,
 } from "react-icons/fa6";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { cn } from "@/lib/cn";
 import { useAccount } from "@/providers/account-provider";
 import { useI18n } from "@/providers/i18n-provider";
@@ -675,8 +676,90 @@ function formatDebugJson(value: unknown): string {
     : text;
 }
 
+/** Wraps text in a Markdown code fence longer than any backtick run inside it. */
+function fenced(text: string, language: string): string {
+  const longestRun = Math.max(2, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = "`".repeat(longestRun + 1);
+  return `${fence}${language}\n${text}\n${fence}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/** Debug view of an `exec_command` call styled as a terminal: the command, then its output. */
+function ExecCommandDebugView({ tool }: { tool: ToolActivity }) {
+  const input = asRecord(tool.input);
+  const outer = asRecord(tool.output);
+  const data = asRecord(outer.data ?? outer);
+  const command = typeof input.command === "string" ? input.command : "";
+  const stdout = typeof data.stdout === "string" ? data.stdout : "";
+  const stderr = typeof data.stderr === "string" ? data.stderr : "";
+  const exitCode = typeof data.exitCode === "number" ? data.exitCode : null;
+  const durationMs = typeof data.durationMs === "number" ? data.durationMs : null;
+  const timedOut = data.timedOut === true;
+  const files = Array.isArray(data.generatedFiles)
+    ? (data.generatedFiles as unknown[]).map((f) => String(asRecord(f).displayName || asRecord(f).filename || "")).filter(Boolean)
+    : [];
+  const workspace = asRecord(data.workspace);
+  const usedMb = typeof workspace.usedBytes === "number" ? workspace.usedBytes / 1048576 : null;
+  const quotaMb = typeof workspace.quotaBytes === "number" ? workspace.quotaBytes / 1048576 : null;
+  const hasOutput = Boolean(stdout || stderr || tool.error);
+  const failed = tool.state === "error" || timedOut || (exitCode !== null && exitCode !== 0);
+
+  return (
+    <div className="max-w-[620px] overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--panel-elevated)]">
+      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-1.5 font-mono text-[11px] text-[var(--muted)]">
+        <Terminal className="h-3 w-3 shrink-0" />
+        <span>bash</span>
+        {typeof input.description === "string" && input.description.trim() ? (
+          <span className="truncate font-sans">· {input.description.trim()}</span>
+        ) : null}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {timedOut ? <span className="text-amber-400">timeout</span> : null}
+          {exitCode !== null ? (
+            <span className={failed ? "text-red-400/90" : "text-emerald-400"}>exit {exitCode}</span>
+          ) : null}
+          {durationMs !== null ? <span>{(durationMs / 1000).toFixed(1)}s</span> : null}
+        </span>
+      </div>
+
+      {command ? (
+        <MarkdownRenderer
+          content={fenced(command, "bash")}
+          className="px-1 [&_.group]:!my-1 [&_pre]:!max-h-[220px] [&_pre]:!overflow-y-auto"
+        />
+      ) : null}
+
+      {hasOutput ? (
+        <div className="border-t border-[var(--border)] px-3 py-2">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">Output</div>
+          <pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed">
+            {stdout ? <span className="text-[var(--ink)]">{stdout}</span> : null}
+            {stdout && (stderr || tool.error) ? "\n" : null}
+            {stderr || tool.error ? <span className="text-red-400/90">{stderr || tool.error}</span> : null}
+          </pre>
+        </div>
+      ) : null}
+
+      {files.length > 0 || usedMb !== null ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--border)] px-3 py-1.5 font-mono text-[11px] text-[var(--muted)]">
+          {files.length > 0 ? <span className="truncate">files: {files.join(", ")}</span> : null}
+          {usedMb !== null && quotaMb !== null ? (
+            <span className="ml-auto shrink-0">
+              disk {usedMb.toFixed(1)} / {quotaMb.toFixed(0)} MB
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Admin tool debug inspect: raw error, input arguments and output of one tool call. */
 function ToolDebugDetails({ tool }: { tool: ToolActivity }) {
+  if (tool.name === "exec_command") return <ExecCommandDebugView tool={tool} />;
+
   const sections: { label: string; body: string; isError?: boolean }[] = [];
   if (tool.error) sections.push({ label: "Error", body: tool.error, isError: true });
   sections.push({ label: "Input", body: formatDebugJson(tool.input ?? null) });
