@@ -11,6 +11,7 @@ import { createUIMessageStreamResponse } from "ai";
 import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
 import { resolveClientTimeZone } from "@/lib/chat/timezone";
 import { extractSourceMentions } from "@/lib/chat/source-mentions";
+import { beginTurn, ensureSessionFlushed, type PendingTurn } from "@/lib/chat/redis-chat-state";
 import type { ChatMessageInput } from "@/lib/gateways/types";
 
 const regenerateSchema = z.object({
@@ -41,7 +42,12 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const session = await getUnlockedChatSession(user.id, chatId);
-    const quota = await assertUserQuota(user.id);
+    const quota = await assertUserQuota(user.id, user.plan);
+
+    // Regeneration reads the stored conversation: store any ended turn still in Redis first
+    if (!(await ensureSessionFlushed(session.id))) {
+      throw ApiError.conflict("Pesan sebelumnya masih disimpan. Coba lagi sebentar lagi.");
+    }
 
     // Target assistant message
     const targetMessage = await db.chatMessage.findFirst({
@@ -86,24 +92,39 @@ export async function POST(request: Request, context: RouteContext) {
       parsed.data.model,
       session.catalogModelPublicId
     );
-    await assertUserModelAccess(user.id, resolvedModel.id);
+    await assertUserModelAccess(user.id, resolvedModel.id, user);
 
-    // Cap concurrent generations per plan before the message is reset
+    // Cap concurrent generations per plan before the regeneration starts
     releaseSlot = await claimGenerationSlot(user.id, quota.maxParallelRequests);
 
-    // Reset target assistant message to status "streaming"
-    await db.chatMessage.update({
-      where: { id: targetMessage.id },
-      data: {
+    // The stored reply stays as is until the new one ends; readers see the Redis overlay
+    const now = Date.now();
+    const turn: PendingTurn = {
+      kind: "regenerate",
+      requestId,
+      userId: user.id.toString(),
+      sessionId: session.id.toString(),
+      sessionPublicId: session.publicId,
+      autoTitle: null,
+      user: null,
+      assistant: {
+        publicId: targetMessage.publicId,
         content: "",
         reasoning: null,
-        catalogModelId: resolvedModel.id,
+        parts: [],
         status: "streaming",
         errorCode: null,
-        promptTokens: null,
-        completionTokens: null,
+        catalogModelId: resolvedModel.id.toString(),
+        catalogModelPublicId: resolvedModel.publicId,
+        promptTokens: 0,
+        completionTokens: 0,
       },
-    });
+      usage: null,
+      startedAt: now,
+      updatedAt: now,
+      flushAttempts: 0,
+    };
+    await beginTurn(turn);
 
     const conversationMessages: ChatMessageInput[] = priorDbMessages
       .filter((m) => m.content.trim().length > 0)
@@ -115,13 +136,13 @@ export async function POST(request: Request, context: RouteContext) {
     const stream = createChatGenerationStream({
       userId: user.id,
       userPublicId: user.publicId,
+      userName: user.name,
       sessionId: session.id,
       sessionPublicId: session.publicId,
-      assistantMessageId: targetMessage.id,
-      assistantMessagePublicId: targetMessage.publicId,
-      userMessagePublicId: lastUserMsg?.publicId || "",
-      requestedModelPublicId: parsed.data.model,
-      sessionModelPublicId: session.catalogModelPublicId,
+      projectInternalId: session.projectInternalId,
+      turn,
+      resolvedModel,
+      planLimits: user.plan,
       reasoningEffort: mapReasoningEffort(parsed.data.reasoningLevel),
       conversationHistory: conversationMessages,
       // Re-answering the same turn: the sources it mentioned are inlined again

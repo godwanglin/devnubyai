@@ -5,6 +5,9 @@ import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/respon
 import { getUnlockedChatSession } from "@/lib/chat/service";
 import { MAX_MESSAGE_CHARS } from "@/lib/chat/service-types";
 import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
+import { invalidateChatSessionCache } from "@/lib/chat/session-cache";
+import { invalidateHistoryCache } from "@/lib/chat/history-cache";
+import { ensureSessionFlushed } from "@/lib/chat/redis-chat-state";
 
 const updateMessageSchema = z.object({
   content: z.string().trim().min(1, "Message content cannot be empty").max(MAX_MESSAGE_CHARS),
@@ -38,6 +41,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const session = await getUnlockedChatSession(user.id, chatId);
+
+    // Editing (and truncating) works on stored rows: store ended turns still in Redis first
+    if (!(await ensureSessionFlushed(session.id))) {
+      throw ApiError.conflict("Pesan sebelumnya masih disimpan. Coba lagi sebentar lagi.");
+    }
 
     const targetMessage = await db.chatMessage.findFirst({
       where: {
@@ -84,6 +92,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     // A public share link must not keep serving the pre-edit conversation
     await invalidateSharedChatCache(session.shareToken);
+    await invalidateChatSessionCache(user.id, chatId);
+    await invalidateHistoryCache(session.id);
 
     return jsonSuccess(
       {

@@ -7,6 +7,12 @@ import {
   Presentation, X,
 } from "lucide-react";
 import {
+  FaRegFileExcel,
+  FaRegFilePdf,
+  FaRegFilePowerpoint,
+  FaRegFileWord,
+} from "react-icons/fa6";
+import {
   ImagePreviewModal,
   type PreviewImageTarget,
 } from "@/components/modals/image-preview-modal";
@@ -44,18 +50,25 @@ const MAX_WIDTH = 920;
 export function renderSessionFileIcon(
   file: Pick<SessionFileItem, "extension" | "isImage" | "mimeType">
 ) {
+  const ext = (file.extension || "").toLowerCase().replace(/^\./, "");
   const kind = classifyPreviewKind(file.extension, file.mimeType);
   if (file.isImage || kind === "image" || kind === "svg") {
     return <ImageIcon className="w-4 h-4 text-[var(--muted)] shrink-0" />;
   }
+  if (kind === "pdf" || ext === "pdf") {
+    return <FaRegFilePdf className="w-4 h-4 text-[var(--muted)] shrink-0" />;
+  }
+  if (kind === "docx" || ext === "docx" || ext === "doc" || ext === "dotx") {
+    return <FaRegFileWord className="w-4 h-4 text-[var(--muted)] shrink-0" />;
+  }
+  if (kind === "spreadsheet" || ext === "xlsx" || ext === "xls" || ext === "xlsm") {
+    return <FaRegFileExcel className="w-4 h-4 text-[var(--muted)] shrink-0" />;
+  }
+  if (kind === "pptx" || ext === "pptx" || ext === "ppt" || ext === "potx") {
+    return <FaRegFilePowerpoint className="w-4 h-4 text-[var(--muted)] shrink-0" />;
+  }
   if (kind === "html") {
     return <Globe className="w-4 h-4 text-[var(--muted)] shrink-0" />;
-  }
-  if (kind === "spreadsheet") {
-    return <FileSpreadsheet className="w-4 h-4 text-[var(--muted)] shrink-0" />;
-  }
-  if (kind === "pptx") {
-    return <Presentation className="w-4 h-4 text-[var(--muted)] shrink-0" />;
   }
   if (kind === "epub") {
     return <BookOpen className="w-4 h-4 text-[var(--muted)] shrink-0" />;

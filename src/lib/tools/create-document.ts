@@ -21,11 +21,14 @@ import { db } from "../db";
 import { uploadToR2 } from "../storage/r2";
 import { checkAgentUploadQuota } from "../files/upload-quota";
 import { MAX_FILE_BYTES } from "../files/policy";
+import { buildPdfBuffer } from "../pdf/builder";
 import type {
   ToolDefinition,
   ToolExecutionContext,
   ToolExecutionResult,
 } from "./types";
+
+export { buildPdfBuffer };
 
 export interface DocumentInlineRun {
   text: string;
@@ -96,6 +99,7 @@ export type DocumentSection =
 
 export interface CreateDocumentParams {
   filename: string;
+  format?: "docx" | "pdf";
   title?: string;
   subtitle?: string;
   headerText?: string;
@@ -118,6 +122,7 @@ export interface CreateDocumentData {
 
 const MIME_DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MIME_PDF = "application/pdf";
 
 function sanitizeHex(raw?: string): string | undefined {
   if (!raw) return undefined;
@@ -557,15 +562,21 @@ export const createDocumentTool: ToolDefinition<
 > = {
   name: "create_document",
   description:
-    "Creates a beautifully formatted binary Microsoft Word (.docx) document. Supports title, subtitle, custom headers/footers, automated page numbers, hierarchical headings (H1-H4), styled paragraphs with rich inline runs & hyperlinks, bullet & numbered lists, callout highlight boxes, zebra tables, horizontal dividers, and deliberate page breaks. Consult the 'docx' skill (`load_skill`) for professional layouts (CVs, cover letters, formal proposals, memos, contracts, and business reports).",
+    "FALLBACK TOOL for creating binary Microsoft Word (.docx) or PDF (.pdf) documents ONLY when no matching skill ('docx' or 'pdf') is available in `.devnuby/skills/` or when an urgent fallback is needed if `run_skill_script` is unavailable. Whenever 'docx' or 'pdf' exists in `<available_skills>`, MUST use `load_skill` + `run_skill_script` instead of this tool.",
   parameters: {
     type: "object",
     properties: {
       filename: {
         type: "string",
         description:
-          "The desired filename ending with .docx (e.g. CV_Aiden.docx, Project_Proposal.docx, Formal_Letter.docx).",
+          "The desired filename ending with .docx or .pdf (e.g. CV_Aiden.docx, Invoice_2026.pdf, Project_Proposal.pdf).",
         required: true,
+      },
+      format: {
+        type: "string",
+        enum: ["docx", "pdf"],
+        description:
+          "Optional output format ('docx' or 'pdf'). Automatically inferred from the filename extension (.pdf or .docx).",
       },
       title: {
         type: "string",
@@ -723,7 +734,15 @@ export const createDocumentTool: ToolDefinition<
       };
     }
 
-    if (!filename.toLowerCase().endsWith(".docx")) {
+    const wantsPdf =
+      params.format === "pdf" || filename.toLowerCase().endsWith(".pdf");
+
+    if (wantsPdf) {
+      filename = filename.replace(/\.docx$/i, "");
+      if (!filename.toLowerCase().endsWith(".pdf")) {
+        filename = `${filename}.pdf`;
+      }
+    } else if (!filename.toLowerCase().endsWith(".docx")) {
       filename = `${filename}.docx`;
     }
 
@@ -739,7 +758,10 @@ export const createDocumentTool: ToolDefinition<
     }
 
     try {
-      const buffer = await buildDocumentBuffer(params, filename);
+      const buffer = wantsPdf
+        ? await buildPdfBuffer(params, filename)
+        : await buildDocumentBuffer(params, filename);
+      const mimeType = wantsPdf ? MIME_PDF : MIME_DOCX;
       if (buffer.length > MAX_FILE_BYTES) {
         return {
           success: false,
@@ -766,7 +788,7 @@ export const createDocumentTool: ToolDefinition<
         sessionId: context.sessionId,
         filename,
         content: buffer,
-        contentType: MIME_DOCX,
+        contentType: mimeType,
       });
 
       // Record in DB
@@ -823,7 +845,7 @@ export const createDocumentTool: ToolDefinition<
         },
         metadata: {
           durationMs: Date.now() - startTime,
-          provider: "docx",
+          provider: wantsPdf ? "devnuby-pdf" : "docx",
         },
       };
     } catch (err: unknown) {
@@ -832,7 +854,7 @@ export const createDocumentTool: ToolDefinition<
         success: false,
         error: {
           code: "STORAGE_ERROR",
-          message: `Failed to generate Word document: ${message}`,
+          message: `Failed to generate document: ${message}`,
         },
         metadata: { durationMs: Date.now() - startTime },
       };

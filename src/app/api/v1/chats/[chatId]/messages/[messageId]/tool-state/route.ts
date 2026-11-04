@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/client";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
+import { patchTurnParts } from "@/lib/chat/redis-chat-state";
 
 const persistedChartSchema = z.object({
   id: z.string().trim().max(64).optional(),
@@ -60,6 +61,45 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const session = await getChatSession(user.id, chatId);
 
+    const applyPatch = (partsList: unknown[]): { parts: unknown[]; updated: boolean } => {
+      let updated = false;
+      const parts = partsList.map((rawPart) => {
+        if (!rawPart || typeof rawPart !== "object") return rawPart;
+        const part = rawPart as Record<string, unknown>;
+        if (part.toolCallId !== parsed.data.toolCallId) return rawPart;
+
+        updated = true;
+        const nextPart: Record<string, unknown> = { ...part };
+
+        if (parsed.data.selectedId !== undefined) {
+          const existingInput =
+            typeof part.input === "object" && part.input !== null
+              ? (part.input as Record<string, unknown>)
+              : {};
+          nextPart.input = {
+            ...existingInput,
+            selectedId: parsed.data.selectedId,
+            selectedAt: new Date().toISOString(),
+          };
+        }
+
+        if (parsed.data.executionResult !== undefined) {
+          const existingOutput =
+            typeof part.output === "object" && part.output !== null
+              ? (part.output as Record<string, unknown>)
+              : {};
+          nextPart.output = {
+            ...existingOutput,
+            executionResult: parsed.data.executionResult,
+          };
+        }
+
+        return nextPart;
+      });
+      return { parts, updated };
+    };
+
+    let updated = false;
     const message = await db.chatMessage.findFirst({
       where: {
         publicId: messageId,
@@ -68,64 +108,39 @@ export async function PATCH(request: Request, context: RouteContext) {
       select: { id: true, parts: true },
     });
 
-    if (!message) {
-      throw ApiError.notFound("Message not found in this chat session");
-    }
-
-    let partsList: unknown[] = [];
-    if (typeof message.parts === "string") {
-      try {
-        const rawParsed = JSON.parse(message.parts);
-        if (Array.isArray(rawParsed)) partsList = rawParsed;
-      } catch {
-        partsList = [];
-      }
-    } else if (Array.isArray(message.parts)) {
-      partsList = message.parts;
-    }
-
-    let updated = false;
-    const updatedParts = partsList.map((rawPart) => {
-      if (!rawPart || typeof rawPart !== "object") return rawPart;
-      const part = rawPart as Record<string, unknown>;
-      if (part.toolCallId !== parsed.data.toolCallId) return rawPart;
-
-      updated = true;
-      const nextPart: Record<string, unknown> = { ...part };
-
-      if (parsed.data.selectedId !== undefined) {
-        const existingInput =
-          typeof part.input === "object" && part.input !== null
-            ? (part.input as Record<string, unknown>)
-            : {};
-        nextPart.input = {
-          ...existingInput,
-          selectedId: parsed.data.selectedId,
-          selectedAt: new Date().toISOString(),
-        };
+    if (message) {
+      let partsList: unknown[] = [];
+      if (typeof message.parts === "string") {
+        try {
+          const rawParsed = JSON.parse(message.parts);
+          if (Array.isArray(rawParsed)) partsList = rawParsed;
+        } catch {
+          partsList = [];
+        }
+      } else if (Array.isArray(message.parts)) {
+        partsList = message.parts;
       }
 
-      if (parsed.data.executionResult !== undefined) {
-        const existingOutput =
-          typeof part.output === "object" && part.output !== null
-            ? (part.output as Record<string, unknown>)
-            : {};
-        nextPart.output = {
-          ...existingOutput,
-          executionResult: parsed.data.executionResult,
-        };
+      const result = applyPatch(partsList);
+      updated = result.updated;
+      if (updated) {
+        await db.chatMessage.update({
+          where: { id: message.id },
+          data: {
+            parts: result.parts as unknown as Prisma.InputJsonValue,
+          },
+        });
       }
-
-      return nextPart;
-    });
-
-    if (updated) {
-      await db.chatMessage.update({
-        where: { id: message.id },
-        data: {
-          parts: updatedParts as unknown as Prisma.InputJsonValue,
-        },
+    } else {
+      // Reply not stored in Postgres yet (Redis-held turn): patch it there
+      const patched = await patchTurnParts(messageId, session.id, (parts) => {
+        const result = applyPatch(parts);
+        return result.updated ? (result.parts as Record<string, unknown>[]) : null;
       });
+      if (patched === null) {
+        throw ApiError.notFound("Message not found in this chat session");
+      }
+      updated = patched;
     }
 
     return jsonSuccess(

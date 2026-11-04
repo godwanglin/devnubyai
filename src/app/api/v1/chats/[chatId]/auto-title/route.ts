@@ -5,6 +5,7 @@ import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { executeWithFallback } from "@/lib/routing/executor";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
+import { invalidateChatSessionCache } from "@/lib/chat/session-cache";
 
 type RouteContext = { params: Promise<{ chatId: string }> };
 
@@ -83,8 +84,8 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Same gates as a chat turn: over-quota users or models outside the plan keep the old title
     try {
-      await assertUserQuota(user.id);
-      await assertUserModelAccess(user.id, activeModel.id);
+      await assertUserQuota(user.id, user.plan);
+      await assertUserModelAccess(user.id, activeModel.id, user);
     } catch {
       return jsonSuccess({ title: session.title }, { requestId });
     }
@@ -118,6 +119,7 @@ export async function POST(request: Request, context: RouteContext) {
         where: { id: session.id },
         data: { title: cleanTitle },
       });
+      await invalidateChatSessionCache(user.id, chatId);
       return jsonSuccess({ title: cleanTitle }, { requestId });
     }
 

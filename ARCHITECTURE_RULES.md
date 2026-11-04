@@ -45,3 +45,5 @@ Dokumen ini adalah aturan wajib yang disepakati untuk pengembangan web Devnuby A
    - Kode hanya berisi **mekanisme** (resolver, adapter wire API, klasifikasi error); **kebijakan** selalu dari DB. Key setting yang hilang = error konfigurasi, bukan nilai cadangan di kode.
    - Identitas gateway/upstream tidak pernah dikirim ke client. Detail desain: `.plans/03-smart-routing.md`.
 10. **API**: Semua endpoint di bawah `/api/v1` (Route Handler). Chat publik memakai SSE (`POST` + `text/event-stream`) dan stream ditutup setelah event `done`/`error`. Detail: `.plans/02-api-routing.md`.
+
+11. cara deploy ada di `DEPLOY_RULE.md`

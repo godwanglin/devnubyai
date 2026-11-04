@@ -85,6 +85,7 @@ model User {
   transactions     PaymentTransaction[]
   manualUpdatedTrans PaymentTransaction[] @relation("ManualTransactionUpdater")
   userNotes        UserNote[]
+  memorySettings   UserMemorySettings?
   homeSuggestions  UserHomeSuggestion[]
   projects         Project[]
   projectFiles     ProjectFile[]
@@ -390,6 +391,8 @@ model ChatMessage {
   files        SessionFile[]
 
   @@index([sessionId, id], map: "idx_chat_messages_session")
+  // Full-text search index for `search_past_chats` (GIN on to_tsvector('simple', content))
+  // is created by prisma/migrations/20261106000000_add_chat_message_search; db push leaves it alone.
   @@index([status, updatedAt], map: "idx_chat_messages_status")
   @@index([catalogModelId], map: "idx_chat_messages_model")
   @@map("chat_messages")
@@ -588,6 +591,22 @@ model UserNote {
   @@index([userId, updatedAt], map: "idx_user_notes_user_updated")
   @@index([sessionId], map: "idx_user_notes_session")
   @@map("user_notes")
+}
+
+/// Memory preferences of a user (Settings → Memory). No row means the defaults.
+model UserMemorySettings {
+  userId            BigInt   @id @map("user_id")
+  /// Saved notes are shown to the model and it may save new ones (`memory_note`)
+  memoryEnabled     Boolean  @default(true) @map("memory_enabled")
+  /// The model may search the user's earlier chats
+  chatSearchEnabled Boolean  @default(false) @map("chat_search_enabled")
+  /// Health, religion, politics ... may be saved to memory
+  includeSensitive  Boolean  @default(false) @map("include_sensitive")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_user_memory_settings_user")
+
+  @@map("user_memory_settings")
 }
 
 // ───────────── Personalized home page (AI-generated, refreshed every 5h) ─────────────

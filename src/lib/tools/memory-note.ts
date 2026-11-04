@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { getUserMemoryNotes, invalidateUserMemoryCache } from "../chat/user-memory";
 import type {
   ToolDefinition,
   ToolExecutionContext,
@@ -36,7 +37,7 @@ export interface MemoryNoteData {
 export const memoryNoteTool: ToolDefinition<MemoryNoteParams, MemoryNoteData> = {
   name: "memory_note",
   description:
-    "Persists short notes/facts to the user's personal memory so they survive across chat sessions. Actions: 'save' (create or update a note by title), 'list' (retrieve saved notes), 'delete' (remove a note by id). Use to remember user preferences, important facts, or decisions the user wants retained.",
+    "Persists short notes/facts to the user's personal memory so they survive across chat sessions. The newest notes are already shown in the 'User Memory' system message every turn. Actions: 'save' (create or update a note by title), 'list' (retrieve saved notes in full, incl. ids for delete), 'delete' (remove a note by id). Use to remember user preferences, important facts, or decisions the user wants retained.",
   parameters: {
     type: "object",
     properties: {
@@ -82,10 +83,14 @@ export const memoryNoteTool: ToolDefinition<MemoryNoteParams, MemoryNoteData> = 
     }
 
     try {
-      const user = await db.user.findUnique({
-        where: { publicId: context.userId },
-        select: { id: true },
-      });
+      // The chat passes internal ids; other callers fall back to public-id lookups
+      const user =
+        context.userInternalId !== undefined
+          ? { id: context.userInternalId }
+          : await db.user.findUnique({
+              where: { publicId: context.userId },
+              select: { id: true },
+            });
       if (!user) {
         return {
           success: false,
@@ -94,9 +99,9 @@ export const memoryNoteTool: ToolDefinition<MemoryNoteParams, MemoryNoteData> = 
         };
       }
 
-      // Resolve session (optional)
-      let sessionId: bigint | null = null;
-      if (context.sessionId) {
+      // Session the note was saved from (optional, only needed when saving)
+      let sessionId: bigint | null = context.sessionInternalId ?? null;
+      if (action === "save" && sessionId === null && context.sessionId) {
         const session = await db.chatSession.findUnique({
           where: { publicId: context.sessionId },
           select: { id: true },
@@ -145,6 +150,7 @@ export const memoryNoteTool: ToolDefinition<MemoryNoteParams, MemoryNoteData> = 
               data: { userId: user.id, sessionId, title, content },
               select: { publicId: true, title: true, content: true, createdAt: true, updatedAt: true },
             });
+        await invalidateUserMemoryCache(user.id);
 
         return {
           success: true,
@@ -164,19 +170,8 @@ export const memoryNoteTool: ToolDefinition<MemoryNoteParams, MemoryNoteData> = 
 
       if (action === "list") {
         const limit = Math.min(Math.max(Number(params?.limit) || 20, 1), 50);
-        const rows = await db.userNote.findMany({
-          where: { userId: user.id },
-          orderBy: { updatedAt: "desc" },
-          take: limit,
-          select: { publicId: true, title: true, content: true, createdAt: true, updatedAt: true },
-        });
-        const notes = rows.map((r) => ({
-          id: r.publicId,
-          title: r.title,
-          content: r.content,
-          createdAt: r.createdAt.toISOString(),
-          updatedAt: r.updatedAt.toISOString(),
-        }));
+        // Redis-cached (the newest 50 notes); Postgres only on a cold cache
+        const notes = (await getUserMemoryNotes(user.id)).slice(0, limit);
         return {
           success: true,
           data: { action: "list", notes, total: notes.length },
@@ -205,6 +200,7 @@ export const memoryNoteTool: ToolDefinition<MemoryNoteParams, MemoryNoteData> = 
         };
       }
       await db.userNote.delete({ where: { id: existing.id } });
+      await invalidateUserMemoryCache(user.id);
       return {
         success: true,
         data: { action: "delete", deleted: true },

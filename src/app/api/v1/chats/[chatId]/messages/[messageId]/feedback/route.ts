@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/client";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
 import { getChatSession } from "@/lib/chat/service";
+import { ensureSessionFlushed } from "@/lib/chat/redis-chat-state";
 import { stripFeedbackParts, type FeedbackPart } from "@/lib/chat/feedback";
 
 const feedbackSchema = z.object({
@@ -41,18 +42,24 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const session = await getChatSession(user.id, chatId);
 
-    const message = await db.chatMessage.findFirst({
-      where: {
-        publicId: messageId,
-        sessionId: session.id,
-        role: "assistant",
-      },
-      select: {
-        id: true,
-        publicId: true,
-        parts: true,
-      },
-    });
+    const findMessage = () =>
+      db.chatMessage.findFirst({
+        where: {
+          publicId: messageId,
+          sessionId: session.id,
+          role: "assistant",
+        },
+        select: {
+          id: true,
+          publicId: true,
+          parts: true,
+        },
+      });
+    let message = await findMessage();
+    // A reply rated right as it ends may still be on its way from Redis to Postgres
+    if (!message && (await ensureSessionFlushed(session.id))) {
+      message = await findMessage();
+    }
 
     if (!message) {
       throw ApiError.notFound("Assistant message not found");

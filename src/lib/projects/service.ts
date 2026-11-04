@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
+import { invalidateChatSessionCache, invalidateUserChatSessionsCache } from "@/lib/chat/session-cache";
 import type {
   ProjectDto,
   ProjectDetailDto,
@@ -309,6 +310,7 @@ export async function deleteProject(
     ]);
     // Deleted chats must stop being served from the public share cache
     await Promise.allSettled(shared.map((s) => invalidateSharedChatCache(s.shareToken)));
+    await invalidateUserChatSessionsCache(userId);
   } else {
     // Default safe option: unlink all chats so they become regular root chats
     await db.$transaction([
@@ -319,6 +321,7 @@ export async function deleteProject(
       db.projectFile.deleteMany({ where: { projectId: existing.id } }),
       db.project.delete({ where: { id: existing.id } }),
     ]);
+    await invalidateUserChatSessionsCache(userId);
   }
 }
 
@@ -352,6 +355,7 @@ export async function moveChatToProject(
     where: { id: chat.id },
     data: { projectId: targetInternalId },
   });
+  await invalidateChatSessionCache(userId, chatPublicId);
 
   return { success: true, projectId: targetProjectPublicId };
 }

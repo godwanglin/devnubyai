@@ -17,6 +17,11 @@ export function unregisterStream(messagePublicId: string, controller: AbortContr
   if (active.get(messagePublicId) === controller) active.delete(messagePublicId);
 }
 
+/** Whether this process is running the generation of that reply. */
+export function isStreamActive(messagePublicId: string): boolean {
+  return active.has(messagePublicId);
+}
+
 /** Returns true when a running generation was found and aborted. */
 export function abortStream(messagePublicId: string): boolean {
   const controller = active.get(messagePublicId);

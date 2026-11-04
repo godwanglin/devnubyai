@@ -2,11 +2,18 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertCircle, ChevronDown, FileCode, FileSpreadsheet, FileText, Globe,
-  Hash, HelpCircle, Image as ImageIcon, Loader2, NotebookPen, Presentation,
-  Terminal, Wrench, Sparkles,
+  AlertCircle, BookOpen, ChevronDown, FileCode, FileText, Globe,
+  Hash, HelpCircle, History, Image as ImageIcon, Loader2, NotebookPen,
+  Terminal, Wrench,
 } from "lucide-react";
+import {
+  FaRegFileExcel,
+  FaRegFilePdf,
+  FaRegFilePowerpoint,
+  FaRegFileWord,
+} from "react-icons/fa6";
 import { cn } from "@/lib/cn";
+import { useAccount } from "@/providers/account-provider";
 import { useI18n } from "@/providers/i18n-provider";
 import type { InteractiveQuizInput } from "@/lib/tools/interactive-quiz";
 import type { ToolActivity } from "@/types";
@@ -51,6 +58,64 @@ function officeFilename(value: unknown, extension: string): string {
   return name.toLowerCase().endsWith(extension) ? name : `${name}${extension}`;
 }
 
+// Maps known helper script basenames in .devnuby/skills/<skill>/scripts/ to i18n keys.
+const SKILL_HELPER_SCRIPT_I18N: Record<string, string> = {
+  "convert_pdf_to_images.py": "message.skillScriptConvertPdfImages",
+  "check_fillable_fields.py": "message.skillScriptCheckFillable",
+  "extract_form_field_info.py": "message.skillScriptExtractFields",
+  "extract_form_structure.py": "message.skillScriptExtractStructure",
+  "check_bounding_boxes.py": "message.skillScriptCheckBoxes",
+  "fill_fillable_fields.py": "message.skillScriptFillPdf",
+  "fill_pdf_form_with_annotations.py": "message.skillScriptFillPdf",
+  "create_validation_image.py": "message.skillScriptValidationImage",
+  "recalc.py": "message.skillScriptRecalcXlsx",
+  "validate.py": "message.skillScriptValidateDoc",
+  "soffice.py": "message.skillScriptConvertDoc",
+  "comment.py": "message.skillScriptCommentDoc",
+  "accept_changes.py": "message.skillScriptAcceptChanges",
+  "merge_runs.py": "message.skillScriptMergeRuns",
+  "thumbnail.py": "message.skillScriptSlideThumbnails",
+  "add_slide.py": "message.skillScriptAddSlide",
+  "clean.py": "message.skillScriptCleanAssets",
+  "unpack.py": "message.skillScriptProcessPackage",
+  "pack.py": "message.skillScriptProcessPackage",
+};
+
+/** Attempts to extract the primary document filename from `run_skill_script` output or inline code. */
+function extractSkillTargetFilename(tool: ToolActivity): string | null {
+  const outObj =
+    tool.output && typeof tool.output === "object"
+      ? (tool.output as Record<string, unknown>)
+      : {};
+  const dataObj =
+    outObj.data && typeof outObj.data === "object"
+      ? (outObj.data as Record<string, unknown>)
+      : outObj;
+  const genFiles = Array.isArray(dataObj.generatedFiles)
+    ? (dataObj.generatedFiles as Array<Record<string, unknown>>)
+    : [];
+  for (const gf of genFiles) {
+    const name = String(gf.displayName || gf.filename || "").trim();
+    if (/\.(pdf|docx|dotx|xlsx|xlsm|pptx|potx|csv)$/i.test(name)) {
+      return baseName(name, name);
+    }
+  }
+
+  const inObj =
+    tool.input && typeof tool.input === "object"
+      ? (tool.input as Record<string, unknown>)
+      : {};
+  if (typeof inObj.code === "string") {
+    const match = inObj.code.match(
+      /['"]([a-zA-Z0-9_\-. ]+\.(?:pdf|docx|xlsx|pptx))['"]/i
+    );
+    if (match?.[1]) {
+      return baseName(match[1].trim(), match[1].trim());
+    }
+  }
+  return null;
+}
+
 /** Formats tool call details into human-friendly label (e.g. "Membaca data.csv#1-100") */
 function describeTool(tool: ToolActivity, t: Translate): string {
   const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<
@@ -67,8 +132,14 @@ function describeTool(tool: ToolActivity, t: Translate): string {
     }
     case "write_file":
       return t("message.toolWriteFile", { target: baseName(input.filename, "file") });
-    case "create_document":
-      return t("message.toolCreateDocument", { target: officeFilename(input.filename, ".docx") });
+    case "create_document": {
+      const rawName = String(input.filename || "");
+      const ext =
+        rawName.toLowerCase().endsWith(".pdf") || input.format === "pdf"
+          ? ".pdf"
+          : ".docx";
+      return t("message.toolCreateDocument", { target: officeFilename(input.filename, ext) });
+    }
     case "create_spreadsheet":
       return t("message.toolCreateSpreadsheet", { target: officeFilename(input.filename, ".xlsx") });
     case "create_presentation":
@@ -97,8 +168,56 @@ function describeTool(tool: ToolActivity, t: Translate): string {
       return t("message.toolFetchUrl", { target: baseName(input.url, "url") });
     case "memory_note":
       return t("message.toolMemoryNote", { action: String(input.action ?? "") });
-    case "load_skill":
-      return `Membuka skill: ${String(input.name || "skill")}`;
+    case "search_past_chats":
+      return t("message.toolSearchPastChats", { target: String(input.query ?? "").slice(0, 40) });
+    case "load_skill": {
+      const skillName = String(input.name || "").trim().toLowerCase();
+      const subFile = String(input.file || "").trim().toLowerCase();
+      if (skillName === "pdf" && subFile.includes("form")) {
+        return t("message.skillLoadPdfForms");
+      }
+      if (skillName === "pdf") return t("message.skillLoadPdf");
+      if (skillName === "docx") return t("message.skillLoadDocx");
+      if (skillName === "xlsx") return t("message.skillLoadXlsx");
+      if (skillName === "pptx") return t("message.skillLoadPptx");
+      return t("message.skillLoadGeneric", {
+        skill: skillName ? skillName.toUpperCase() : "AI",
+      });
+    }
+    case "run_skill_script": {
+      const skillName = String(input.skill || "").trim().toLowerCase();
+      if (typeof input.script === "string" && input.script.trim()) {
+        const scriptBase = baseName(input.script.trim(), "").toLowerCase();
+        const mappedKey = SKILL_HELPER_SCRIPT_I18N[scriptBase];
+        if (mappedKey) {
+          return t(mappedKey);
+        }
+      }
+      const targetFile = extractSkillTargetFilename(tool);
+      if (skillName === "pdf") {
+        return targetFile
+          ? t("message.skillBuildPdfFile", { target: targetFile })
+          : t("message.skillBuildPdf");
+      }
+      if (skillName === "docx") {
+        return targetFile
+          ? t("message.skillBuildDocxFile", { target: targetFile })
+          : t("message.skillBuildDocx");
+      }
+      if (skillName === "xlsx") {
+        return targetFile
+          ? t("message.skillBuildXlsxFile", { target: targetFile })
+          : t("message.skillBuildXlsx");
+      }
+      if (skillName === "pptx") {
+        return targetFile
+          ? t("message.skillBuildPptxFile", { target: targetFile })
+          : t("message.skillBuildPptx");
+      }
+      return t("message.skillBuildGeneric", {
+        skill: skillName ? skillName.toUpperCase() : "AI",
+      });
+    }
     case "web_search":
     case "deep_search":
       return t("message.doneWebSearch");
@@ -107,22 +226,71 @@ function describeTool(tool: ToolActivity, t: Translate): string {
   }
 }
 
-function ToolGlyph({ name, className }: { name?: string; className?: string }) {
+function ToolGlyph({
+  name,
+  tool,
+  className,
+}: {
+  name?: string;
+  tool?: ToolActivity;
+  className?: string;
+}) {
   switch (name) {
-    case "read_file":
-    case "create_document": return <FileText className={className} />;
+    case "read_file": return <FileText className={className} />;
+    case "create_document": {
+      const input =
+        tool?.input && typeof tool.input === "object"
+          ? (tool.input as Record<string, unknown>)
+          : {};
+      const rawName = String(input.filename || "").toLowerCase();
+      if (rawName.endsWith(".pdf") || input.format === "pdf") {
+        return <FaRegFilePdf className={className} />;
+      }
+      return <FaRegFileWord className={className} />;
+    }
     case "write_file":
     case "edit_file": return <FileCode className={className} />;
-    case "create_spreadsheet": return <FileSpreadsheet className={className} />;
-    case "create_presentation": return <Presentation className={className} />;
+    case "create_spreadsheet": return <FaRegFileExcel className={className} />;
+    case "create_presentation": return <FaRegFilePowerpoint className={className} />;
     case "generate_image":
     case "vision_tool": return <ImageIcon className={className} />;
     case "execute_code": return <Terminal className={className} />;
     case "interactive_quiz": return <HelpCircle className={className} />;
     case "calculate": return <Hash className={className} />;
     case "fetch_url": return <Globe className={className} />;
+    case "search_past_chats": return <History className={className} />;
     case "memory_note": return <NotebookPen className={className} />;
-    case "load_skill": return <Sparkles className={className} />;
+    case "load_skill": {
+      const input =
+        tool?.input && typeof tool.input === "object"
+          ? (tool.input as Record<string, unknown>)
+          : {};
+      const skill = String(input.name || "").toLowerCase();
+      if (skill === "pdf") return <FaRegFilePdf className={className} />;
+      if (skill === "docx") return <FaRegFileWord className={className} />;
+      if (skill === "xlsx") return <FaRegFileExcel className={className} />;
+      if (skill === "pptx") return <FaRegFilePowerpoint className={className} />;
+      return <BookOpen className={className} />;
+    }
+    case "run_skill_script": {
+      const input =
+        tool?.input && typeof tool.input === "object"
+          ? (tool.input as Record<string, unknown>)
+          : {};
+      const skill = String(input.skill || "").toLowerCase();
+      const script = String(input.script || "").toLowerCase();
+      if (
+        script.includes("image") ||
+        script.includes("thumbnail")
+      ) {
+        return <ImageIcon className={className} />;
+      }
+      if (skill === "pdf") return <FaRegFilePdf className={className} />;
+      if (skill === "docx") return <FaRegFileWord className={className} />;
+      if (skill === "xlsx") return <FaRegFileExcel className={className} />;
+      if (skill === "pptx") return <FaRegFilePowerpoint className={className} />;
+      return <Wrench className={className} />;
+    }
     default: return <Wrench className={className} />;
   }
 }
@@ -178,6 +346,8 @@ export function ToolActivityList({
   onChartsChange,
 }: ToolActivityListProps) {
   const { t } = useI18n();
+  const { user } = useAccount();
+  const toolDebug = Boolean(user?.toolDebug);
   const [isOpen, setIsOpen] = useState(false);
   const [liveChartsMap, setLiveChartsMap] = useState<LiveChartsMap>({});
 
@@ -240,11 +410,16 @@ export function ToolActivityList({
         : t("message.toolsUsed", { count: tools.length });
 
   const singleErrorText =
-    tools.length === 1 && tools[0].state === "error" && tools[0].error
+    toolDebug && tools.length === 1 && tools[0].state === "error" && tools[0].error
       ? tools[0].error
       : null;
-  const canExpand = tools.length > 1 || Boolean(singleErrorText);
+  const hasCodeExecution = otherTools.some((tool) => tool.name === "execute_code");
+  // execute_code always has code + console to show; debug mode makes every call inspectable
+  const canExpand =
+    tools.length > 1 || Boolean(singleErrorText) || hasCodeExecution || toolDebug;
   const effectiveOpen = canExpand && isOpen;
+  const singleDebugTool =
+    toolDebug && tools.length === 1 && tools[0].name !== "execute_code" ? tools[0] : null;
 
   const quizTools = otherTools.filter(
     (tool) => tool.name === "interactive_quiz" && Boolean(tool.input)
@@ -271,6 +446,7 @@ export function ToolActivityList({
           ) : (
             <ToolGlyph
               name={tools.length === 1 ? tools[0].name : undefined}
+              tool={tools.length === 1 ? tools[0] : undefined}
               className="w-4 h-4 shrink-0 text-[var(--muted)]"
             />
           )}
@@ -317,7 +493,7 @@ export function ToolActivityList({
         </button>
 
         {/* Smooth grid-rows drawer — stays mounted when execute_code is present so WASM executes */}
-        {(canExpand || otherTools.some((t) => t.name === "execute_code")) ? (
+        {canExpand ? (
           <div
             className={cn(
               "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
@@ -325,7 +501,11 @@ export function ToolActivityList({
             )}
           >
             <div className="overflow-hidden">
-              {singleErrorText ? (
+              {singleDebugTool ? (
+                <div className="mt-1.5 ml-[7px]">
+                  <ToolDebugDetails tool={singleDebugTool} />
+                </div>
+              ) : singleErrorText ? (
                 <pre className="mt-1.5 ml-[7px] max-w-[620px] whitespace-pre-wrap break-words rounded-[8px] border border-red-400/20 bg-red-400/5 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-red-400/90">
                   {singleErrorText}
                 </pre>
@@ -353,7 +533,9 @@ export function ToolActivityList({
                       );
                     }
 
-                    return tools.length > 1 ? <ToolActivityRow key={tool.id} tool={tool} t={t} /> : null;
+                    return tools.length > 1 ? (
+                      <ToolActivityRow key={tool.id} tool={tool} t={t} debug={toolDebug} />
+                    ) : null;
                   })}
                 </div>
               )}
@@ -380,7 +562,16 @@ export function ToolActivityList({
 }
 
 /** Borderless soft monochrome trace row for tools like read_file, write_file, vision_tool */
-function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
+function ToolActivityRow({
+  tool,
+  t,
+  debug = false,
+}: {
+  tool: ToolActivity;
+  t: Translate;
+  /** Admin tool debug mode: the row expands to show the call's input/output. */
+  debug?: boolean;
+}) {
   const isRunning = isRunningTool(tool);
   const isError = tool.state === "error";
 
@@ -399,8 +590,8 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
     ? liveSec
     : (tool.durationSec !== undefined && tool.durationSec > 0 ? tool.durationSec : undefined);
 
-  const [showError, setShowError] = useState(false);
-  const canExpandError = isError && Boolean(tool.error);
+  const [showDetails, setShowDetails] = useState(false);
+  const canExpand = debug;
 
   const rowContent = (
     <>
@@ -409,7 +600,7 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
       ) : isError ? (
         <AlertCircle className="w-3.5 h-3.5 shrink-0 text-red-400/90" />
       ) : (
-        <ToolGlyph name={tool.name} className="w-3.5 h-3.5 shrink-0 text-[var(--muted)]" />
+        <ToolGlyph name={tool.name} tool={tool} className="w-3.5 h-3.5 shrink-0 text-[var(--muted)]" />
       )}
       <span className={cn("truncate", isError ? "text-red-400/90" : "text-[var(--muted)]")}>
         {describeTool(tool, t)}
@@ -421,13 +612,19 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
       {displaySec !== undefined ? (
         <span className="font-mono text-[11px] text-[var(--muted)]/80 shrink-0">({displaySec}s)</span>
       ) : null}
-      {canExpandError ? (
-        <ChevronDown className={cn("w-3 h-3 shrink-0 text-red-400/70 transition-transform duration-200", showError && "rotate-180")} />
+      {canExpand ? (
+        <ChevronDown
+          className={cn(
+            "w-3 h-3 shrink-0 transition-transform duration-200",
+            isError ? "text-red-400/70" : "text-[var(--muted)]",
+            showDetails && "rotate-180"
+          )}
+        />
       ) : null}
     </>
   );
 
-  if (!canExpandError) {
+  if (!canExpand) {
     return <div className="flex items-center gap-2 py-1 text-[13px] select-none">{rowContent}</div>;
   }
 
@@ -435,17 +632,71 @@ function ToolActivityRow({ tool, t }: { tool: ToolActivity; t: Translate }) {
     <div className="py-1">
       <button
         type="button"
-        onClick={() => setShowError((v) => !v)}
-        aria-expanded={showError}
+        onClick={() => setShowDetails((v) => !v)}
+        aria-expanded={showDetails}
         className="flex items-center gap-2 text-[13px] select-none cursor-pointer rounded-[6px] -ml-1 px-1 hover:bg-[var(--hover)] transition-colors"
       >
         {rowContent}
       </button>
-      {showError ? (
-        <pre className="mt-1 ml-5 max-w-[620px] whitespace-pre-wrap break-words rounded-[8px] border border-red-400/20 bg-red-400/5 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-red-400/90">
-          {tool.error}
-        </pre>
+      {showDetails ? (
+        debug ? (
+          <div className="mt-1 ml-5">
+            <ToolDebugDetails tool={tool} />
+          </div>
+        ) : (
+          <pre className="mt-1 ml-5 max-w-[620px] whitespace-pre-wrap break-words rounded-[8px] border border-red-400/20 bg-red-400/5 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed text-red-400/90">
+            {tool.error}
+          </pre>
+        )
       ) : null}
+    </div>
+  );
+}
+
+/** Large outputs (fetched pages, file contents) are cut so the chat stays responsive. */
+const DEBUG_JSON_MAX_CHARS = 20_000;
+
+function formatDebugJson(value: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > DEBUG_JSON_MAX_CHARS
+    ? `${text.slice(0, DEBUG_JSON_MAX_CHARS)}\n… (${text.length - DEBUG_JSON_MAX_CHARS} more chars)`
+    : text;
+}
+
+/** Admin tool debug inspect: raw error, input arguments and output of one tool call. */
+function ToolDebugDetails({ tool }: { tool: ToolActivity }) {
+  const sections: { label: string; body: string; isError?: boolean }[] = [];
+  if (tool.error) sections.push({ label: "Error", body: tool.error, isError: true });
+  sections.push({ label: "Input", body: formatDebugJson(tool.input ?? null) });
+  if (tool.output !== undefined) sections.push({ label: "Output", body: formatDebugJson(tool.output) });
+
+  return (
+    <div className="max-w-[620px] space-y-1.5">
+      <div className="font-mono text-[11px] text-[var(--muted)]/80 select-all">
+        {tool.name} · {tool.id} · {tool.state}
+      </div>
+      {sections.map((section) => (
+        <div key={section.label}>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)] mb-0.5">
+            {section.label}
+          </div>
+          <pre
+            className={cn(
+              "max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-[8px] border px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed",
+              section.isError
+                ? "border-red-400/20 bg-red-400/5 text-red-400/90"
+                : "border-[var(--border)] bg-[var(--panel-elevated)] text-[var(--ink)]"
+            )}
+          >
+            {section.body}
+          </pre>
+        </div>
+      ))}
     </div>
   );
 }

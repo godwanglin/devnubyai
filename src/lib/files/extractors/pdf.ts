@@ -33,7 +33,7 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractorResult> {
       return `\n\n=== [PAGE ${pageNum}] ===\n` + text.trim();
     };
 
-    const data = await pdf(buffer, {
+    const data = await pdf(new Uint8Array(buffer) as unknown as Buffer, {
       pagerender: renderPage as unknown as (pageData: unknown) => Promise<string>,
     });
 

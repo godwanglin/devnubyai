@@ -26,6 +26,81 @@ type RenderState = "loading" | "ready" | "error";
 const PAGE_GUTTER = 20;
 const PAGE_WRAPPER_CLASS = DOCX_PAGE_WRAPPER_CLASS;
 
+const SYSTEM_DOCX_FONTS = new Set([
+  "arial",
+  "calibri",
+  "cambria",
+  "comic sans ms",
+  "consolas",
+  "courier",
+  "courier new",
+  "georgia",
+  "helvetica",
+  "impact",
+  "lucida console",
+  "microsoft sans serif",
+  "palatino linotype",
+  "segoe ui",
+  "symbol",
+  "tahoma",
+  "times",
+  "times new roman",
+  "trebuchet ms",
+  "verdana",
+  "wingdings",
+  "sans-serif",
+  "serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "system-ui",
+]);
+
+/**
+ * Scans rendered DOCX styles and inline font-family attributes for custom fonts
+ * (e.g. "Lexend Deca", "Poppins", "Plus Jakarta Sans") and dynamically loads them
+ * from Google Fonts into `document.head` so the browser preview renders the exact typeface.
+ */
+function injectCustomDocxGoogleFonts(body: HTMLElement, styles: HTMLElement) {
+  if (typeof document === "undefined") return;
+  const combinedCss = [
+    styles.textContent || "",
+    ...Array.from(body.querySelectorAll<HTMLElement>("[style*='font-family']")).map(
+      (el) => el.getAttribute("style") || ""
+    ),
+  ].join("\n");
+
+  const families = new Set<string>();
+  const regex = /font-family\s*:\s*([^;}{]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(combinedCss)) !== null) {
+    const rawList = match[1].split(",");
+    for (const item of rawList) {
+      const cleaned = item.replace(/['"]/g, "").trim();
+      if (
+        cleaned.length >= 3 &&
+        cleaned.length <= 40 &&
+        /^[A-Za-z][A-Za-z0-9 ]+$/.test(cleaned) &&
+        !SYSTEM_DOCX_FONTS.has(cleaned.toLowerCase())
+      ) {
+        families.add(cleaned);
+      }
+    }
+  }
+
+  for (const family of Array.from(families).slice(0, 6)) {
+    const slug = family.toLowerCase().replace(/\s+/g, "-");
+    const linkId = `devnuby-gfont-${slug}`;
+    if (document.getElementById(linkId)) continue;
+    const encoded = encodeURIComponent(family).replace(/%20/g, "+");
+    const link = document.createElement("link");
+    link.id = linkId;
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encoded}:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap`;
+    document.head.appendChild(link);
+  }
+}
+
 /**
  * Neutralizes anything in docx-preview's output that could act outside the page:
  * unsafe link targets (javascript:, file:, ...) and frames.
@@ -77,6 +152,7 @@ export function DocxPagePreview({ bytes, title, fileId, initialSearchQuery }: Do
       try {
         if (!(await renderDocxPages(bytes, body, styles, () => active))) return;
         hardenRenderedDocx(body);
+        injectCustomDocxGoogleFonts(body, styles);
         const pages = docxPages(body);
         setPageEls(pages);
         setPageWidth(Math.max(0, ...pages.map((p) => p.offsetWidth)));

@@ -6,6 +6,14 @@ import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 import { assertUserModelAccess } from "./model-access";
 import { hasValidPinUnlock, revokePinUnlock } from "@/lib/auth/pin-unlock";
 import { toSessionDto, toMessageDto } from "./mappers";
+import { listSessionTurns } from "./redis-chat-state";
+import { mergePendingTurns } from "./pending-turns";
+import {
+  invalidateChatSessionCache,
+  readCachedChatSession,
+  writeCachedChatSession,
+  type ChatSessionRecord,
+} from "./session-cache";
 import type {
   SessionWithMeta,
   MessageAttachmentDto,
@@ -134,6 +142,7 @@ export async function createChatSession(
     },
   });
 
+  await invalidateChatSessionCache(userId, session.publicId);
   return toSessionDto(session);
 }
 
@@ -143,23 +152,10 @@ export async function createChatSession(
 export async function getChatSession(
   userId: bigint,
   sessionPublicId: string
-): Promise<{
-  id: bigint;
-  publicId: string;
-  title: string;
-  isPinned: boolean;
-  isArchived: boolean;
-  shareToken: string | null;
-  sharedAt: Date | null;
-  catalogModelId: bigint | null;
-  catalogModelPublicId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  lastMessageAt: Date;
-  projectId: string | null;
-  projectInternalId: bigint | null;
-  isLocked: boolean;
-}> {
+): Promise<ChatSessionRecord> {
+  const cached = await readCachedChatSession(userId, sessionPublicId);
+  if (cached) return cached;
+
   const session = await db.chatSession.findFirst({
     where: { publicId: sessionPublicId, userId },
     include: {
@@ -172,7 +168,7 @@ export async function getChatSession(
     throw ApiError.notFound("Chat session not found");
   }
 
-  return {
+  const record: ChatSessionRecord = {
     id: session.id,
     publicId: session.publicId,
     title: session.title,
@@ -189,6 +185,8 @@ export async function getChatSession(
     updatedAt: session.updatedAt,
     lastMessageAt: session.lastMessageAt,
   };
+  await writeCachedChatSession(userId, record);
+  return record;
 }
 
 /**
@@ -290,6 +288,7 @@ export async function updateChatSession(
     await invalidateSharedChatCache(existing.shareToken);
     await revokePinUnlock();
   }
+  await invalidateChatSessionCache(userId, sessionPublicId);
 
   return toSessionDto(updated);
 }
@@ -311,6 +310,7 @@ export async function deleteChatSession(
   await db.chatSession.delete({
     where: { id: session.id },
   });
+  await invalidateChatSessionCache(userId, sessionPublicId);
 
   if (session.shareToken) {
     await invalidateSharedChatCache(session.shareToken);
@@ -375,6 +375,14 @@ export async function listChatMessages(
   // Reverse back to chronological order (asc) for UI display
   const messages = messagesDesc.reverse();
 
+  // Turns still held in Redis (streaming, or waiting for Postgres) belong after the stored ones
+  const pending = options.cursor ? [] : await listSessionTurns(session.id);
+  const dtos = mergePendingTurns(
+    messages.map((m) => toMessageDto(m, session.publicId)),
+    pending,
+    session.publicId
+  );
+
   return {
     session: {
       id: session.publicId,
@@ -387,7 +395,7 @@ export async function listChatMessages(
       createdAt: session.createdAt.toISOString(),
       updatedAt: session.updatedAt.toISOString(),
     },
-    messages: messages.map((m) => toMessageDto(m, session.publicId)),
+    messages: dtos,
     nextCursor,
   };
 }

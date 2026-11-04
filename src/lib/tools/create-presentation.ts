@@ -46,7 +46,7 @@ export const createPresentationTool: ToolDefinition<
 > = {
   name: "create_presentation",
   description:
-    "Creates a polished, real binary Microsoft PowerPoint (.pptx) presentation with support for title slides, content slides with bullet points, speaker notes, and custom slide backgrounds. Perfect for generating pitch decks, project proposals, reports, training materials, and meeting presentations. The generated file is saved directly to session storage for instant preview and download.",
+    "FALLBACK TOOL for creating binary Microsoft PowerPoint (.pptx) presentations ONLY when the 'pptx' skill is NOT available in `.devnuby/skills/` or as an emergency fallback if `run_skill_script` fails. Whenever 'pptx' exists in `<available_skills>`, MUST use `load_skill` + `run_skill_script` (with pptxgenjs) instead of this tool.",
   parameters: {
     type: "object",
     properties: {

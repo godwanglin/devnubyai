@@ -2,18 +2,22 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess, ApiError } from "@/lib/api/response";
+import { uuidv7 } from "@/lib/api/uuidv7";
 import { getUnlockedChatSession, listChatMessages, getRecentMessagesForGateway } from "@/lib/chat/service";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { claimGenerationSlot } from "@/lib/chat/concurrency";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
+import { userHistoryContent } from "@/lib/chat/gateway-history";
+import { beginTurn, type PendingTurn } from "@/lib/chat/redis-chat-state";
 import { mapReasoningEffort } from "@/lib/chat/reasoning-mapper";
 import { resolveClientTimeZone } from "@/lib/chat/timezone";
+import { TurnTimer } from "@/lib/chat/turn-timing";
 import { createUIMessageStreamResponse } from "ai";
 import { downloadFromR2 } from "@/lib/storage/r2";
 import { MAX_IMAGE_BYTES } from "@/lib/files/policy";
-import { MAX_QUOTES_PER_MESSAGE, MAX_QUOTE_CHARS, withQuotedContext } from "@/lib/chat/quotes";
-import { MAX_SOURCE_MENTIONS_PER_MESSAGE, withSourceMentionNote } from "@/lib/chat/source-mentions";
+import { MAX_QUOTES_PER_MESSAGE, MAX_QUOTE_CHARS } from "@/lib/chat/quotes";
+import { MAX_SOURCE_MENTIONS_PER_MESSAGE } from "@/lib/chat/source-mentions";
 import type { ChatMessageInput, MultimodalContentPart } from "@/lib/gateways/types";
 import { MAX_FILE_IDS_PER_MESSAGE, MAX_MESSAGE_CHARS, MAX_MODEL_ID_CHARS } from "@/lib/chat/service-types";
 
@@ -57,12 +61,19 @@ export async function GET(request: Request, context: RouteContext) {
   }
 }
 
+/**
+ * Sends a message. Nothing is written to Postgres before the model answers: the
+ * turn (user message + assistant reply) is held in Redis while it streams and
+ * stored with one transaction when it ends (see `redis-chat-state.ts`).
+ */
 export async function POST(request: Request, context: RouteContext) {
   const requestId = getRequestId(request);
+  const timer = new TurnTimer(requestId, "send");
   let releaseSlot: (() => Promise<void>) | null = null;
 
   try {
     const user = await requireUser();
+    timer.mark("auth");
     const { chatId } = await context.params;
 
     let body: unknown;
@@ -77,181 +88,164 @@ export async function POST(request: Request, context: RouteContext) {
       throw ApiError.badRequest("Invalid message payload", parsed.error.format());
     }
 
-    // Verify session ownership
+    // Verify session ownership (Redis-cached)
     const session = await getUnlockedChatSession(user.id, chatId);
+    timer.mark("session");
 
-    // Check user quota before generation
-    const quota = await assertUserQuota(user.id);
+    // Quota (Redis live ledger) and model resolution (in-memory cache) are independent
+    const [quota, resolvedModel] = await Promise.all([
+      assertUserQuota(user.id, user.plan),
+      resolveCatalogModel(parsed.data.model, session.catalogModelPublicId),
+    ]);
+    timer.mark("quota");
+    await assertUserModelAccess(user.id, resolvedModel.id, user);
+    timer.mark("access");
 
-    // Resolve target model early so we can record its ID and check status
-    const resolvedModel = await resolveCatalogModel(
-      parsed.data.model,
-      session.catalogModelPublicId
-    );
-    await assertUserModelAccess(user.id, resolvedModel.id);
-
-    // Cap concurrent generations per plan before anything is written
+    // Cap concurrent generations per plan before the turn starts
     releaseSlot = await claimGenerationSlot(user.id, quota.maxParallelRequests);
-
-    // Atomically persist user message, assistant placeholder, link uploaded files, and update session metadata
-    const autoTitle =
-      session.title === "New chat"
-        ? parsed.data.content.slice(0, 40).trim() || "New chat"
-        : undefined;
 
     const fileIds = parsed.data.fileIds ?? [];
     const quotes = parsed.data.quotes ?? [];
 
-    // Mentions must point at sources of this chat's own project
+    // Mentions must point at sources of this chat's own project; attachments are read
+    // only when the message has some (both are skipped for a plain text message)
     const requestedSourceIds = [...new Set(parsed.data.sourceIds ?? [])];
-    const mentionedSources =
+    const [mentionedSources, attachedFiles, history] = await Promise.all([
       requestedSourceIds.length > 0 && session.projectInternalId
-        ? await db.projectFile.findMany({
+        ? db.projectFile.findMany({
             where: { publicId: { in: requestedSourceIds }, projectId: session.projectInternalId },
             select: { publicId: true, filename: true },
           })
-        : [];
+        : Promise.resolve([]),
+      fileIds.length > 0
+        ? db.sessionFile.findMany({
+            where: { publicId: { in: fileIds }, sessionId: session.id, userId: user.id },
+            select: { publicId: true, filename: true, mimeType: true, sizeBytes: true },
+          })
+        : Promise.resolve([]),
+      // Prior turns (this message is appended below); Redis-cached
+      getRecentMessagesForGateway(session.id, 19),
+    ]);
+    timer.mark("history");
+
     const mentions = mentionedSources.map((s) => ({ id: s.publicId, filename: s.filename }));
     const metaParts = [
       ...quotes.map((text) => ({ type: "quote" as const, text })),
       ...mentions.map((m) => ({ type: "source_mention" as const, ...m })),
     ];
+    const historyContent = userHistoryContent(parsed.data.content, metaParts);
 
-    const [userMessage, assistantMessage] = await db.$transaction(async (tx) => {
-      const uMsg = await tx.chatMessage.create({
-        data: {
-          sessionId: session.id,
-          role: "user",
-          content: parsed.data.content,
-          status: "completed",
-          ...(metaParts.length > 0 ? { parts: metaParts } : {}),
-        },
-      });
+    // A previous message whose reply failed leaves a trailing user turn; providers reject
+    // back-to-back user turns, so it is merged into this one (as the stored history would be)
+    const priorUserText = history.at(-1)?.role === "user" ? history.pop()!.content : null;
+    const userText = priorUserText ? `${priorUserText}\n\n${historyContent}` : historyContent;
 
-      const aMsg = await tx.chatMessage.create({
-        data: {
-          sessionId: session.id,
-          role: "assistant",
-          content: "",
-          catalogModelId: resolvedModel.id,
-          status: "streaming",
-        },
-      });
-
-      if (fileIds.length > 0) {
-        await tx.sessionFile.updateMany({
-          where: {
-            publicId: { in: fileIds },
-            sessionId: session.id,
-            userId: user.id,
-          },
-          data: {
-            messageId: uMsg.id,
-          },
-        });
-      }
-
-      await tx.chatSession.update({
-        where: { id: session.id },
-        data: {
-          lastMessageAt: new Date(),
-          ...(autoTitle ? { title: autoTitle } : {}),
-        },
-      });
-
-      return [uMsg, aMsg];
-    });
-
-    // 3. Prepare recent conversation context for gateway
-    const history = await getRecentMessagesForGateway(session.id, 20);
-    // Exclude the newly created empty assistant message from history
-    const conversationMessages: ChatMessageInput[] = history.filter(
-      (m) => !(m.role === "assistant" && m.content === "")
-    );
-
-    // If attachments exist and the resolved model supports vision, inject image multimodal parts into the user's turn
-    if (fileIds.length > 0) {
-      const attachedFiles = await db.sessionFile.findMany({
-        where: {
-          publicId: { in: fileIds },
-          sessionId: session.id,
-        },
-        select: {
-          publicId: true,
-          filename: true,
-          mimeType: true,
-          sizeBytes: true,
-        },
-      });
-
+    // The user's turn for the gateway: quotes/mentions folded in, attachments described or inlined
+    let gatewayUserContent: ChatMessageInput["content"] = userText;
+    if (attachedFiles.length > 0) {
       const imageFiles = attachedFiles.filter((f) => f.mimeType.startsWith("image/"));
       const docFiles = attachedFiles.filter((f) => !f.mimeType.startsWith("image/"));
-
-      // Replace the last user message in conversationMessages with rich multimodal parts
-      const lastUserIdx = conversationMessages.map((m) => m.role).lastIndexOf("user");
-      if (lastUserIdx !== -1) {
-        let textPrompt = withSourceMentionNote(withQuotedContext(parsed.data.content, quotes), mentions);
-        if (docFiles.length > 0) {
-          const docList = docFiles
-            .map((d) => `- ${d.filename} (${d.mimeType})`)
-            .join("\n");
-          textPrompt += `\n\n[User attached documents to session storage]:\n${docList}\n(Use read_file with the exact filename above to inspect their contents.)`;
-        }
-
-        // Upstream providers cannot reach localhost or the private R2 bucket,
-        // so images are read server-side and inlined as Base64 data URIs.
-        const contentParts: MultimodalContentPart[] = [];
-        const unreadableImages: string[] = [];
-        if (resolvedModel.supportsVision) {
-          for (const img of imageFiles) {
-            try {
-              const downloaded = await downloadFromR2({
-                userId: user.publicId,
-                sessionId: session.publicId,
-                filename: img.filename,
-                maxBytes: MAX_IMAGE_BYTES,
-              });
-              contentParts.push({
-                type: "image_url",
-                image_url: {
-                  url: `data:${img.mimeType};base64,${downloaded.content.toString("base64")}`,
-                },
-              });
-            } catch {
-              unreadableImages.push(img.filename);
-            }
-          }
-        } else if (imageFiles.length > 0) {
-          const imgList = imageFiles.map((img) => `- ${img.filename}`).join("\n");
-          textPrompt += `\n\n[User attached images, but the selected model cannot view images]:\n${imgList}\n(Tell the user to switch to a vision-capable model to analyze them.)`;
-        }
-
-        if (unreadableImages.length > 0) {
-          textPrompt += `\n\n[These attached images could not be loaded]:\n${unreadableImages
-            .map((name) => `- ${name}`)
-            .join("\n")}`;
-        }
-
-        conversationMessages[lastUserIdx] = {
-          ...conversationMessages[lastUserIdx],
-          content:
-            contentParts.length > 0
-              ? [{ type: "text", text: textPrompt }, ...contentParts]
-              : textPrompt,
-        };
+      let textPrompt = userText;
+      if (docFiles.length > 0) {
+        const docList = docFiles.map((d) => `- ${d.filename} (${d.mimeType})`).join("\n");
+        textPrompt += `\n\n[User attached documents to session storage]:\n${docList}\n(Use read_file with the exact filename above to inspect their contents.)`;
       }
+
+      // Upstream providers cannot reach localhost or the private R2 bucket,
+      // so images are read server-side and inlined as Base64 data URIs.
+      const contentParts: MultimodalContentPart[] = [];
+      const unreadableImages: string[] = [];
+      if (resolvedModel.supportsVision) {
+        for (const img of imageFiles) {
+          try {
+            const downloaded = await downloadFromR2({
+              userId: user.publicId,
+              sessionId: session.publicId,
+              filename: img.filename,
+              maxBytes: MAX_IMAGE_BYTES,
+            });
+            contentParts.push({
+              type: "image_url",
+              image_url: {
+                url: `data:${img.mimeType};base64,${downloaded.content.toString("base64")}`,
+              },
+            });
+          } catch {
+            unreadableImages.push(img.filename);
+          }
+        }
+      } else if (imageFiles.length > 0) {
+        const imgList = imageFiles.map((img) => `- ${img.filename}`).join("\n");
+        textPrompt += `\n\n[User attached images, but the selected model cannot view images]:\n${imgList}\n(Tell the user to switch to a vision-capable model to analyze them.)`;
+      }
+
+      if (unreadableImages.length > 0) {
+        textPrompt += `\n\n[These attached images could not be loaded]:\n${unreadableImages
+          .map((name) => `- ${name}`)
+          .join("\n")}`;
+      }
+
+      gatewayUserContent =
+        contentParts.length > 0 ? [{ type: "text", text: textPrompt }, ...contentParts] : textPrompt;
     }
+
+    const conversationMessages: ChatMessageInput[] = [
+      ...history,
+      { role: "user", content: gatewayUserContent },
+    ];
+
+    const now = Date.now();
+    const turn: PendingTurn = {
+      kind: "send",
+      requestId,
+      userId: user.id.toString(),
+      sessionId: session.id.toString(),
+      sessionPublicId: session.publicId,
+      autoTitle:
+        session.title === "New chat" ? parsed.data.content.slice(0, 40).trim() || null : null,
+      user: {
+        publicId: uuidv7(),
+        content: parsed.data.content,
+        parts: metaParts.length > 0 ? metaParts : null,
+        fileIds: attachedFiles.map((f) => f.publicId),
+        attachments: attachedFiles.map((f) => ({
+          publicId: f.publicId,
+          filename: f.filename,
+          mimeType: f.mimeType,
+          sizeBytes: Number(f.sizeBytes),
+        })),
+        historyContent,
+      },
+      assistant: {
+        publicId: uuidv7(),
+        content: "",
+        reasoning: null,
+        parts: [],
+        status: "streaming",
+        errorCode: null,
+        catalogModelId: resolvedModel.id.toString(),
+        catalogModelPublicId: resolvedModel.publicId,
+        promptTokens: 0,
+        completionTokens: 0,
+      },
+      usage: null,
+      startedAt: now,
+      updatedAt: now,
+      flushAttempts: 0,
+    };
+    await beginTurn(turn);
+    timer.mark("turn");
 
     const stream = createChatGenerationStream({
       userId: user.id,
       userPublicId: user.publicId,
+      userName: user.name,
       sessionId: session.id,
       sessionPublicId: session.publicId,
-      assistantMessageId: assistantMessage.id,
-      assistantMessagePublicId: assistantMessage.publicId,
-      userMessagePublicId: userMessage.publicId,
-      requestedModelPublicId: parsed.data.model,
-      sessionModelPublicId: session.catalogModelPublicId,
+      projectInternalId: session.projectInternalId,
+      turn,
+      resolvedModel,
+      planLimits: user.plan,
       reasoningEffort: mapReasoningEffort(
         parsed.data.extendedThinking ? "4" : parsed.data.reasoningLevel
       ),
@@ -261,6 +255,10 @@ export async function POST(request: Request, context: RouteContext) {
       clientTimeZone: resolveClientTimeZone(request),
       requestId,
       onSettled: releaseSlot,
+      onFirstModelToken: () => {
+        timer.mark("first_token");
+        timer.flush();
+      },
     });
     releaseSlot = null; // owned by the stream now
 
@@ -271,6 +269,7 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
   } catch (err) {
+    timer.flush();
     await releaseSlot?.();
     return jsonError(err, { requestId });
   }

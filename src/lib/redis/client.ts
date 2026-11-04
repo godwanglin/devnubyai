@@ -100,6 +100,24 @@ export async function invalidateCacheKey(key: string): Promise<void> {
 }
 
 /**
+ * Deletes keys matching a pattern with incremental SCAN, so it never blocks
+ * Redis the way KEYS does on a large keyspace. Best effort.
+ */
+export async function deleteKeysByScan(pattern: string): Promise<void> {
+  if (!redis) return;
+  try {
+    let cursor = "0";
+    do {
+      const [next, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 200);
+      cursor = next;
+      if (keys.length > 0) await redis.del(...keys);
+    } while (cursor !== "0");
+  } catch (err) {
+    console.warn(`[REDIS_SCAN_DEL_ERROR] pattern: ${pattern}`, err);
+  }
+}
+
+/**
  * Invalidate all keys matching a prefix/pattern e.g. "routing:*"
  */
 export async function invalidateCachePattern(pattern: string): Promise<void> {

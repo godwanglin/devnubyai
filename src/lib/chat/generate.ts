@@ -7,17 +7,28 @@ import { executeWithFallback } from "@/lib/routing/executor";
 import { devnubyTools, executeTool, type ToolExecutionResult } from "@/lib/tools";
 import { sanitizeToolOutputForStorage } from "@/lib/tools/compact-source";
 import { buildSkillsSystemPromptBlock } from "@/lib/skills/runtime";
-import { recordPartialUsage, recordUserUsage, type RecordUsageInput } from "@/lib/chat/quota";
-import { assertUserModelAccess } from "@/lib/chat/model-access";
+import {
+  chargeLiveUsage,
+  finalTurnTokens,
+  settleLiveUsage,
+  toQuotaPayload,
+  windowsFromLedger,
+  type PlanLimits,
+} from "@/lib/chat/quota";
+import type { LiveLedger } from "@/lib/chat/live-quota";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
 import { startStreamHub } from "@/lib/chat/stream-hub";
 import { getChatSettings } from "@/lib/chat/settings";
 import { recordToolExecutionLog } from "@/lib/chat/tool-log";
+import { buildUserMemoryPrompt, getUserMemoryNotes } from "@/lib/chat/user-memory";
+import { DEFAULT_MEMORY_SETTINGS, getMemorySettings } from "@/lib/chat/memory-settings";
 import { buildFallbackAnswer, hasSuccessfulToolResult, listProducedFiles } from "@/lib/chat/turn-recovery";
 import {
-  saveTurnDraftToRedis,
+  completeTurn,
   saveSessionMemoryToRedis,
-  flushTurnToDatabase,
+  saveTurnProgress,
+  type PendingTurn,
+  type TurnStatus,
 } from "@/lib/chat/redis-chat-state";
 import { DEFAULT_TIME_ZONE } from "@/lib/chat/timezone";
 import { buildSystemPrompt } from "@/lib/chat/system-prompts";
@@ -36,13 +47,18 @@ import {
 export interface StreamGenerationOptions {
   userId: bigint;
   userPublicId: string;
+  /** Display name for the admin system prompt (from the session, no lookup) */
+  userName: string;
   sessionId: bigint;
   sessionPublicId: string;
-  assistantMessageId: bigint;
-  assistantMessagePublicId: string;
-  userMessagePublicId: string;
-  requestedModelPublicId?: string;
-  sessionModelPublicId?: string | null;
+  /** Project of the chat; null skips the project-context lookup */
+  projectInternalId: bigint | null;
+  /** The Redis-held turn this generation fills in and finally stores */
+  turn: PendingTurn;
+  /** Already resolved and access-checked by the route */
+  resolvedModel: ResolvedModel;
+  /** Effective plan limits, for the live quota updates sent to the client */
+  planLimits: PlanLimits | null;
   reasoningEffort?: ReasoningEffortVariant;
   forceWebSearch?: boolean;
   conversationHistory: ChatMessageInput[];
@@ -53,6 +69,8 @@ export interface StreamGenerationOptions {
   requestId: string;
   /** Runs once the generation ends in any way (e.g. frees its concurrency slot) */
   onSettled?: (() => Promise<void>) | null;
+  /** Runs once, when the model's first token (text, reasoning or tool call) arrives */
+  onFirstModelToken?: () => void;
 }
 
 /**
@@ -113,8 +131,15 @@ const resolvedModelSelect = {
   provider: { select: { name: true } },
 } as const;
 
-type ResolvedModelType = Prisma.CatalogModelGetPayload<{ select: typeof resolvedModelSelect }>;
-const resolvedModelCache = new Map<string, { model: ResolvedModelType; expiresAt: number }>();
+export type ResolvedModel = Prisma.CatalogModelGetPayload<{ select: typeof resolvedModelSelect }>;
+const resolvedModelCache = new Map<string, { model: ResolvedModel; expiresAt: number }>();
+
+/** Memory settings + notes for one turn; settings off skips the notes lookup entirely. */
+async function loadTurnMemory(userId: bigint) {
+  const settings = await getMemorySettings(userId);
+  const notes = settings.memoryEnabled ? await getUserMemoryNotes(userId) : [];
+  return { settings, notes };
+}
 
 export function invalidateResolvedModelCache(): void {
   resolvedModelCache.clear();
@@ -182,11 +207,14 @@ function sliceBurstText(text: string): string[] {
   return slices;
 }
 
+/** Minimum gap between mid-stream live quota charges (estimates between usage reports). */
+const LIVE_QUOTA_INTERVAL_MS = 1500;
+
 /**
  * Core AI SDK UI message stream generator. Runs the multi-turn tool loop against the
  * DB-driven smart routing executor (executeWithFallback), translates gateway events
- * to AI SDK UIMessageChunks with word smoothing, executes tools, persists final
- * state to DB, and tracks usage.
+ * to AI SDK UIMessageChunks with word smoothing, executes tools, charges spend to the
+ * live quota ledger as it streams, and finally stores the Redis-held turn in Postgres.
  */
 export function createChatGenerationStream(
   options: StreamGenerationOptions
@@ -194,13 +222,13 @@ export function createChatGenerationStream(
   const {
     userId,
     userPublicId,
+    userName,
     sessionId,
     sessionPublicId,
-    assistantMessageId,
-    assistantMessagePublicId,
-    userMessagePublicId,
-    requestedModelPublicId,
-    sessionModelPublicId,
+    projectInternalId,
+    turn,
+    resolvedModel,
+    planLimits,
     reasoningEffort,
     forceWebSearch,
     conversationHistory,
@@ -208,7 +236,11 @@ export function createChatGenerationStream(
     clientTimeZone,
     requestId,
     onSettled,
+    onFirstModelToken,
   } = options;
+  const assistantMessagePublicId = turn.assistant.publicId;
+  // Live quota cursor; regenerations reuse the message id, so the turn start makes it unique
+  const liveUsageId = `${assistantMessagePublicId}:${turn.startedAt}`;
 
   // Only an explicit /stop aborts: a dropped client connection (reload) must not
   // kill the generation, which keeps running in the stream hub for resumption.
@@ -224,36 +256,87 @@ export function createChatGenerationStream(
       // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
       // (also on failure, so files already created don't vanish with the failed reply)
       const executedToolParts: Record<string, unknown>[] = [];
-      // Set once the model is resolved, so aborted/failed streams can still be billed
-      let billedModel: RecordUsageInput["model"] | null = null;
       let estimatePromptChars = () => 0;
+      let firstTokenSeen = false;
+
+      // ── Live quota: charge spend while the reply streams ──
+      // Between usage reports the running step is estimated (~4 chars/token); the
+      // ledger only ever grows here and is corrected to the exact price at the end.
+      let stepPromptChars = 0;
+      let stepGeneratedChars = 0;
+      let stepUsageReported = false;
+      let lastLiveChargeAt = 0;
+      const emitQuota = (ledger: LiveLedger | null) => {
+        if (!ledger) return;
+        writer.write({
+          type: "data-quota",
+          data: toQuotaPayload(windowsFromLedger(ledger, planLimits)),
+          transient: true,
+        });
+      };
+      const chargeLive = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastLiveChargeAt < LIVE_QUOTA_INTERVAL_MS) return;
+        lastLiveChargeAt = now;
+        const pending = stepUsageReported ? 0 : 1;
+        void chargeLiveUsage(
+          userId,
+          liveUsageId,
+          promptTokens + pending * Math.ceil(stepPromptChars / 4),
+          completionTokens + pending * Math.ceil(stepGeneratedChars / 4),
+          resolvedModel
+        )
+          .then(emitQuota)
+          .catch(() => {});
+      };
+      const noteFirstToken = () => {
+        if (firstTokenSeen) return;
+        firstTokenSeen = true;
+        onFirstModelToken?.();
+      };
+
+      // ── Turn state held in Redis until the turn is stored ──
+      const fillTurn = (status: TurnStatus, errorCode: string | null, blankContent = false) => {
+        turn.assistant = {
+          ...turn.assistant,
+          content: blankContent ? "" : fullContent,
+          reasoning: blankContent ? null : fullReasoning || null,
+          parts: executedToolParts,
+          status,
+          errorCode,
+          promptTokens,
+          completionTokens,
+        };
+      };
+      const finishTurn = async (billed: { promptTokens: number; completionTokens: number } | null) => {
+        const ledger = await settleLiveUsage(
+          userId,
+          liveUsageId,
+          billed ? { ...billed, model: resolvedModel } : null
+        ).catch(() => null);
+        emitQuota(ledger);
+        turn.usage = billed
+          ? {
+              ...billed,
+              inputPricePerMillion: resolvedModel.inputPricePerMillion.toString(),
+              outputPricePerMillion: resolvedModel.outputPricePerMillion.toString(),
+            }
+          : null;
+        await completeTurn(turn);
+      };
 
       const cleanup = () => {
         unregisterStream(assistantMessagePublicId, streamController);
       };
 
       try {
-        const resolvedModel = await resolveCatalogModel(
-          requestedModelPublicId,
-          sessionModelPublicId
-        );
-
-        // Verify model access permissions for this user
-        await assertUserModelAccess(userId, resolvedModel.id);
-
-        // Bind the resolved catalog model to the assistant message record
-        await db.chatMessage.update({
-          where: { id: assistantMessageId },
-          data: { catalogModelId: resolvedModel.id },
-        });
-
         // 1. Emit start chunk with assistant messageId and meta
         writer.write({
           type: "start",
           messageId: assistantMessagePublicId,
           messageMetadata: {
             messageId: assistantMessagePublicId,
-            userMessageId: userMessagePublicId,
+            userMessageId: turn.user?.publicId ?? "",
             model: resolvedModel.publicId,
             requestId,
           },
@@ -261,7 +344,6 @@ export function createChatGenerationStream(
 
         // Collect executed tool call parts to persist to DB so widgets & tool outputs survive page reloads
         const currentMessages: ChatMessageInput[] = [...conversationHistory];
-        billedModel = resolvedModel;
         // Text only: base64 image parts would inflate the estimate by megabytes
         estimatePromptChars = () =>
           currentMessages.reduce(
@@ -273,8 +355,8 @@ export function createChatGenerationStream(
             0
           );
 
-        // Parallelize initial DB lookups (sessionFiles, user, chatSettings) to minimize TTFT
-        const [sessionFiles, user, chatSettings, sessionProject] = await Promise.all([
+        // Parallelize initial lookups (sessionFiles, chatSettings, project, memory) to minimize TTFT
+        const [sessionFiles, chatSettings, sessionProject, memory] = await Promise.all([
           resolvedModel.supportsTools
             ? db.sessionFile.findMany({
                 where: { sessionId },
@@ -287,12 +369,17 @@ export function createChatGenerationStream(
                 orderBy: { createdAt: "asc" },
               })
             : Promise.resolve([]),
-          db.user.findUnique({ where: { id: userId }, select: { name: true } }),
           resolvedModel.supportsTools
             ? getChatSettings()
             : Promise.resolve({ maxToolRounds: 0, toolDebug: false }),
-          loadSessionProject(sessionId),
+          projectInternalId !== null ? loadSessionProject(sessionId) : Promise.resolve(null),
+          // Redis-cached; a memory outage must not block the reply
+          loadTurnMemory(userId).catch((err) => {
+            console.warn(`[USER_MEMORY_LOAD_FAILED] [${requestId}]`, err);
+            return { settings: DEFAULT_MEMORY_SETTINGS, notes: [] };
+          }),
         ]);
+        const memoryEnabled = memory.settings.memoryEnabled;
 
         // Project chats: custom instructions + shared sources sit right before the conversation
         if (sessionProject) {
@@ -307,10 +394,15 @@ export function createChatGenerationStream(
           }
         }
 
-        // `read_project_source` only makes sense inside a project that has sources
-        const availableTools = sessionProject?.files.length
-          ? devnubyTools
-          : devnubyTools.filter((t) => t.name !== "read_project_source");
+        // Tools the current chat can't use are dropped: `read_project_source` outside a
+        // project, `memory_note` when memory is off, `search_past_chats` when the user
+        // hasn't allowed searching earlier chats (Settings → Memory)
+        const availableTools = devnubyTools.filter(
+          (t) =>
+            (t.name !== "read_project_source" || Boolean(sessionProject?.files.length)) &&
+            (t.name !== "memory_note" || memoryEnabled) &&
+            (t.name !== "search_past_chats" || memory.settings.chatSearchEnabled)
+        );
 
         // If tools are supported, inject comprehensive tool guidelines and active session files
         if (resolvedModel.supportsTools) {
@@ -343,7 +435,7 @@ export function createChatGenerationStream(
               "## 3. WebAssembly Sandbox (`execute_code`)",
               "- Browser-isolated runtime for Python (numpy, pandas, matplotlib) and JavaScript. Use ONLY for pure computation, data calculations, and mathematical plotting (`matplotlib.pyplot`).",
               "- Sandbox runs in the BROWSER (WASM). It has NO internet, NO network access, and critically NO access to session files (R2 storage). You CANNOT read or write uploaded documents, spreadsheets, or images from here.",
-              "- If the user asks to create, edit, or analyze a DOCX/XLSX/PPTX/PDF file they uploaded: DO NOT use `execute_code`. Use `create_document`, `create_spreadsheet`, `create_presentation`, or `read_file` instead.",
+              "- If the user asks to create, edit, or analyze a DOCX/XLSX/PPTX/PDF file they uploaded: DO NOT use `execute_code`. Use `load_skill` + `run_skill_script` (or fallback tools `create_document`, `create_spreadsheet`, `create_presentation`, `read_file`) instead.",
               "",
               "## 4. Web Search Citations (`web_search` / `deep_search`)",
               "- When citing search results, ALWAYS format sources as inline Markdown links `[Domain or Title](exact_url)` immediately next to each referenced claim or fact.",
@@ -355,7 +447,12 @@ export function createChatGenerationStream(
               "- When the user provides a URL or asks to read a specific web page/documentation, use `fetch_url`. Do NOT guess page contents.",
               "",
               "## 7. Persistent Memory (`memory_note`)",
-              "- Use `memory_note` with action 'save' to remember user preferences/facts that should persist across sessions; 'list' to recall them; 'delete' to remove. Only store facts the user explicitly wants retained.",
+              "- Use `memory_note` with action 'save' to remember user preferences/facts that should persist across sessions; 'list' to read notes in full (and their ids); 'delete' to remove. Only store facts the user explicitly wants retained.",
+              "- The newest saved notes are already in the 'User Memory' system message: use them directly instead of calling 'list' first.",
+              "",
+              "## 7b. Searching Earlier Chats (`search_past_chats`)",
+              "- When the user refers to something from a previous chat that is not in this conversation ('like we discussed', 'the plan we made', 'what did I say about'), call `search_past_chats` with a few keywords instead of guessing.",
+              "- Quote what you found and name the chat it came from. If nothing matches, say so.",
               "",
               "## 8. Surgical File Editing (`edit_file`) & Creation (`write_file`)",
               "- When modifying an existing text or code file (.html, .css, .js, .ts, .md, .csv, .json, .py, etc.), PREFER calling `edit_file` with `targetText` (or `startLine`/`endLine`) and `replacementText`. This performs a precise, surgical diff edit on the exact same file without rewriting the whole document.",
@@ -364,12 +461,12 @@ export function createChatGenerationStream(
               "- If the user asks to revert or undo a change, you can call `edit_file` to invert the diff or restore the previous text snippet.",
               "- Do NOT edit raw binary files with `edit_file`.",
               "",
-              "## 9. Creating Binary Documents & Spreadsheets (`create_document`, `create_spreadsheet`, `create_presentation`)",
-              "- When the user asks to create, export, or generate Microsoft Office documents:",
-              "  * Word Document (.docx) for CVs, resumes, cover letters, formal proposals, memos, contracts, and reports: ALWAYS use `create_document` with structured sections (headings, styled paragraphs, bullet lists, numbered lists, and tables).",
-              "  * Excel Spreadsheet (.xlsx) for budgets, financial plans, schedules, matrices, or data tables: ALWAYS use `create_spreadsheet` with sheet names, structured headers, cell data, and Excel formulas (e.g. { formula: '=SUM(B2:B10)' }).",
-              "  * PowerPoint Presentation (.pptx) for pitch decks, slides, quarterly reviews, and presentations: ALWAYS use `create_presentation` with structured slides, bullet points, and speaker notes.",
-              "  * NEVER write fake mock binary strings into `write_file`. Always use these dedicated binary document tools so real, valid Office files are generated and immediately previewable/downloadable.",
+              "## 9. Creating & Editing Office / PDF Documents (Skills-First Architecture + Fallback)",
+              "- PRIMARY WORKFLOW (`.devnuby/skills` + `run_skill_script`): Always check `Specialized AI Skills (.devnuby/skills)` first whenever the user asks to create, edit, inspect, or fill `.pdf`, `.docx`, `.xlsx`, or `.pptx` files.",
+              "  * PDF (.pdf) & Word (.docx): When `pdf` or `docx` exists in `.devnuby/skills`, ALWAYS call `load_skill` (`pdf` or `docx`) first, then call `run_skill_script` (`runtime: 'python'` with `reportlab`/`pypdf`/`pdfplumber` or `scripts/*.py` for PDF; `runtime: 'node'` with `require('docx')` or `scripts/*.py` for DOCX).",
+              "  * Excel (.xlsx): When `xlsx` exists in `.devnuby/skills`, ALWAYS call `load_skill` (`xlsx`) first, then call `run_skill_script` (`runtime: 'python'` with `openpyxl` or `pandas`).",
+              "  * PowerPoint (.pptx): When `pptx` exists in `.devnuby/skills`, ALWAYS call `load_skill` (`pptx`) first, then call `run_skill_script` (`runtime: 'node'` with `require('pptxgenjs')` or `scripts/*.py`).",
+              "  * FALLBACK ONLY (`create_document`, `create_spreadsheet`, `create_presentation`): ONLY use these legacy tools if no matching skill exists in `.devnuby/skills/` or if `run_skill_script` is unavailable in an emergency. NEVER write fake mock binary strings into `write_file`. If a `run_skill_script` call returns an error, silently fix your script and re-run it — NEVER paste raw stack traces, error codes, or file paths to the user.",
               "",
               "## 10. Generating Images (`generate_image`)",
               "- When the user asks to generate, draw, illustrate, design, or create an image, illustration, photo, logo, or icon:",
@@ -399,6 +496,12 @@ export function createChatGenerationStream(
           }
         }
 
+        // Long-term memory from earlier chats, so the model doesn't depend on calling `list`
+        const memoryPrompt = memoryEnabled ? buildUserMemoryPrompt(memory.notes) : null;
+        if (memoryPrompt) {
+          currentMessages.unshift({ role: "system", content: memoryPrompt });
+        }
+
         // Models only know their training cutoff; ground every request in the real server clock
         currentMessages.unshift({
           role: "system",
@@ -417,7 +520,7 @@ export function createChatGenerationStream(
             supportsTools: resolvedModel.supportsTools,
             supportsReasoning: resolvedModel.supportsReasoning,
           },
-          userName: user?.name ?? "",
+          userName,
         });
         if (adminPrompt) {
           currentMessages.unshift({ role: "system", content: adminPrompt });
@@ -452,11 +555,15 @@ export function createChatGenerationStream(
               ? ({ type: "function" as const, function: { name: "web_search" } })
               : undefined;
 
+          stepPromptChars = estimatePromptChars();
+          stepGeneratedChars = 0;
+          stepUsageReported = false;
+
           const gatewayStream = executeWithFallback({
             publicModelId: resolvedModel.publicId,
             requestId,
             userId,
-            messageId: assistantMessageId,
+            messageId: assistantMessagePublicId,
             request: {
               messages: currentMessages,
               reasoningEffort,
@@ -506,6 +613,13 @@ export function createChatGenerationStream(
           for await (const event of gatewayStream) {
             if (combinedSignal.aborted) {
               throw new Error("CLIENT_ABORTED");
+            }
+
+            if (event.type === "delta" || event.type === "reasoning" || event.type === "tool_call") {
+              noteFirstToken();
+              stepGeneratedChars +=
+                event.type === "tool_call" ? (event.argumentsDelta?.length ?? 0) : event.text.length;
+              chargeLive();
             }
 
             if (event.type === "delta") {
@@ -631,6 +745,9 @@ export function createChatGenerationStream(
             } else if (event.type === "usage") {
               promptTokens += event.promptTokens;
               completionTokens += event.completionTokens;
+              // Real figures for this step replace its estimate on the live ledger
+              stepUsageReported = true;
+              chargeLive(true);
             }
           }
           } catch (err) {
@@ -808,6 +925,8 @@ export function createChatGenerationStream(
                 : await executeTool(tool.name, parsedArgs, {
                     userId: userPublicId,
                     sessionId: sessionPublicId,
+                    userInternalId: userId,
+                    sessionInternalId: sessionId,
                     signal: combinedSignal,
                   });
               const toolEnd = Date.now();
@@ -819,7 +938,7 @@ export function createChatGenerationStream(
                   requestId,
                   userId,
                   sessionId,
-                  messageId: assistantMessageId,
+                  messageId: assistantMessagePublicId,
                   toolCallId: effectiveCallId,
                   toolName: tool.name,
                   success: result.success,
@@ -893,20 +1012,9 @@ export function createChatGenerationStream(
               });
             }
 
-            // Sync live progress draft & produced files into Redis working memory (~1ms)
-            void saveTurnDraftToRedis({
-              assistantMessageId: assistantMessageId.toString(),
-              assistantMessagePublicId,
-              sessionId: sessionId.toString(),
-              userId: userId.toString(),
-              fullContent,
-              fullReasoning,
-              parts: executedToolParts,
-              status: "completed",
-              promptTokens,
-              completionTokens,
-              updatedAt: new Date().toISOString(),
-            });
+            // Sync live progress & produced files into Redis (~1ms); doubles as a liveness heartbeat
+            fillTurn("streaming", null);
+            void saveTurnProgress(turn);
 
             const currentFiles = listProducedFiles(executedToolParts);
             if (currentFiles.length > 0) {
@@ -987,37 +1095,18 @@ export function createChatGenerationStream(
           });
         }
 
-        // Persist final completed message via Redis-first write-behind flush
-        await flushTurnToDatabase({
-          assistantMessageId: assistantMessageId.toString(),
-          assistantMessagePublicId,
-          sessionId: sessionId.toString(),
-          userId: userId.toString(),
-          fullContent,
-          fullReasoning: fullReasoning || null,
-          parts: executedToolParts,
-          status: "completed",
-          promptTokens,
-          completionTokens,
-          updatedAt: new Date().toISOString(),
-        });
-
-        // Always record usage (priced from the model's catalog rates) so requestCount moves even at $0
-        billedModel = null;
-        await recordUserUsage(userId, {
-          promptTokens,
-          completionTokens,
-          model: {
-            id: resolvedModel.id,
-            inputPricePerMillion: resolvedModel.inputPricePerMillion,
-            outputPricePerMillion: resolvedModel.outputPricePerMillion,
-          },
-          sessionId,
-          messageId: assistantMessageId,
-          requestId,
-        }).catch((err) => {
-          console.error("[USAGE_RECORD_ERROR]", err);
-        });
+        // Store the turn (Redis → one Postgres transaction). Always billed, so the
+        // request count moves even at $0.
+        fillTurn("completed", null);
+        await finishTurn(
+          finalTurnTokens({
+            completed: true,
+            promptTokens,
+            completionTokens,
+            generatedChars: fullContent.length + fullReasoning.length,
+            promptChars: estimatePromptChars,
+          })
+        );
 
         writer.write({
           type: "finish",
@@ -1042,28 +1131,20 @@ export function createChatGenerationStream(
             ? "RATE_LIMITED"
             : (errAny?.code as string) || (errAny?.errorClass as string) || "STREAM_ERROR";
 
-        await flushTurnToDatabase({
-          assistantMessageId: assistantMessageId.toString(),
-          assistantMessagePublicId,
-          sessionId: sessionId.toString(),
-          userId: userId.toString(),
-          fullContent: isUpstreamRateLimit ? "" : fullContent,
-          fullReasoning: isUpstreamRateLimit ? null : fullReasoning || null,
-          parts: executedToolParts,
-          status: finalStatus,
-          errorCode,
-          promptTokens,
-          completionTokens,
-          updatedAt: new Date().toISOString(),
-        });
-
-        if (billedModel && !isUpstreamRateLimit) {
-          await recordPartialUsage(userId, {
-            promptTokens, completionTokens, model: billedModel, sessionId, messageId: assistantMessageId, requestId,
-            generatedChars: fullContent.length + fullReasoning.length,
-            promptChars: estimatePromptChars,
-          });
-        }
+        // A stopped / failed stream that produced output is still billed (estimated
+        // where the provider never reported usage); an upstream rate limit is not.
+        fillTurn(finalStatus, errorCode, isUpstreamRateLimit);
+        await finishTurn(
+          isUpstreamRateLimit
+            ? null
+            : finalTurnTokens({
+                completed: false,
+                promptTokens,
+                completionTokens,
+                generatedChars: fullContent.length + fullReasoning.length,
+                promptChars: estimatePromptChars,
+              })
+        ).catch((err) => console.error(`[TURN_STORE_ERROR] [${requestId}]`, err));
 
         if (isAbort) {
           writer.write({

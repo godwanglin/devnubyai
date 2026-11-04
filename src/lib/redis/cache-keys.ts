@@ -53,10 +53,19 @@ export async function invalidateSharedChatCache(token?: string | null): Promise<
 }
 
 /**
- * Invalidate user token quota & windows cache
+ * Invalidate user token quota & windows cache. Also drops the Redis live spend
+ * ledger (`quota:live:*`) so it is rebuilt from Postgres, which is what usage
+ * resets and plan purchases need; pass `keepLive` when only Postgres caught up
+ * with spend the ledger already has.
  */
-export async function invalidateUserQuotaCache(userId: string | bigint): Promise<void> {
+export async function invalidateUserQuotaCache(
+  userId: string | bigint,
+  options: { keepLive?: boolean } = {}
+): Promise<void> {
   await invalidateCacheKey(CACHE_KEYS.userQuota(userId));
+  if (!options.keepLive) {
+    await invalidateCacheKey(`quota:live:${userId.toString()}`);
+  }
 }
 
 /**

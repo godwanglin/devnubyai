@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
+import { invalidateUserChatSessionsCache } from "@/lib/chat/session-cache";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -59,6 +60,7 @@ export async function DELETE(request: Request) {
         },
       });
 
+      await invalidateUserChatSessionsCache(user.id);
       return jsonSuccess({ revoked: true, count: result.count }, { requestId });
     }
 
@@ -77,6 +79,7 @@ export async function DELETE(request: Request) {
       },
     });
 
+    await invalidateUserChatSessionsCache(user.id);
     return jsonSuccess({ revoked: true, count: result.count }, { requestId });
   } catch (err) {
     return jsonError(err, { requestId });

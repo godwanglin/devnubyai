@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { User, Sliders, Gauge, Shield, Database, Search, X } from "lucide-react";
+import { User, Sliders, Brain, Gauge, Shield, Database, Search, X } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { cn } from "@/lib/cn";
 import { ProfileTab } from "./tabs/profile-tab";
@@ -10,9 +10,10 @@ import { PreferencesTab } from "./tabs/preferences-tab";
 import { UsageTab } from "./tabs/usage-tab";
 import { SecurityTab } from "./tabs/security-tab";
 import { DataControlsTab } from "./tabs/data/data-controls-tab";
+import { MemoryTab } from "./tabs/memory-tab";
 
-export type SettingsTabId = "profile" | "preferences" | "usage" | "security" | "data" | "archived";
-const TAB_IDS: SettingsTabId[] = ["profile", "preferences", "usage", "security", "data", "archived"];
+export type SettingsTabId = "profile" | "preferences" | "memory" | "usage" | "security" | "data" | "archived";
+const TAB_IDS: SettingsTabId[] = ["profile", "preferences", "memory", "usage", "security", "data", "archived"];
 
 interface ParsedSettingsHash {
   isOpen: boolean;
@@ -200,6 +201,7 @@ export function SettingsModal() {
   const tabs: { id: SettingsTabId; label: string; icon: React.ReactNode; keywords?: string }[] = [
     { id: "profile", label: t("settings.profileTab"), icon: <User className="w-4 h-4" />, keywords: "akun profile email foto avatar paket" },
     { id: "preferences", label: t("settings.preferencesTab"), icon: <Sliders className="w-4 h-4" />, keywords: "tampilan tema font bahasa suara kecepatan" },
+    { id: "memory", label: t("settings.memoryTab"), icon: <Brain className="w-4 h-4" />, keywords: "memory memori ingat catatan preferensi ekspor impor" },
     { id: "usage", label: t("settings.usageTab"), icon: <Gauge className="w-4 h-4" />, keywords: "penggunaan kuota token limit pemakaian" },
     { id: "security", label: t("settings.securityTab"), icon: <Shield className="w-4 h-4" />, keywords: "keamanan sandi password pin passkey sesi aktif" },
     { id: "data", label: t("settings.dataControlsTab"), icon: <Database className="w-4 h-4" />, keywords: "data kontrol lokasi tautan arsip hapus ekspor" },
@@ -312,6 +314,7 @@ export function SettingsModal() {
           <main className="flex-1 overflow-y-auto p-5 sm:p-7 md:p-8 bg-[var(--panel)] min-w-0">
             {activeTab === "profile" && <ProfileTab />}
             {activeTab === "preferences" && <PreferencesTab />}
+            {activeTab === "memory" && <MemoryTab />}
             {activeTab === "usage" && <UsageTab />}
             {activeTab === "security" && (
               <SecurityTab

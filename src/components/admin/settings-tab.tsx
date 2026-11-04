@@ -7,6 +7,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-select";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
+import { useAccount } from "@/providers/account-provider";
 import { MAX_TOOL_ROUNDS_LIMIT, type ChatSettings } from "@/lib/chat/settings-shared";
 import { DatabasePoolConfigCard } from "./database-pool-config-card";
 import { NetworkRulesConfigCard } from "./network-rules-config-card";
@@ -19,6 +20,7 @@ const AUTO_MODEL = "__auto__";
 export function SettingsTab() {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { refresh: refreshAccount } = useAccount();
 
   const [saved, setSaved] = useState<ChatSettings | null>(null);
   const [maxToolRounds, setMaxToolRounds] = useState("");
@@ -90,6 +92,8 @@ export function SettingsTab() {
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.data?.settings) throw new Error(json?.error?.message);
       applySettings(json.data.settings);
+      // Re-read /me so the chat's tool debug inspect follows the new setting
+      void refreshAccount();
       toast(t("admin.settings.saved"));
     } catch (err) {
       toast(err instanceof Error && err.message ? err.message : t("admin.settings.saveFailed"));

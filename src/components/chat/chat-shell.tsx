@@ -56,9 +56,9 @@ import { useI18n } from "@/providers/i18n-provider";
 import { useProjectDetail } from "@/hooks/use-project-detail";
 import type { SourceMention } from "@/lib/chat/source-mentions";
 import { useAccount } from "@/providers/account-provider";
-import { useQuota } from "@/hooks/use-quota";
+import { setQuotaSnapshot, useQuota } from "@/hooks/use-quota";
 import { useToast } from "@/providers/toast-provider";
-import type { MessageAttachment, SessionFileItem } from "@/types";
+import type { MessageAttachment, SessionFileItem, UserQuota } from "@/types";
 
 export function ChatShell() {
   const { t } = useI18n();
@@ -308,6 +308,10 @@ export function ChatShell() {
     // body-less resumeStream that 204s and forces status back to "ready", hiding the loader.
     // Reattaching after a reload is done explicitly via useChatHistory -> handleStreamingReply.
     throttle: 30,
+    // The server charges spend while the reply streams and pushes the new quota
+    onData: (part) => {
+      if (part.type === "data-quota" && part.data) setQuotaSnapshot(part.data as UserQuota);
+    },
     onError: (err) => {
       // console.error("ChatShell useChat error:", err);
       const quota = parseQuotaError(err);
@@ -469,6 +473,15 @@ export function ChatShell() {
       sourceMentions?: SourceMention[];
     }
   ) {
+    // Guests may type on the home page; login keeps the draft and sends it after
+    if (!user && !currentChatId) {
+      const draft = text.trim();
+      if (!draft) return;
+      const next = `/?prompt=${encodeURIComponent(draft.slice(0, 4000))}`;
+      router.push(`/login?next=${encodeURIComponent(next)}`);
+      return;
+    }
+
     // Quick prompts bypass the composer, so the quota block is enforced here too
     if (quotaNotice) {
       setDismissedQuotaKey(null);
@@ -645,6 +658,22 @@ export function ChatShell() {
       toast(errorMessage(err, "Failed to process message"));
     }
   }
+
+  // After login, a guest draft comes back as `/?prompt=` and is sent once
+  const pendingPromptSent = useRef(false);
+  useEffect(() => {
+    if (!user || pendingPromptSent.current || pathname !== "/") return;
+    const params = new URLSearchParams(window.location.search);
+    const draft = params.get("prompt")?.trim();
+    if (!draft) return;
+    pendingPromptSent.current = true;
+    params.delete("prompt");
+    const rest = params.toString();
+    window.history.replaceState(null, "", rest ? `/?${rest}` : "/");
+    void handleSend(draft);
+    // handleSend is recreated each render; the ref makes this fire only once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, pathname]);
 
   async function handleEditSubmit(messageId: string, content: string) {
     if (!activeChatId) return;

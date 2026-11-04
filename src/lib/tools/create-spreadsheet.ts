@@ -63,7 +63,7 @@ export const createSpreadsheetTool: ToolDefinition<
 > = {
   name: "create_spreadsheet",
   description:
-    "Creates a polished, real binary Microsoft Excel (.xlsx) spreadsheet with one or more sheets, styled headers, custom column widths, and optional Excel formulas (e.g. '=SUM(B2:B10)'). Saves the file to session storage so the user can preview, interact with, and download it in the files panel.",
+    "FALLBACK TOOL for creating binary Microsoft Excel (.xlsx) spreadsheets ONLY when the 'xlsx' skill is NOT available in `.devnuby/skills/` or as an emergency fallback if `run_skill_script` fails. Whenever 'xlsx' exists in `<available_skills>`, MUST use `load_skill` + `run_skill_script` (with openpyxl/pandas) instead of this tool.",
   parameters: {
     type: "object",
     properties: {

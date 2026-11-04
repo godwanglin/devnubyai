@@ -2,20 +2,31 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/client";
 import { ApiError } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
-import {
-  CACHE_KEYS,
-  CACHE_TTL,
-  invalidateUserQuotaCache,
-} from "@/lib/redis/cache-keys";
+import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
 import { computeCostUsd, costLimit, toUsd } from "@/lib/billing/cost";
 import { FREE_PLAN_SLUG, isPlanExpired } from "@/lib/plans/effective-plan";
 import { countActiveGenerations, effectiveParallelLimit } from "./concurrency";
+import { chargeLiveLedger, readLiveLedger, type LiveLedger } from "./live-quota";
+import {
+  DAY_MS,
+  getCurrentPeriodStart,
+  getFiveHourStart,
+  getNextPeriodStart,
+  getUtcWeekStart,
+  windowResetsAt,
+} from "./quota-windows";
 import type { QuotaKind, QuotaNotice } from "./quota-shared";
 
 /**
  * Quota is spend-based (USD). Every reply adds its cost to the five-hour, weekly
  * and monthly windows at once, so spending inside a short window also eats into
  * the longer ones: monthly is the budget, weekly / five-hour cap the pace.
+ *
+ * Enforcement reads the Redis live ledger (`live-quota.ts`), which is charged the
+ * moment a model reports token usage, so a second message sent while the first is
+ * still streaming already sees its cost. Postgres is only read when that ledger
+ * is cold, and is written once per turn, in the turn's store transaction
+ * (`redis-chat-state.ts`).
  */
 
 export interface QuotaCheckResult {
@@ -38,28 +49,7 @@ type PlanCostLimits = {
   fiveHourCostLimitUsd: Prisma.Decimal | null;
 };
 
-const FIVE_HOURS_MS = 18_000_000;
-const WEEK_MS = 7 * 86_400_000;
-
-export function getCurrentPeriodStart(now = new Date()): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
-export function getNextPeriodStart(now = new Date()): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-}
-
-function getUtcWeekStart(now: Date): Date {
-  const day = now.getUTCDay();
-  const daysSinceMonday = (day + 6) % 7;
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  start.setUTCDate(start.getUTCDate() - daysSinceMonday);
-  return start;
-}
-
-function getFiveHourStart(now: Date): Date {
-  return new Date(Math.floor(now.getTime() / FIVE_HOURS_MS) * FIVE_HOURS_MS);
-}
+export { getCurrentPeriodStart, getNextPeriodStart };
 
 function quotaDetails(kind: QuotaKind, used: number, limit: number, resetAt: Date) {
   const quota: QuotaNotice = { kind, used, limit, resetAt: resetAt.toISOString() };
@@ -87,11 +77,7 @@ async function loadWindows(userId: bigint, now: Date) {
     monthly,
     weekly,
     fiveHour,
-    resets: {
-      monthly: getNextPeriodStart(now),
-      weekly: new Date(weekStart.getTime() + WEEK_MS),
-      fiveHour: new Date(fiveHourStart.getTime() + FIVE_HOURS_MS),
-    },
+    resets: windowResetsAt(now),
   };
 }
 
@@ -123,13 +109,16 @@ export async function getUserQuotaWindows(
   userId: bigint,
   plan: PlanCostLimits | null
 ): Promise<UserQuotaWindows> {
-  const cached = await getCachedJson<UserQuotaWindows>(CACHE_KEYS.userQuota(userId));
-  if (cached) {
-    return cached;
+  const now = new Date();
+  const live = await readLiveLedger(userId, now);
+  if (live) {
+    return windowsFromLedger(live, plan);
   }
 
-  const w = await loadWindows(userId, new Date());
+  const cached = await getCachedJson<UserQuotaWindows>(CACHE_KEYS.userQuota(userId));
+  if (cached) return cached;
 
+  const w = await loadWindows(userId, now);
   const result: UserQuotaWindows = {
     fiveHour: windowStatus(toUsd(w.fiveHour?.costUsd), costLimit(plan?.fiveHourCostLimitUsd), w.resets.fiveHour),
     weekly: windowStatus(toUsd(w.weekly?.costUsd), costLimit(plan?.weeklyCostLimitUsd), w.resets.weekly),
@@ -138,61 +127,120 @@ export async function getUserQuotaWindows(
       requestCount: w.monthly?.requestCount ?? 0,
     },
   };
-
   await setCachedJson(CACHE_KEYS.userQuota(userId), result, CACHE_TTL.USER_QUOTA);
-
   return result;
 }
 
-/** Verify monthly, weekly, five-hour spend plus RPM and daily request limits. */
-export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult> {
-  const planLimitsSelect = {
-    monthlyCostLimitUsd: true,
-    weeklyCostLimitUsd: true,
-    fiveHourCostLimitUsd: true,
-    dailyRequestLimit: true,
-    requestsPerMinute: true,
-    maxParallelRequests: true,
-  } as const;
+interface UsageSnapshot {
+  periodStart: Date;
+  monthlyUsed: number;
+  weeklyUsed: number;
+  fiveHourUsed: number;
+  requestCount: number;
+  dailyCount: number;
+  rpmCount: number;
+  resets: ReturnType<typeof windowResetsAt>;
+}
+
+/** Spend + request counts: the live ledger when warm, Postgres otherwise. */
+async function loadUsageSnapshot(userId: bigint, now: Date): Promise<UsageSnapshot> {
+  const resets = windowResetsAt(now);
+  const live = await readLiveLedger(userId, now);
+  if (live) {
+    return {
+      periodStart: new Date(live.month.start),
+      monthlyUsed: live.month.usd,
+      weeklyUsed: live.week.usd,
+      fiveHourUsed: live.fiveHour.usd,
+      requestCount: live.month.requests,
+      dailyCount: live.day.requests,
+      rpmCount: live.recent.length,
+      resets,
+    };
+  }
+
+  const w = await loadWindows(userId, now);
+  const dayStart = new Date(now.getTime() - (now.getTime() % DAY_MS));
+  const [dailyCount, rpmCount] = await Promise.all([
+    db.usageLog.count({ where: { userId, createdAt: { gte: dayStart } } }),
+    db.usageLog.count({ where: { userId, createdAt: { gte: new Date(now.getTime() - 60_000) } } }),
+  ]);
+  return {
+    periodStart: w.periodStart,
+    monthlyUsed: toUsd(w.monthly?.costUsd),
+    weeklyUsed: toUsd(w.weekly?.costUsd),
+    fiveHourUsed: toUsd(w.fiveHour?.costUsd),
+    requestCount: w.monthly?.requestCount ?? 0,
+    dailyCount,
+    rpmCount,
+    resets,
+  };
+}
+
+export type PlanLimits = PlanCostLimits & {
+  dailyRequestLimit: number | null;
+  requestsPerMinute: number | null;
+  maxParallelRequests: number | null;
+};
+
+const planLimitsSelect = {
+  monthlyCostLimitUsd: true,
+  weeklyCostLimitUsd: true,
+  fiveHourCostLimitUsd: true,
+  dailyRequestLimit: true,
+  requestsPerMinute: true,
+  maxParallelRequests: true,
+} as const;
+
+/** Effective plan limits of a user (an expired paid plan is held to the free plan). */
+async function loadPlanLimits(userId: bigint): Promise<PlanLimits | null> {
   const user = await db.user.findUnique({
     where: { id: userId },
     select: { id: true, planExpiresAt: true, plan: { select: planLimitsSelect } },
   });
-
   if (!user) throw ApiError.unauthorized("User account not found");
-  // An expired paid plan is held to the free plan's limits
   if (isPlanExpired(user.planExpiresAt)) {
-    user.plan = await db.plan.findUnique({ where: { slug: FREE_PLAN_SLUG }, select: planLimitsSelect });
+    return db.plan.findUnique({ where: { slug: FREE_PLAN_SLUG }, select: planLimitsSelect });
   }
+  return user.plan;
+}
+
+/**
+ * Verify monthly, weekly, five-hour spend plus RPM and daily request limits.
+ * Pass `plan` from the session user (already the effective plan) to skip the
+ * Postgres lookup; omit it to load the plan here.
+ */
+export async function assertUserQuota(
+  userId: bigint,
+  plan?: PlanLimits | null
+): Promise<QuotaCheckResult> {
+  const user = { plan: plan === undefined ? await loadPlanLimits(userId) : plan };
 
   const now = new Date();
-  const w = await loadWindows(userId, now);
+  const usage = await loadUsageSnapshot(userId, now);
 
   const monthlyLimit = costLimit(user.plan?.monthlyCostLimitUsd);
   const weeklyLimit = costLimit(user.plan?.weeklyCostLimitUsd);
   const fiveHourLimit = costLimit(user.plan?.fiveHourCostLimitUsd);
-  const monthlyUsed = toUsd(w.monthly?.costUsd);
-  const weeklyUsed = toUsd(w.weekly?.costUsd);
-  const fiveHourUsed = toUsd(w.fiveHour?.costUsd);
-
+  const { monthlyUsed, weeklyUsed, fiveHourUsed } = usage;
   const usd = (n: number) => `$${n.toFixed(2)}`;
 
   if (monthlyLimit !== null && monthlyUsed >= monthlyLimit) {
     throw ApiError.rateLimited(
       `Monthly usage limit reached (${usd(monthlyUsed)} / ${usd(monthlyLimit)}). Upgrade your plan or wait until next month.`,
-      quotaDetails("monthly_cost", monthlyUsed, monthlyLimit, w.resets.monthly)
+      quotaDetails("monthly_cost", monthlyUsed, monthlyLimit, usage.resets.monthly)
     );
   }
   if (weeklyLimit !== null && weeklyUsed >= weeklyLimit) {
     throw ApiError.rateLimited(
       `Weekly usage limit reached (${usd(weeklyUsed)} / ${usd(weeklyLimit)}).`,
-      quotaDetails("weekly_cost", weeklyUsed, weeklyLimit, w.resets.weekly)
+      quotaDetails("weekly_cost", weeklyUsed, weeklyLimit, usage.resets.weekly)
     );
   }
   if (fiveHourLimit !== null && fiveHourUsed >= fiveHourLimit) {
     throw ApiError.rateLimited(
       `Five-hour usage limit reached (${usd(fiveHourUsed)} / ${usd(fiveHourLimit)}).`,
-      quotaDetails("five_hour_cost", fiveHourUsed, fiveHourLimit, w.resets.fiveHour)
+      quotaDetails("five_hour_cost", fiveHourUsed, fiveHourLimit, usage.resets.fiveHour)
     );
   }
 
@@ -204,139 +252,132 @@ export async function assertUserQuota(userId: bigint): Promise<QuotaCheckResult>
     (rpmLimit ?? 0) > 0 || (dailyLimitValue ?? 0) > 0 ? await countActiveGenerations(userId) : 0;
 
   if (rpmLimit !== null && rpmLimit > 0) {
-    const oneMinuteAgo = new Date(now.getTime() - 60_000);
-    const recentCount =
-      (await db.usageLog.count({ where: { userId, createdAt: { gte: oneMinuteAgo } } })) + activeGenerations;
+    const recentCount = usage.rpmCount + activeGenerations;
     if (recentCount >= rpmLimit) {
-      const oldest = await db.usageLog.findFirst({
-        where: { userId, createdAt: { gte: oneMinuteAgo } },
-        orderBy: { createdAt: "asc" }, select: { createdAt: true },
-      });
       throw ApiError.rateLimited(
         `Rate limit exceeded (${recentCount}/${rpmLimit} requests per minute). Please slow down.`,
-        quotaDetails("rate_per_minute", recentCount, rpmLimit, new Date((oldest?.createdAt ?? now).getTime() + 60_000))
+        quotaDetails("rate_per_minute", recentCount, rpmLimit, new Date(now.getTime() + 60_000))
       );
     }
   }
 
-  const dailyLimit = dailyLimitValue;
-  if (dailyLimit !== null && dailyLimit > 0) {
-    const startOfTodayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const dailyCount =
-      (await db.usageLog.count({ where: { userId, createdAt: { gte: startOfTodayUtc } } })) + activeGenerations;
-    if (dailyCount >= dailyLimit) {
+  if (dailyLimitValue !== null && dailyLimitValue > 0) {
+    const dailyCount = usage.dailyCount + activeGenerations;
+    if (dailyCount >= dailyLimitValue) {
       throw ApiError.rateLimited(
-        `Daily request limit reached (${dailyCount}/${dailyLimit} requests today). Try again tomorrow or upgrade your plan.`,
-        quotaDetails("daily_requests", dailyCount, dailyLimit, new Date(startOfTodayUtc.getTime() + 86_400_000))
+        `Daily request limit reached (${dailyCount}/${dailyLimitValue} requests today). Try again tomorrow or upgrade your plan.`,
+        quotaDetails("daily_requests", dailyCount, dailyLimitValue, usage.resets.daily)
       );
     }
   }
 
   return {
-    periodStart: w.periodStart,
+    periodStart: usage.periodStart,
     monthlyLimitUsd: monthlyLimit,
     monthlyUsedUsd: monthlyUsed,
     weeklyLimitUsd: weeklyLimit,
     weeklyUsedUsd: weeklyUsed,
     fiveHourLimitUsd: fiveHourLimit,
     fiveHourUsedUsd: fiveHourUsed,
-    requestCount: w.monthly?.requestCount ?? 0,
-    dailyRequestLimit: dailyLimit,
+    requestCount: usage.requestCount,
+    dailyRequestLimit: dailyLimitValue,
     maxParallelRequests: effectiveParallelLimit(user.plan?.maxParallelRequests),
   };
 }
 
-export interface RecordUsageInput {
+/**
+ * Live (mid-turn) charging. While a reply streams, `chargeLiveUsage` is called
+ * with the running token totals; only the growth since the previous call is
+ * added to the Redis ledger, so a message sent while this one still streams
+ * already sees its cost. `settleLiveUsage` then books the final figures: the
+ * request count plus any difference between what was charged live and the
+ * final price (e.g. the ~4 chars/token estimate of an aborted stream).
+ * Postgres is written separately, once, when the turn is stored.
+ */
+const liveCharged = new Map<string, number>();
+
+type ModelPrices = { inputPricePerMillion: Prisma.Decimal; outputPricePerMillion: Prisma.Decimal };
+
+function priceOf(promptTokens: number, completionTokens: number, model: ModelPrices): number {
+  return Number(
+    computeCostUsd(promptTokens, completionTokens, model.inputPricePerMillion, model.outputPricePerMillion)
+  );
+}
+
+export async function chargeLiveUsage(
+  userId: bigint,
+  turnId: string,
+  promptTokens: number,
+  completionTokens: number,
+  model: ModelPrices
+): Promise<LiveLedger | null> {
+  const charged = liveCharged.get(turnId) ?? 0;
+  const delta = priceOf(promptTokens, completionTokens, model) - charged;
+  if (delta <= 0) return null;
+  liveCharged.set(turnId, charged + delta);
+  return chargeLiveLedger(userId, delta, 0);
+}
+
+/** Final live booking of a turn; `final` is null when the reply is not billed at all. */
+export async function settleLiveUsage(
+  userId: bigint,
+  turnId: string,
+  final: { promptTokens: number; completionTokens: number; model: ModelPrices } | null
+): Promise<LiveLedger | null> {
+  const charged = liveCharged.get(turnId) ?? 0;
+  liveCharged.delete(turnId);
+  const finalUsd = final ? priceOf(final.promptTokens, final.completionTokens, final.model) : 0;
+  return chargeLiveLedger(userId, finalUsd - charged, final ? 1 : 0);
+}
+
+/**
+ * Billed token figures of a turn. A completed reply bills what the model
+ * reported; a stopped or failed one that produced output is still billed, with
+ * missing counts estimated at ~4 chars/token, so aborting is not free.
+ */
+export function finalTurnTokens(input: {
+  completed: boolean;
   promptTokens: number;
   completionTokens: number;
-  model: {
-    id: bigint;
-    inputPricePerMillion: Prisma.Decimal;
-    outputPricePerMillion: Prisma.Decimal;
+  generatedChars: number;
+  promptChars: () => number;
+}): { promptTokens: number; completionTokens: number } | null {
+  if (input.completed) {
+    return { promptTokens: input.promptTokens, completionTokens: input.completionTokens };
+  }
+  if (input.promptTokens <= 0 && input.completionTokens <= 0 && input.generatedChars <= 0) return null;
+  return {
+    promptTokens: input.promptTokens > 0 ? input.promptTokens : Math.ceil(input.promptChars() / 4),
+    completionTokens: Math.max(input.completionTokens, Math.ceil(input.generatedChars / 4)),
   };
-  sessionId?: bigint | null;
-  messageId?: bigint | null;
-  requestId?: string | null;
 }
 
-/**
- * Prices one reply from the model's catalog rates, logs it in `usage_logs` and
- * adds the cost (plus token counts, for reference) to all three windows.
- */
-export async function recordUserUsage(userId: bigint, input: RecordUsageInput): Promise<void> {
+/** Client quota payload (same shape as `/api/v1/me/quota`) built from windows. */
+export function toQuotaPayload(windows: UserQuotaWindows) {
+  const msUntilReset = new Date(windows.monthly.resetAt).getTime() - Date.now();
+  return {
+    usedPercent: windows.monthly.usedPercent,
+    usedUsd: windows.monthly.usedUsd,
+    limitUsd: windows.monthly.limitUsd,
+    resetInDays: Math.max(1, Math.ceil(msUntilReset / DAY_MS)),
+    resetAt: windows.monthly.resetAt,
+    requestCount: windows.monthly.requestCount,
+    windows,
+  };
+}
+
+/** Windows for display straight from a ledger returned by a live charge. */
+export function windowsFromLedger(ledger: LiveLedger, plan: PlanCostLimits | null): UserQuotaWindows {
   const now = new Date();
-  const promptTokens = Math.max(0, Math.floor(input.promptTokens));
-  const completionTokens = Math.max(0, Math.floor(input.completionTokens));
-  const prompt = BigInt(promptTokens);
-  const completion = BigInt(completionTokens);
-  const cost = computeCostUsd(
-    promptTokens,
-    completionTokens,
-    input.model.inputPricePerMillion,
-    input.model.outputPricePerMillion
-  );
-
-  const periodStart = getCurrentPeriodStart(now);
-  const weekStart = getUtcWeekStart(now);
-  const fiveHourStart = getFiveHourStart(now);
-  const increment = {
-    requestCount: { increment: 1 },
-    promptTokens: { increment: prompt },
-    completionTokens: { increment: completion },
-    costUsd: { increment: cost },
+  const resets = windowResetsAt(now);
+  const round = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
+  return {
+    fiveHour: windowStatus(round(ledger.fiveHour.usd), costLimit(plan?.fiveHourCostLimitUsd), resets.fiveHour),
+    weekly: windowStatus(round(ledger.week.usd), costLimit(plan?.weeklyCostLimitUsd), resets.weekly),
+    monthly: {
+      ...windowStatus(round(ledger.month.usd), costLimit(plan?.monthlyCostLimitUsd), resets.monthly),
+      requestCount: ledger.month.requests,
+    },
   };
-  const initial = { requestCount: 1, promptTokens: prompt, completionTokens: completion, costUsd: cost };
-
-  await db.$transaction([
-    db.usageLog.create({
-      data: {
-        userId,
-        sessionId: input.sessionId ?? null,
-        messageId: input.messageId ?? null,
-        catalogModelId: input.model.id,
-        requestId: input.requestId ?? null,
-        promptTokens,
-        completionTokens,
-        inputPricePerMillion: input.model.inputPricePerMillion,
-        outputPricePerMillion: input.model.outputPricePerMillion,
-        costUsd: cost,
-      },
-    }),
-    db.userUsagePeriod.upsert({
-      where: { userId_periodStart: { userId, periodStart } },
-      update: increment,
-      create: { userId, periodStart, ...initial },
-    }),
-    db.userUsageWindow.upsert({
-      where: { userId_windowType_windowKey: { userId, windowType: "weekly", windowKey: weekStart.toISOString() } },
-      update: increment,
-      create: { userId, windowType: "weekly", windowKey: weekStart.toISOString(), windowStart: weekStart, windowEnd: new Date(weekStart.getTime() + WEEK_MS), ...initial },
-    }),
-    db.userUsageWindow.upsert({
-      where: { userId_windowType_windowKey: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString() } },
-      update: increment,
-      create: { userId, windowType: "five_hour", windowKey: fiveHourStart.toISOString(), windowStart: fiveHourStart, windowEnd: new Date(fiveHourStart.getTime() + FIVE_HOURS_MS), ...initial },
-    }),
-  ]);
-  await invalidateUserQuotaCache(userId);
 }
 
-/**
- * Bills a stream that stopped or failed after producing output, so aborting
- * mid-generation is not free. Providers often report usage only at the end,
- * so missing counts fall back to a ~4 chars/token estimate. Never throws.
- */
-export async function recordPartialUsage(
-  userId: bigint,
-  input: RecordUsageInput & { generatedChars: number; promptChars: () => number }
-): Promise<void> {
-  const { generatedChars, promptChars, ...usage } = input;
-  if (usage.promptTokens <= 0 && usage.completionTokens <= 0 && generatedChars <= 0) return;
-  await recordUserUsage(userId, {
-    ...usage,
-    promptTokens: usage.promptTokens > 0 ? usage.promptTokens : Math.ceil(promptChars() / 4),
-    completionTokens: Math.max(usage.completionTokens, Math.ceil(generatedChars / 4)),
-  }).catch((err) => {
-    console.error("[USAGE_RECORD_ERROR]", err);
-  });
-}

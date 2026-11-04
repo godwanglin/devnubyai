@@ -6,10 +6,55 @@ import assert from "node:assert/strict";
 import {
   saveSessionMemoryToRedis,
   getSessionMemoryFromRedis,
-  saveTurnDraftToRedis,
-  getTurnDraftFromRedis,
-  flushTurnToDatabase,
+  beginTurn,
+  completeTurn,
+  flushTurn,
+  getTurn,
+  listSessionTurns,
+  type PendingTurn,
 } from "../src/lib/chat/redis-chat-state";
+import { mergePendingTurns } from "../src/lib/chat/pending-turns";
+import { ledgerAt, type LiveLedger } from "../src/lib/chat/live-quota";
+import { finalTurnTokens } from "../src/lib/chat/quota";
+import { buildUserMemoryPrompt } from "../src/lib/chat/user-memory";
+import { uuidv7 } from "../src/lib/api/uuidv7";
+import type { ChatMessageDto } from "../src/lib/chat/service-types";
+
+function makeTurn(sessionId: string): PendingTurn {
+  const now = Date.now();
+  return {
+    kind: "send",
+    requestId: uuidv7(),
+    userId: "999999999999999",
+    sessionId,
+    sessionPublicId: uuidv7(),
+    autoTitle: null,
+    user: {
+      publicId: uuidv7(),
+      content: "Halo",
+      parts: null,
+      fileIds: [],
+      attachments: [],
+      historyContent: "Halo",
+    },
+    assistant: {
+      publicId: uuidv7(),
+      content: "",
+      reasoning: null,
+      parts: [],
+      status: "streaming",
+      errorCode: null,
+      catalogModelId: "1",
+      catalogModelPublicId: "test-model",
+      promptTokens: 0,
+      completionTokens: 0,
+    },
+    usage: null,
+    startedAt: now,
+    updatedAt: now,
+    flushAttempts: 0,
+  };
+}
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>) {
@@ -63,48 +108,95 @@ async function main() {
     }
   });
 
-  await test("3. Turn draft in Redis handles save & retrieve", async () => {
-    const testId = `msg_test_${Date.now()}`;
-    await saveTurnDraftToRedis({
-      assistantMessageId: "9999999999",
-      assistantMessagePublicId: testId,
-      sessionId: "123",
-      userId: "456",
-      fullContent: "Hasil laporan akhir.",
-      parts: [{ type: "dynamic-tool", toolName: "create_document", state: "output-available" }],
-      status: "completed",
-      promptTokens: 100,
-      completionTokens: 200,
-      updatedAt: new Date().toISOString(),
-    });
+  await test("3. Streaming turn is held in Redis and listed for its chat", async () => {
+    const turn = makeTurn(`999999${Date.now() % 1000}`);
+    await beginTurn(turn);
 
-    const draft = await getTurnDraftFromRedis(testId);
-    if (draft) {
-      assert.equal(draft.assistantMessagePublicId, testId);
-      assert.equal(draft.fullContent, "Hasil laporan akhir.");
-      assert.equal(draft.parts.length, 1);
-    }
+    const stored = await getTurn(turn.assistant.publicId);
+    assert.ok(stored);
+    assert.equal(stored.assistant.status, "streaming");
+    const listed = await listSessionTurns(turn.sessionId);
+    assert.ok(listed.some((t) => t.assistant.publicId === turn.assistant.publicId));
+
+    // A streaming turn is never written to Postgres
+    assert.equal(await flushTurn(turn.assistant.publicId), "pending");
   });
 
-  await test("4. flushTurnToDatabase enqueues safely on Postgres failure without throwing", async () => {
-    // Calling with non-existent BigInt ID (without real DB row) exercises the catch & enqueue block
-    const testId = `msg_nonexistent_${Date.now()}`;
-    const result = await flushTurnToDatabase({
-      assistantMessageId: "999999999999999",
-      assistantMessagePublicId: testId,
-      sessionId: "123",
-      userId: "456",
-      fullContent: "Draft content",
-      parts: [],
-      status: "completed",
-      promptTokens: 50,
-      completionTokens: 50,
-      updatedAt: new Date().toISOString(),
-    });
+  await test("4. Ended turn for a missing chat is dropped, not retried forever", async () => {
+    const turn = makeTurn("999999999999999");
+    await beginTurn(turn);
+    turn.assistant.status = "completed";
+    turn.assistant.content = "Draft content";
+    const result = await completeTurn(turn);
 
-    // Should gracefully report failure and enqueue in Redis pending flush set without throwing unhandled rejection
-    assert.equal(result.success, false);
-    assert.equal(result.enqueued, true);
+    // FK violation (no such chat) is permanent: the turn leaves Redis. If Postgres is
+    // unreachable instead, the turn stays queued for the flush worker.
+    assert.equal(result.stored, false);
+    const left = await getTurn(turn.assistant.publicId);
+    if (left) assert.ok(left.flushAttempts >= 1);
+  });
+
+  await test("5. Pending turns merge after stored messages; regenerations overlay", () => {
+    const stored = [
+      { id: "u1", role: "user", content: "hi", reasoning: null, parts: null, status: "completed", createdAt: "", updatedAt: "" },
+      { id: "a1", role: "assistant", content: "old", reasoning: null, parts: null, status: "completed", createdAt: "", updatedAt: "" },
+    ] as ChatMessageDto[];
+    const send = makeTurn("1");
+    const regen: PendingTurn = {
+      ...makeTurn("1"),
+      kind: "regenerate",
+      user: null,
+      assistant: { ...makeTurn("1").assistant, publicId: "a1", content: "new" },
+    };
+    const merged = mergePendingTurns(stored, [regen, send], "chat");
+    assert.deepEqual(merged.map((m) => m.id), ["u1", "a1", send.user!.publicId, send.assistant.publicId]);
+    assert.equal(merged[1].content, "new");
+    assert.equal(merged[1].status, "streaming");
+  });
+
+  await test("6. Live ledger buckets of an ended window read as zero", () => {
+    const start = new Date("2026-11-03T10:00:00Z");
+    const ledger: LiveLedger = {
+      month: { start: Date.UTC(2026, 10, 1), usd: 4, requests: 9 },
+      week: { start: Date.UTC(2026, 10, 2), usd: 2 },
+      fiveHour: { start: Date.UTC(2026, 10, 3, 10), usd: 1 },
+      day: { start: Date.UTC(2026, 10, 3), requests: 3 },
+      recent: [start.getTime() - 30_000, start.getTime() - 90_000],
+    };
+    const same = ledgerAt(ledger, start);
+    assert.equal(same.fiveHour.usd, 1);
+    assert.equal(same.recent.length, 1);
+
+    const nextDay = ledgerAt(ledger, new Date("2026-11-04T01:00:00Z"));
+    assert.equal(nextDay.month.usd, 4);
+    assert.equal(nextDay.week.usd, 2);
+    assert.equal(nextDay.fiveHour.usd, 0);
+    assert.equal(nextDay.day.requests, 0);
+  });
+
+  await test("7. Billing of completed vs stopped turns", () => {
+    const base = { promptTokens: 0, completionTokens: 0, generatedChars: 400, promptChars: () => 800 };
+    assert.deepEqual(finalTurnTokens({ ...base, completed: true }), { promptTokens: 0, completionTokens: 0 });
+    assert.deepEqual(finalTurnTokens({ ...base, completed: false }), { promptTokens: 200, completionTokens: 100 });
+    assert.equal(finalTurnTokens({ ...base, completed: false, generatedChars: 0 }), null);
+  });
+
+  await test("8. User memory prompt: framed as data, trimmed, points to 'list' for the rest", () => {
+    assert.equal(buildUserMemoryPrompt([]), null);
+
+    const note = (i: number, content: string) => ({
+      id: `n${i}`, title: `Note ${i}`, content, createdAt: "", updatedAt: "",
+    });
+    const prompt = buildUserMemoryPrompt([note(1, "Suka jawaban singkat\nPakai bahasa Indonesia"), note(2, "x".repeat(2000))]);
+    assert.ok(prompt);
+    assert.match(prompt, /not instructions/);
+    assert.match(prompt, /- Note 1: Suka jawaban singkat Pakai bahasa Indonesia/);
+    assert.match(prompt, /\(truncated\)/);
+
+    const many = buildUserMemoryPrompt(Array.from({ length: 30 }, (_, i) => note(i, "y".repeat(500))));
+    assert.ok(many);
+    assert.match(many, /more or longer notes exist/);
+    assert.ok(many.length < 8000);
   });
 
   console.log(`\nAll ${passed} Grace Period & Redis-First tests passed successfully! 🚀`);

@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth/session";
 import { ApiError, getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
-import { getUserQuotaWindows } from "@/lib/chat/quota";
+import { getUserQuotaWindows, toQuotaPayload } from "@/lib/chat/quota";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -13,23 +13,8 @@ export async function GET(request: Request) {
 
     const { user } = session;
     const windows = await getUserQuotaWindows(user.id, user.plan);
-    const msUntilReset = new Date(windows.monthly.resetAt).getTime() - Date.now();
-    const resetInDays = Math.max(1, Math.ceil(msUntilReset / (1000 * 60 * 60 * 24)));
 
-    return jsonSuccess(
-      {
-        quota: {
-          usedPercent: windows.monthly.usedPercent,
-          usedUsd: windows.monthly.usedUsd,
-          limitUsd: windows.monthly.limitUsd,
-          resetInDays,
-          resetAt: windows.monthly.resetAt,
-          requestCount: windows.monthly.requestCount,
-          windows,
-        },
-      },
-      { requestId }
-    );
+    return jsonSuccess({ quota: toQuotaPayload(windows) }, { requestId });
   } catch (err) {
     return jsonError(err, { requestId });
   }

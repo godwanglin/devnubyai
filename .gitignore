@@ -48,6 +48,8 @@ next-env.d.ts
 
 # telemetry & runtime logs
 /.logs/
+/.devnuby/.venv/
+/.devnuby/fonts/
 
 # local deploy rules
 DEPLOY_RULE.md

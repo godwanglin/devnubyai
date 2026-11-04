@@ -26,8 +26,18 @@ export function LoginCard() {
     }
   }, [toast, router]);
 
+  function safeNextPath(): string {
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+    return "/";
+  }
+
   function handleGoogleLogin() {
     setLoading(true);
+    const next = safeNextPath();
+    if (next !== "/") {
+      document.cookie = `devnuby_login_next=${encodeURIComponent(next)}; path=/; max-age=600; samesite=lax`;
+    }
     // Full navigation: the server sets state/PKCE cookies and redirects to Google
     // (a route handler, not a page, so client-side router.push does not apply)
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
@@ -52,8 +62,9 @@ export function LoginCard() {
         throw new Error(data.error?.message || t("login.loginFailed") || "Email atau kata sandi salah");
       }
       toast(t("login.loginSuccess") || "Login berhasil!");
+      const next = safeNextPath();
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      window.location.href = "/";
+      window.location.href = next;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("login.loginFailed") || "Login gagal";
       toast(msg);

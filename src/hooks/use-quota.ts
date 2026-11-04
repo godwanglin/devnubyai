@@ -43,6 +43,12 @@ export function refreshQuota(): Promise<void> {
   return inflight;
 }
 
+/** Applies a quota pushed by the server mid-stream (`data-quota` parts) without a fetch. */
+export function setQuotaSnapshot(next: UserQuota): void {
+  snapshot = next;
+  emit();
+}
+
 /** Quota for the signed-in user; fetched on first use when `enabled`. */
 export function useQuota(enabled = true) {
   const quota = useSyncExternalStore(subscribe, () => snapshot, () => null);

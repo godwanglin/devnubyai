@@ -8,6 +8,7 @@ import {
 import { invalidatePlansCache } from "@/lib/redis/cache-keys";
 import { FREE_PLAN_SLUG } from "@/lib/plans/effective-plan";
 import { invalidateResolvedModelCache } from "@/lib/chat/generate";
+import { clearModelAccessCache } from "@/lib/chat/model-access";
 import { IMAGE_CATALOG_CATEGORY } from "@/lib/images/settings";
 import type { ApiModelItem } from "@/app/api/v1/models/route";
 
@@ -194,6 +195,7 @@ export async function invalidateActiveCatalogCache(): Promise<void> {
   localPlanCatalogFallback.clear();
   try {
     invalidateResolvedModelCache();
+    clearModelAccessCache();
   } catch {}
   await Promise.allSettled([
     invalidateCacheKey(CATALOG_CACHE_KEY),

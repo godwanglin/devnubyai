@@ -21,7 +21,7 @@ export interface CandidateAttemptLogEntry {
 export interface AttemptLogParams {
   requestId: string;
   userId?: bigint | null;
-  messageId?: bigint | null;
+  messageId?: bigint | string | null;
   catalogModelId: bigint;
   catalogModelPublicId: string;
   inputPricePerMillion?: number;

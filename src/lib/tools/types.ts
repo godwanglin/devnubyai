@@ -17,6 +17,9 @@ export interface ToolParametersSchema {
 export interface ToolExecutionContext {
   userId: string;
   sessionId: string;
+  /** Internal ids, when the caller already has them (saves tools a lookup) */
+  userInternalId?: bigint;
+  sessionInternalId?: bigint;
   signal?: AbortSignal;
   model?: string;
   customConfig?: Record<string, unknown>;

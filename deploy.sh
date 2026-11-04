@@ -31,7 +31,7 @@ echo "[1/6] Fetching latest changes from GitHub..."
 git remote set-url origin https://github.com/godwanglin/devnubyai.git
 git fetch origin main
 git reset --hard origin/main
-git clean -fd -e .env -e DEPLOY_RULE.md
+git clean -fd -e .env -e DEPLOY_RULE.md -e .devnuby/.venv -e .devnuby/fonts
 
 if [ -f "/tmp/network-rules-deploy.bak" ]; then
     echo "Restoring dynamic network rules config..."
@@ -44,6 +44,19 @@ if [ -f package-lock.json ]; then
     npm ci --include=dev || npm install --include=dev
 else
     npm install --include=dev
+fi
+
+# 3b. Initialize & sync isolated Python virtual environment (.devnuby/.venv) for Skills Executor
+if command -v python3 >/dev/null 2>&1; then
+    echo " Ensuring isolated Python venv (.devnuby/.venv) for skills executor..."
+    if [ ! -f ".devnuby/.venv/bin/python" ]; then
+        python3 -m venv .devnuby/.venv || true
+    fi
+    if [ -f ".devnuby/.venv/bin/pip" ]; then
+        .devnuby/.venv/bin/pip install -q --disable-pip-version-check \
+            pypdf pdfplumber reportlab Pillow pypdfium2 \
+            openpyxl pandas python-pptx python-docx lxml defusedxml XlsxWriter || true
+    fi
 fi
 
 # 4. Generate Prisma Client & Sync DB
@@ -62,6 +75,11 @@ if command -v redis-cli >/dev/null 2>&1; then
     if [ -n "$REDIS_PASS" ]; then
         redis-cli -a "$REDIS_PASS" del "catalog:models:active" 2>/dev/null || true
         redis-cli -a "$REDIS_PASS" --scan --pattern "catalog:models:*" | xargs -r redis-cli -a "$REDIS_PASS" del 2>/dev/null || true
+        # Chat caches derived from Postgres (rebuilt on first use). Never flush chat:v2:*:
+        # those are turns not stored in Postgres yet.
+        for pattern in "quota:live:*" "chat:history:*" "cache:chat:session:*"; do
+            redis-cli -a "$REDIS_PASS" --scan --pattern "$pattern" | xargs -r redis-cli -a "$REDIS_PASS" del 2>/dev/null || true
+        done
     fi
 fi
 

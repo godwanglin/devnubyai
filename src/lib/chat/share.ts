@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ApiError } from "@/lib/api/response";
 import { uuidv7 } from "@/lib/api/uuidv7";
+import { invalidateChatSessionCache } from "./session-cache";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import {
   CACHE_KEYS,
@@ -102,6 +103,7 @@ export async function enableChatShare(
     },
   });
 
+  await invalidateChatSessionCache(userId, sessionPublicId);
   return {
     shareToken: updated.shareToken!,
     sharedAt: (updated.sharedAt ?? now).toISOString(),
@@ -128,6 +130,7 @@ export async function revokeChatShare(
   if (existing.shareToken) {
     await invalidateSharedChatCache(existing.shareToken);
   }
+  await invalidateChatSessionCache(userId, sessionPublicId);
 }
 
 /**

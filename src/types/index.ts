@@ -126,6 +126,8 @@ export interface UserProfile {
   planLabel: string;
   avatarUrl: string | null;
   quota?: UserQuota;
+  /** Admin-only: `chat.tool_debug` is on, so tool calls in chat expose their input/output. */
+  toolDebug?: boolean;
 }
 
 /** Response of /api/v1/me/quota, kept apart from /me so the account loads fast. */

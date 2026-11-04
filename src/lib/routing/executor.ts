@@ -19,7 +19,8 @@ export interface ExecuteWithFallbackOptions {
   request: Omit<GatewayExecutionRequest, "model" | "paramOverrides">;
   requestId?: string;
   userId?: bigint | null;
-  messageId?: bigint | null;
+  /** Assistant message (public id; the row may not be in Postgres yet) */
+  messageId?: bigint | string | null;
 }
 
 /**

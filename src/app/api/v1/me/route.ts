@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import { getRequestId, jsonError, jsonSuccess } from "@/lib/api/response";
 import { getCachedJson, setCachedJson } from "@/lib/redis/client";
 import { CACHE_KEYS, CACHE_TTL } from "@/lib/redis/cache-keys";
+import { getChatSettings } from "@/lib/chat/settings";
 
 export async function GET(request: Request) {
   const requestId = getRequestId(request);
@@ -16,9 +17,18 @@ export async function GET(request: Request) {
 
     const { user } = session;
 
-    const cachedPayload = await getCachedJson<{ user: unknown }>(CACHE_KEYS.userMe(user.id));
+    // Tool debug inspect is admin-only and read live (not part of the cached payload),
+    // so toggling it in /admin/settings applies without waiting for the /me cache to expire.
+    const toolDebug =
+      user.role === "admin"
+        ? await getChatSettings().then((s) => s.toolDebug).catch(() => false)
+        : false;
+
+    const cachedPayload = await getCachedJson<{ user: Record<string, unknown> }>(
+      CACHE_KEYS.userMe(user.id)
+    );
     if (cachedPayload) {
-      return jsonSuccess(cachedPayload, { requestId });
+      return jsonSuccess({ user: { ...cachedPayload.user, toolDebug } }, { requestId });
     }
 
     // Compute initials (e.g., "Aiden Lin" -> "AL")
@@ -47,7 +57,7 @@ export async function GET(request: Request) {
 
     await setCachedJson(CACHE_KEYS.userMe(user.id), responsePayload, CACHE_TTL.USER_ME);
 
-    return jsonSuccess(responsePayload, { requestId });
+    return jsonSuccess({ user: { ...responsePayload.user, toolDebug } }, { requestId });
   } catch (err) {
     console.error(`[ME_ERROR] [${requestId}]`, err);
     return jsonError(err, { requestId });

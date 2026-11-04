@@ -4,7 +4,8 @@ export interface RecordToolLogInput {
   requestId?: string;
   userId?: bigint;
   sessionId?: bigint;
-  messageId?: bigint;
+  /** Assistant message public id (the row is stored in Postgres only at turn end) */
+  messageId?: bigint | string;
   toolCallId: string;
   toolName: string;
   success: boolean;

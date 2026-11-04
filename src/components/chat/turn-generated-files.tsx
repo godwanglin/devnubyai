@@ -35,7 +35,24 @@ const FILE_TOOLS = new Set([
   "create_spreadsheet",
   "create_presentation",
   "generate_image",
+  "run_skill_script",
 ]);
+
+function isHelperSkillArtifact(filename: string, allFilenames: string[]): boolean {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".json")) return true;
+  const hasPrimaryDoc = allFilenames.some((f) =>
+    /\.(pdf|docx|dotx|xlsx|xlsm|pptx|potx|csv)$/i.test(f)
+  );
+  if (
+    hasPrimaryDoc &&
+    (/^(?:page[_-]?\d+|thumbnails?[_-]?\d*)\.(?:png|jpe?g)$/i.test(lower) ||
+      lower.includes("/page_"))
+  ) {
+    return true;
+  }
+  return false;
+}
 
 /** Running-state label per tool; keys match the ones in tool-activity.tsx. */
 const RUNNING_LABEL_KEY: Record<string, string> = {
@@ -56,9 +73,42 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
   const [previewImage, setPreviewImage] = useState<PreviewImageTarget | null>(null);
 
   const fileTools = React.useMemo(() => {
-    const list = (tools ?? []).filter(
+    const rawList = (tools ?? []).filter(
       (tool) => FILE_TOOLS.has(tool.name) && tool.state !== "error"
     );
+
+    // Expand `run_skill_script` generatedFiles into individual file items
+    const list: ToolActivity[] = [];
+    for (const tool of rawList) {
+      if (tool.name === "run_skill_script") {
+        const outObj =
+          tool.output && typeof tool.output === "object"
+            ? (tool.output as Record<string, unknown>)
+            : {};
+        const dataObj =
+          outObj.data && typeof outObj.data === "object"
+            ? (outObj.data as Record<string, unknown>)
+            : outObj;
+        const genFiles = Array.isArray(dataObj.generatedFiles)
+          ? (dataObj.generatedFiles as Array<Record<string, unknown>>)
+          : [];
+        const allNames = genFiles.map((gf) =>
+          String(gf.displayName || gf.filename || "")
+        );
+        for (let idx = 0; idx < genFiles.length; idx++) {
+          const gf = genFiles[idx];
+          const fname = String(gf.displayName || gf.filename || "");
+          if (!fname || isHelperSkillArtifact(fname, allNames)) continue;
+          list.push({
+            ...tool,
+            id: String(gf.id || `${tool.id}-gf-${idx}`),
+            output: gf,
+          });
+        }
+      } else {
+        list.push(tool);
+      }
+    }
     // Deduplicate by target filename or file id (keep the latest state)
     const seen = new Set<string>();
     const result: ToolActivity[] = [];
