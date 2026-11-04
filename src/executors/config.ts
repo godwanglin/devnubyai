@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import type { ExecutorConfig, SkillScriptRuntime } from "./types";
 
-const PROJECT_ROOT = path.resolve(process.cwd());
+// turbopackIgnore: these are runtime paths, not files to bundle. Without it the build
+// traces `.devnuby/.venv`, whose `bin/python` symlink points outside the project
+// (to the system interpreter) and fails the production build.
+const PROJECT_ROOT = path.resolve(/* turbopackIgnore: true */ process.cwd());
 const SKILLS_ROOT_DIR = path.resolve(PROJECT_ROOT, ".devnuby", "skills");
 const PYTHON_VENV_DIR = path.resolve(PROJECT_ROOT, ".devnuby", ".venv");
 const FONTS_DIR = path.resolve(PROJECT_ROOT, ".devnuby", "fonts");

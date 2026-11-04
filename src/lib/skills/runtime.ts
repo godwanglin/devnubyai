@@ -16,7 +16,8 @@ export interface DevnubySkillDetail extends DevnubySkillMeta {
   content: string;
 }
 
-const SKILLS_DIR = path.resolve(process.cwd(), ".devnuby", "skills");
+// Runtime path, not a bundle input (see src/executors/config.ts)
+const SKILLS_DIR = path.resolve(/* turbopackIgnore: true */ process.cwd(), ".devnuby", "skills");
 
 /**
  * Parses simple YAML-like frontmatter at the top of a SKILL.md file.
