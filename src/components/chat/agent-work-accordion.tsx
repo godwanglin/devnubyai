@@ -1,14 +1,21 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ChevronDown, Loader2, Wrench } from "lucide-react";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { cn } from "@/lib/cn";
 import type { CompactWebSource } from "@/lib/tools/compact-source";
 import { useI18n } from "@/providers/i18n-provider";
 import type { MessageSegment, ToolActivity } from "@/types";
+import type { StandaloneChartFigure } from "./code-execution-widget";
 import { ThinkingAccordion } from "./thinking-accordion";
 import { ToolActivityList } from "./tool-activity";
+import {
+  collectToolVisuals,
+  mergeLiveCharts,
+  ToolVisualGallery,
+  type LiveChartsMap,
+} from "./tool-visuals";
 
 export interface AgentWorkAccordionProps {
   segments: MessageSegment[];
@@ -28,6 +35,8 @@ export interface AgentWorkAccordionProps {
  * - Auto-collapses (`isOpen = false`) as soon as `isWorkActive` transitions to false
  *   (i.e. when the final answer begins streaming or the turn completes).
  * - Summarizes the work as `Worked for Xs (N tools)`.
+ * - Visual results (charts, generated images) are shown BELOW the drawer, so they stay
+ *   visible in the conversation flow when the work history is collapsed.
  */
 export function AgentWorkAccordion({
   segments,
@@ -62,6 +71,19 @@ export function AgentWorkAccordion({
   }, [segments, tools]);
 
   const [liveSec, setLiveSec] = useState<number>(persistedDurationSec);
+  const [liveChartsMap, setLiveChartsMap] = useState<LiveChartsMap>({});
+
+  const handleChartsChange = useCallback(
+    (toolCallId: string, nextCharts: StandaloneChartFigure[]) => {
+      setLiveChartsMap((prev) => mergeLiveCharts(prev, toolCallId, nextCharts));
+    },
+    []
+  );
+
+  const visuals = useMemo(
+    () => collectToolVisuals(tools, liveChartsMap, chatId),
+    [tools, liveChartsMap, chatId]
+  );
 
   useEffect(() => {
     if (isWorkActive) {
@@ -167,6 +189,7 @@ export function AgentWorkAccordion({
                     messageId={messageId}
                     chatId={chatId}
                     isMessageStreaming={isMessageStreaming}
+                    onChartsChange={handleChartsChange}
                   />
                 );
               }
@@ -195,6 +218,8 @@ export function AgentWorkAccordion({
           </div>
         </div>
       </div>
+
+      <ToolVisualGallery visuals={visuals} />
     </div>
   );
 }

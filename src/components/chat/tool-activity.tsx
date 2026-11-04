@@ -6,7 +6,6 @@ import {
   Hash, HelpCircle, Image as ImageIcon, Loader2, NotebookPen, Presentation,
   Terminal, Wrench, Sparkles,
 } from "lucide-react";
-import { ImagePreviewModal, type PreviewImageTarget } from "@/components/modals/image-preview-modal";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/providers/i18n-provider";
 import type { InteractiveQuizInput } from "@/lib/tools/interactive-quiz";
@@ -14,6 +13,12 @@ import type { ToolActivity } from "@/types";
 import { CodeExecutionWidget, type StandaloneChartFigure } from "./code-execution-widget";
 import { InteractiveQuizWidget } from "./interactive-quiz-widget";
 import { SearchActivityAccordion } from "./search-activity-accordion";
+import {
+  collectToolVisuals,
+  mergeLiveCharts,
+  ToolVisualGallery,
+  type LiveChartsMap,
+} from "./tool-visuals";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -22,6 +27,11 @@ interface ToolActivityListProps {
   messageId?: string;
   chatId?: string;
   isMessageStreaming?: boolean;
+  /**
+   * When set, live charts are reported to the parent and no gallery is rendered here —
+   * the parent (e.g. AgentWorkAccordion) shows the visuals outside its collapsible drawer.
+   */
+  onChartsChange?: (toolCallId: string, charts: StandaloneChartFigure[]) => void;
 }
 
 const isSearchTool = (tool: ToolActivity) =>
@@ -117,20 +127,6 @@ function ToolGlyph({ name, className }: { name?: string; className?: string }) {
   }
 }
 
-function extractPersistedCharts(output: unknown): StandaloneChartFigure[] {
-  if (!output || typeof output !== "object") return [];
-  const exec = (output as Record<string, unknown>).executionResult;
-  if (!exec || typeof exec !== "object") return [];
-  const charts = (exec as Record<string, unknown>).charts;
-  if (!Array.isArray(charts)) return [];
-  return charts
-    .filter((c): c is Record<string, unknown> => Boolean(c && typeof c === "object" && c.url))
-    .map((c, idx) => ({
-      url: String(c.url),
-      title: String(c.title || `Chart ${idx + 1}`),
-    }));
-}
-
 function extractDiffStats(tool: ToolActivity): { added: number; removed: number } | null {
   const output = (tool.output && typeof tool.output === "object" ? tool.output : {}) as Record<string, unknown>;
   const data = (output.data && typeof output.data === "object" ? output.data : output) as Record<string, unknown>;
@@ -179,41 +175,24 @@ export function ToolActivityList({
   messageId,
   chatId,
   isMessageStreaming = false,
+  onChartsChange,
 }: ToolActivityListProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
-  const [liveChartsMap, setLiveChartsMap] = useState<Record<string, StandaloneChartFigure[]>>({});
-  const [previewImage, setPreviewImage] = useState<PreviewImageTarget | null>(null);
+  const [liveChartsMap, setLiveChartsMap] = useState<LiveChartsMap>({});
 
-  const handleChartsChange = useCallback(
+  const handleLocalChartsChange = useCallback(
     (toolCallId: string, nextCharts: StandaloneChartFigure[]) => {
-      setLiveChartsMap((prev) => {
-        const current = prev[toolCallId];
-        if (
-          current &&
-          current.length === nextCharts.length &&
-          current.every((c, idx) => c.url === nextCharts[idx]?.url)
-        ) {
-          return prev;
-        }
-        return { ...prev, [toolCallId]: nextCharts };
-      });
+      setLiveChartsMap((prev) => mergeLiveCharts(prev, toolCallId, nextCharts));
     },
     []
   );
+  const handleChartsChange = onChartsChange ?? handleLocalChartsChange;
 
-  const standaloneCharts = useMemo(() => {
-    const out: StandaloneChartFigure[] = [];
-    for (const tool of tools) {
-      if (tool.name !== "execute_code") continue;
-      const fromLive = liveChartsMap[tool.id];
-      const charts = fromLive !== undefined ? fromLive : extractPersistedCharts(tool.output);
-      for (const ch of charts) {
-        if (ch.url) out.push(ch);
-      }
-    }
-    return out;
-  }, [tools, liveChartsMap]);
+  const standaloneVisuals = useMemo(
+    () => (onChartsChange ? [] : collectToolVisuals(tools, liveChartsMap, chatId)),
+    [onChartsChange, tools, liveChartsMap, chatId]
+  );
 
   const isRunning = (tools ?? []).some(isRunningTool);
 
@@ -383,32 +362,8 @@ export function ToolActivityList({
         ) : null}
       </div>
 
-      {/* Standalone Visual Charts from `execute_code` — rendered OUTSIDE the tool block */}
-      {standaloneCharts.length > 0 ? (
-        <div
-          className={cn(
-            "my-3.5 grid gap-3",
-            standaloneCharts.length > 1 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-          )}
-        >
-          {standaloneCharts.map((chart, idx) => (
-            <button
-              key={`${chart.url}-${idx}`}
-              type="button"
-              onClick={() => setPreviewImage({ url: chart.url, title: chart.title })}
-              className="block w-full max-w-[680px] rounded-[12px] border border-[var(--border)] bg-white p-2.5 overflow-hidden cursor-zoom-in transition-opacity hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-[var(--border)]"
-              aria-label={chart.title}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={chart.url}
-                alt={chart.title}
-                className="w-full max-h-[420px] object-contain mx-auto rounded-[6px]"
-              />
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {/* Standalone visuals (charts, generated images) — rendered OUTSIDE the tool block */}
+      <ToolVisualGallery visuals={standaloneVisuals} />
 
       {/* Standalone Interactive Quizzes — rendered OUTSIDE the tool block */}
       {quizTools.map((tool) => (
@@ -420,11 +375,6 @@ export function ToolActivityList({
           chatId={chatId}
         />
       ))}
-
-      <ImagePreviewModal
-        image={previewImage}
-        onClose={() => setPreviewImage(null)}
-      />
     </>
   );
 }

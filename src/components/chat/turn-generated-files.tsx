@@ -25,6 +25,7 @@ import {
 import { useI18n } from "@/providers/i18n-provider";
 import type { ToolActivity } from "@/types";
 import { renderSessionFileIcon } from "./chat-files-panel";
+import { generatedImageUrl } from "./tool-visuals";
 
 /** Tools whose output is a session file, rendered as a card under the reply. */
 const FILE_TOOLS = new Set([
@@ -132,12 +133,14 @@ export function TurnGeneratedFiles({ tools, chatId }: TurnGeneratedFilesProps) {
     window.dispatchEvent(new CustomEvent("devnuby:files-updated"));
   }, [fileTools]);
 
-  if (fileTools.length === 0) return null;
+  // Completed generated images are already shown inline (ToolVisualGallery); skip their card.
+  const cardTools = fileTools.filter((tool) => !generatedImageUrl(tool, chatId));
+  if (cardTools.length === 0) return null;
 
   return (
     <>
       <div className="mt-3.5 space-y-2">
-        {fileTools.map((tool) => (
+        {cardTools.map((tool) => (
           <GeneratedFileArtifactCard
             key={tool.id}
             tool={tool}
