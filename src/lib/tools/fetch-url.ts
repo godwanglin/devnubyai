@@ -4,10 +4,20 @@ import type {
   ToolExecutionResult,
 } from "./types";
 import { safeFetch, validateSafeUrl } from "./ssrf";
+import { extractYouTubeVideoId, parseTimestamp } from "./youtube/detect";
+import { loadYouTubeVideo, type YouTubeVideo } from "./youtube/fetch-video";
+import { sliceTranscript } from "./youtube/transcript";
+import { YtDlpError } from "./youtube/ytdlp";
+import { rememberFetchedVideo } from "@/lib/chat/redis-chat-state";
 
 export interface FetchUrlParams {
   url: string;
   maxChars?: number;
+  /**
+   * YouTube only: seconds (or "m:ss" / "h:mm:ss") to read the transcript from.
+   * The result says where it continues, so a long video is read in parts.
+   */
+  startAt?: number | string;
 }
 
 export interface FetchUrlData {
@@ -18,6 +28,41 @@ export interface FetchUrlData {
   title?: string;
   text: string;
   truncated: boolean;
+  /** Present when the URL is a YouTube video: metadata plus a transcript slice. */
+  video?: YouTubeVideoData;
+}
+
+/** What the model sees for a YouTube video. `savedFile` is the server copy to reuse. */
+export interface YouTubeVideoData {
+  kind: "video";
+  videoId: string;
+  title: string;
+  channel: string | null;
+  channelUrl: string | null;
+  uploadDate: string | null;
+  duration: string | null;
+  durationSeconds: number | null;
+  viewCount: number | null;
+  likeCount: number | null;
+  isLive: boolean;
+  thumbnail: string | null;
+  chapters: { start: string; title: string }[];
+  tags: string[];
+  description: string;
+  transcript: {
+    language: string;
+    source: "manual" | "auto";
+    /** `[m:ss] text` lines for this slice */
+    text: string;
+    fromSeconds: number;
+    /** Pass back as `startAt` to read the following part; null when this is the end */
+    nextStartAt: number | null;
+    totalChars: number;
+  } | null;
+  /** Server file holding the full video data; read it back instead of refetching */
+  savedFile: string | null;
+  /** True when served from the saved copy rather than YouTube */
+  fromSavedFile: boolean;
 }
 
 const MAX_CHARS_DEFAULT = 12_000;
@@ -73,16 +118,62 @@ async function readBodyCapped(res: Response, maxBytes: number): Promise<Uint8Arr
   return out;
 }
 
+const TEXT_CONTENT_TYPE = /^(?:text\/|application\/(?:json|ld\+json|xml|xhtml\+xml|rss\+xml|atom\+xml|javascript)|image\/svg\+xml)/i;
+
+/** True for a body that is not text: a known binary type, a PDF/ZIP signature, or NUL bytes up front. */
+function isBinaryBody(contentType: string, body: Uint8Array): boolean {
+  const head = body.subarray(0, 1024);
+  const signature = new TextDecoder("latin1").decode(head.subarray(0, 5));
+  if (signature.startsWith("%PDF") || signature.startsWith("PK\u0003\u0004")) return true;
+  if (TEXT_CONTENT_TYPE.test(contentType.trim())) return false;
+  // Unknown or generic types (application/octet-stream): look at the bytes
+  return head.includes(0);
+}
+
 function extractTitle(html: string): string | undefined {
   const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
   if (!m) return undefined;
   return m[1].replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined;
 }
 
+function toVideoData(video: YouTubeVideo, startAt: number, maxChars: number): YouTubeVideoData {
+  const slice = sliceTranscript(video.transcriptText, startAt, maxChars);
+  return {
+    kind: "video",
+    videoId: video.videoId,
+    title: video.title,
+    channel: video.channel,
+    channelUrl: video.channelUrl,
+    uploadDate: video.uploadDate,
+    duration: video.duration,
+    durationSeconds: video.durationSeconds,
+    viewCount: video.viewCount,
+    likeCount: video.likeCount,
+    isLive: video.isLive,
+    thumbnail: video.thumbnail,
+    chapters: video.chapters,
+    tags: video.tags,
+    // A continuation call only needs the transcript; the rest was in the first call
+    description: startAt > 0 ? "" : video.description,
+    transcript: video.transcript
+      ? {
+          ...video.transcript,
+          text: slice.text,
+          fromSeconds: slice.fromSeconds,
+          nextStartAt: slice.nextStartAt,
+          totalChars: video.transcriptText.length,
+        }
+      : null,
+    savedFile: video.savedFile,
+    fromSavedFile: video.cached,
+  };
+}
+
 export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
   name: "fetch_url",
   description:
-    "Fetches a public web page and returns its readable text content. Use to read documentation, articles, or any URL the user provides. SSRF-protected: private/loopback/internal IPs and localhost are blocked. Returns plain text (HTML tags stripped).",
+    "Fetches a public web page and returns its readable text content. Use to read documentation, articles, or any URL the user provides. SSRF-protected: private/loopback/internal IPs and localhost are blocked. Returns plain text (HTML tags stripped). " +
+    "YouTube video URLs (youtube.com/watch, youtu.be, /shorts/, /live/) instead return `video`: title, channel, upload date, duration, views, description, chapters and the full transcript as `[m:ss] text` lines (one subtitle track; none when the video has no subtitles). Long transcripts come in parts: call again with the same URL and `startAt` = `video.transcript.nextStartAt`. Repeat calls for the same video are served from the saved copy on the server, not YouTube.",
   parameters: {
     type: "object",
     properties: {
@@ -93,8 +184,14 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
       },
       maxChars: {
         type: "number",
-        description: "Maximum characters of text to return (default 12000, max 40000).",
+        description:
+          "Maximum characters of text to return (default 12000, max 40000; YouTube transcripts default to 40000).",
         default: MAX_CHARS_DEFAULT,
+      },
+      startAt: {
+        type: "string",
+        description:
+          "YouTube only: where to read the transcript from, in seconds or 'm:ss' (use video.transcript.nextStartAt from the previous call).",
       },
     },
     required: ["url"],
@@ -123,6 +220,53 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
     }
 
     const url = validation.parsedUrl.toString();
+
+    // YouTube: metadata + transcript through yt-dlp; the page HTML is the fallback
+    const videoId = extractYouTubeVideoId(url);
+    if (videoId) {
+      const maxVideoChars = Math.min(
+        Math.max(Number(params?.maxChars) || MAX_CHARS_CAP, 2_000),
+        MAX_CHARS_CAP
+      );
+      try {
+        const video = await loadYouTubeVideo({
+          videoId,
+          sessionPublicId: context.sessionId,
+          signal: context.signal,
+        });
+        const data = toVideoData(video, parseTimestamp(params?.startAt) ?? 0, maxVideoChars);
+        if (context.sessionInternalId !== undefined) {
+          void rememberFetchedVideo(context.sessionInternalId, {
+            videoId: video.videoId,
+            url: video.url,
+            title: video.title,
+            savedFile: video.savedFile,
+            hasTranscript: Boolean(video.transcript),
+          }).catch(() => {});
+        }
+        return {
+          success: true,
+          data: {
+            url,
+            finalUrl: video.url,
+            status: 200,
+            contentType: "video/youtube",
+            title: video.title,
+            text: data.transcript
+              ? "YouTube video: metadata in `video`, transcript in `video.transcript.text`."
+              : "YouTube video: metadata in `video`. This video has no subtitles, so there is no transcript.",
+            truncated: Boolean(data.transcript?.nextStartAt),
+            video: data,
+          },
+          metadata: { durationMs: Date.now() - startTime, provider: video.cached ? "yt-dlp-cache" : "yt-dlp" },
+        };
+      } catch (err) {
+        if (context.signal?.aborted) throw err;
+        if (!(err instanceof YtDlpError) && !(err instanceof SyntaxError)) throw err;
+        console.warn(`[FETCH_URL_YTDLP] ${videoId}: ${err.message}`);
+      }
+    }
+
     const maxChars = Math.min(
       Math.max(Number(params?.maxChars) || MAX_CHARS_DEFAULT, 500),
       MAX_CHARS_CAP
@@ -179,7 +323,20 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
         };
       }
 
-      const raw = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+      // A PDF, image or archive decoded as text is noise for the model (and its NUL
+      // bytes cannot be stored), so say what it is instead of returning it
+      if (isBinaryBody(contentType, buffer)) {
+        return {
+          success: false,
+          error: {
+            code: "INVALID_PARAM",
+            message: `The URL returned a binary file (${contentType.split(";")[0].trim()}), not a readable web page. Look for an HTML version of the page (e.g. the article page instead of its download link).`,
+          },
+          metadata: { durationMs: Date.now() - startTime },
+        };
+      }
+
+      const raw = new TextDecoder("utf-8", { fatal: false }).decode(buffer).replace(/\u0000/g, "");
       const isHtml = contentType.includes("text/html") || /<html/i.test(raw);
       const title = isHtml ? extractTitle(raw) : undefined;
       const text = isHtml ? stripTags(raw) : raw.trim();

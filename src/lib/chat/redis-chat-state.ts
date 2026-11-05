@@ -34,9 +34,24 @@ export interface ProducedFileInfo {
   createdAt: string;
 }
 
+/** A YouTube video `fetch_url` already read, so later turns reuse the saved copy. */
+export interface FetchedVideoInfo {
+  /** Canonical `https://www.youtube.com/watch?v=<id>` */
+  url: string;
+  videoId: string;
+  title: string;
+  /** Project-relative path of the saved JSON, or null when saving failed */
+  savedFile: string | null;
+  /** Whether a transcript was available */
+  hasTranscript: boolean;
+  fetchedAt: string;
+}
+
 export interface SessionWorkingMemory {
   sessionId: string;
   filesProduced: ProducedFileInfo[];
+  /** YouTube videos fetched in this chat, newest last */
+  fetchedVideos?: FetchedVideoInfo[];
   lastTurnSummary?: string;
   updatedAt: string;
 }
@@ -150,6 +165,32 @@ export async function getSessionMemoryFromRedis(
   sessionId: string | bigint
 ): Promise<SessionWorkingMemory | null> {
   return getCachedJson<SessionWorkingMemory>(sessionMemoryKey(sessionId));
+}
+
+const FETCHED_VIDEOS_CAP = 20;
+
+/**
+ * Records a YouTube video `fetch_url` read, so the next turn knows the transcript is
+ * already saved and does not fetch it again. One entry per video; a refetch replaces it.
+ */
+export async function rememberFetchedVideo(
+  sessionId: string | bigint,
+  video: { videoId: string; url: string; title: string; savedFile: string | null; hasTranscript: boolean }
+): Promise<void> {
+  const existing = await getSessionMemoryFromRedis(sessionId);
+  const without = (existing?.fetchedVideos ?? []).filter((v) => v.videoId !== video.videoId);
+  const fetchedVideos: FetchedVideoInfo[] = [
+    ...without,
+    {
+      url: video.url,
+      videoId: video.videoId,
+      title: video.title,
+      savedFile: video.savedFile,
+      hasTranscript: video.hasTranscript,
+      fetchedAt: new Date().toISOString(),
+    },
+  ].slice(-FETCHED_VIDEOS_CAP);
+  await saveSessionMemoryToRedis(sessionId, { fetchedVideos });
 }
 
 // ── Turn store ───────────────────────────────────────────────────────────────
@@ -315,10 +356,27 @@ function isPermanentDbError(err: unknown): boolean {
 }
 
 /**
+ * Postgres rejects NUL (U+0000) in text and jsonb (error 22P05), so one stray NUL, e.g.
+ * from a binary file a tool read as text, would keep the whole turn from ever being
+ * stored. Removes it from every string, deeply.
+ */
+function stripNul<T>(value: T): T {
+  if (typeof value === "string") return (value.includes("\u0000") ? value.replace(/\u0000/g, "") : value) as T;
+  if (Array.isArray(value)) return value.map(stripNul) as T;
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) out[key] = stripNul(item);
+    return out as T;
+  }
+  return value;
+}
+
+/**
  * Stores one ended turn in Postgres with a single transaction:
  * user message, assistant message, file links, session metadata and usage.
  */
-async function persistTurn(turn: PendingTurn, checkAlreadyBilled: boolean): Promise<bigint> {
+async function persistTurn(rawTurn: PendingTurn, checkAlreadyBilled: boolean): Promise<bigint> {
+  const turn = stripNul(rawTurn);
   const sessionId = BigInt(turn.sessionId);
   const userId = BigInt(turn.userId);
   const startedAt = new Date(turn.startedAt);

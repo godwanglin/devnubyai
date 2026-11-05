@@ -50,6 +50,10 @@ next-env.d.ts
 /.logs/
 /.devnuby/.venv/
 /.devnuby/fonts/
+# platform binaries (yt-dlp.exe on Windows, yt-dlp on Linux), installed per machine
+/.devnuby/bin/
+# transcripts saved by fetch_url, one folder per chat
+/.devnuby/fetch-cache/
 
 # local deploy rules
 DEPLOY_RULE.md

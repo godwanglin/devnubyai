@@ -20,6 +20,7 @@ import {
 import type { LiveLedger } from "@/lib/chat/live-quota";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
 import { CLIENT_ERROR_REQUEST_ID_PREFIX } from "@/lib/chat/client-error";
+import { classifyRequestFailure, pickFallbackModel } from "@/lib/chat/model-fallback";
 import { startStreamHub } from "@/lib/chat/stream-hub";
 import { getChatSettings } from "@/lib/chat/settings";
 import { recordToolExecutionLog } from "@/lib/chat/tool-log";
@@ -230,7 +231,7 @@ export function createChatGenerationStream(
     sessionPublicId,
     projectInternalId,
     turn,
-    resolvedModel,
+    resolvedModel: requestedModel,
     planLimits,
     reasoningEffort,
     forceWebSearch,
@@ -242,6 +243,10 @@ export function createChatGenerationStream(
     onFirstModelToken,
   } = options;
   const assistantMessagePublicId = turn.assistant.publicId;
+  // The model answering this turn: starts as the requested one and may move to another
+  // catalog model when a try fails before any output (see model-fallback.ts). Billing and
+  // the stored message follow whichever model is current.
+  let resolvedModel = requestedModel;
   // Live quota cursor; regenerations reuse the message id, so the turn start makes it unique
   const liveUsageId = `${assistantMessagePublicId}:${turn.startedAt}`;
 
@@ -471,6 +476,10 @@ export function createChatGenerationStream(
               "",
               "## 6. Fetching URLs (`fetch_url`)",
               "- When the user provides a URL or asks to read a specific web page/documentation, use `fetch_url`. Do NOT guess page contents.",
+              "- A YouTube video URL returns `video` instead of page text: title, channel, upload date, duration, view count, description, chapters and the transcript as `[m:ss] text` lines. Answer from that data and keep the timestamps when you quote what was said.",
+              "- When `video.transcript` is null the video has no subtitles: say so plainly and answer from the description and metadata only. Do not invent a transcript.",
+              "- A long transcript arrives in parts. When `video.transcript.nextStartAt` is not null and you still need more, call `fetch_url` again with the same URL and `startAt` set to that value.",
+              "- The result names `video.savedFile`, the server file holding the full data, and the session memory lists every video already read. A repeat `fetch_url` for the same URL reads that saved copy instead of YouTube, so never refetch a video just to look at it again.",
               "",
               "## 7. Persistent Memory (`memory_note`)",
               "- Use `memory_note` with action 'save' to remember user preferences/facts that should persist across sessions; 'list' to read notes in full (and their ids); 'delete' to remove. Only store facts the user explicitly wants retained.",
@@ -602,6 +611,10 @@ export function createChatGenerationStream(
         let interruptedAfterTools = false;
         let stepErrorRetries = 0;
         let unfulfilledPromiseNudges = 0;
+        // Request-level retry (admin settings): tries so far and models already used
+        const retrySettings = await getRoutingSettings();
+        let requestAttempt = 1;
+        const triedModels = new Set<string>([resolvedModel.publicId]);
 
         while (true) {
           if (combinedSignal.aborted) {
@@ -641,8 +654,10 @@ export function createChatGenerationStream(
           let stepReasoningStartTime: number | null = null;
           let stepReasoningDurationSec: number | null = null;
 
-          const textPartId = `text_${assistantMessagePublicId}_${stepIndex}`;
-          const reasoningPartId = `reasoning_${assistantMessagePublicId}_${stepIndex}`;
+          // A retried try gets fresh part ids: the failed one may already have opened them
+          const attemptSuffix = requestAttempt > 1 ? `_r${requestAttempt}` : "";
+          const textPartId = `text_${assistantMessagePublicId}_${stepIndex}${attemptSuffix}`;
+          const reasoningPartId = `reasoning_${assistantMessagePublicId}_${stepIndex}${attemptSuffix}`;
           let hasEmittedTextStart = false;
           let hasEndedText = false;
           let hasEmittedReasoningStart = false;
@@ -670,6 +685,7 @@ export function createChatGenerationStream(
           };
 
           let stepError: unknown = null;
+          let retryThisStep = false;
           try {
           for await (const event of gatewayStream) {
             if (combinedSignal.aborted) {
@@ -818,13 +834,53 @@ export function createChatGenerationStream(
               combinedSignal.aborted ||
               (err instanceof Error && err.message === "CLIENT_ABORTED") ||
               (err instanceof GatewayError && err.errorClass === "client_aborted");
-            if (isAbortErr || stepIndex === 0 || !hasSuccessfulToolResult(executedToolParts)) throw err;
-            console.warn(`[CHAT_STEP_RECOVERED] [${requestId}] step ${stepIndex}:`, err instanceof Error ? err.message : err);
-            stepError = err;
+
+            // Failed before writing anything (no text, no tool call): try the request again,
+            // on another catalog model when this one is out (cooldown, busy, quota)
+            const producedOutput =
+              turnContent.length > 0 || [...toolCallsByIndex.values()].some((tc) => tc.hasEmittedStart);
+            const retryKind = isAbortErr || producedOutput ? null : classifyRequestFailure(err);
+            if (retryKind && requestAttempt < retrySettings.requestRetryAttempts) {
+              const nextModelId =
+                retryKind === "switch"
+                  ? await pickFallbackModel({
+                      userId,
+                      tried: triedModels,
+                      needsTools: requestedModel.supportsTools,
+                      pattern: retrySettings.fallbackModelPattern,
+                    }).catch(() => null)
+                  : null;
+              const nextModel = nextModelId ? await resolveCatalogModel(nextModelId).catch(() => null) : null;
+              requestAttempt += 1;
+              console.warn(
+                `[CHAT_REQUEST_RETRY] [${requestId}] attempt ${requestAttempt}/${retrySettings.requestRetryAttempts} ` +
+                  `${resolvedModel.publicId} -> ${nextModel?.publicId ?? resolvedModel.publicId}:`,
+                err instanceof Error ? err.message : err
+              );
+              if (nextModel) {
+                resolvedModel = nextModel;
+                triedModels.add(nextModel.publicId);
+                turn.assistant.catalogModelId = nextModel.id.toString();
+                turn.assistant.catalogModelPublicId = nextModel.publicId;
+              }
+              writer.write({
+                type: "data-request-retry",
+                data: { attempt: requestAttempt, max: retrySettings.requestRetryAttempts },
+                transient: true,
+              });
+              retryThisStep = true;
+            } else {
+              if (isAbortErr || stepIndex === 0 || !hasSuccessfulToolResult(executedToolParts)) throw err;
+              console.warn(`[CHAT_STEP_RECOVERED] [${requestId}] step ${stepIndex}:`, err instanceof Error ? err.message : err);
+              stepError = err;
+            }
           }
 
           closeActiveReasoning();
           closeActiveText();
+
+          // Nothing from the failed try is kept: run the same step again
+          if (retryThisStep) continue;
 
           // Flush any remaining tool-input-delta chunks
           for (const tc of toolCallsByIndex.values()) {
@@ -1102,7 +1158,11 @@ export function createChatGenerationStream(
                 writer.write({
                   type: "tool-output-available",
                   toolCallId: effectiveCallId,
-                  output: result.data ?? {},
+                  // fetch_url's transcript is for the model only; the browser gets the title/url
+                  output:
+                    tool.name === "fetch_url"
+                      ? (sanitizeToolOutputForStorage(tool.name, result.data) ?? {})
+                      : (result.data ?? {}),
                   dynamic: true,
                   toolMetadata: {
                     durationSec: toolDurationSec,

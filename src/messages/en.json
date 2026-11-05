@@ -330,6 +330,7 @@
   },
   "message": {
     "errorTitle": "Something went wrong",
+    "requestAttempt": "Request attempt {attempt}/{max}",
     "errorRequestId": "Request ID",
     "errorRequestIdCopied": "Request ID copied",
     "copy": "Copy",
@@ -380,7 +381,8 @@
     "toolExecCommand": "Working in the workspace",
     "toolQuiz": "Interactive quiz",
     "toolCalculate": "Calculating {target}",
-    "toolFetchUrl": "Fetching {target}",
+    "toolFetchUrl": "Opening {target}",
+    "toolFetchUrlOpening": "Opening",
     "toolMemoryNote": "Memory note ({action})",
     "toolSearchPastChats": "Searched earlier chats: {target}",
     "toolsRunning": "Running {count} tools...",
@@ -1319,6 +1321,24 @@
       "deleteSuccess": "Log file {date} deleted successfully",
       "pagination": "Page {page} of {totalPages} ({total} entries)",
       "close": "Close"
+    },
+    "requestRetry": {
+      "title": "Retry Failed Requests",
+      "description": "When a reply fails before writing anything, the request is tried again. If the model is in cooldown, busy or out of quota, it moves to another catalog model.",
+      "unsaved": "Unsaved",
+      "loading": "Loading retry settings...",
+      "loadFailed": "Failed to load retry settings",
+      "saveFailed": "Failed to save retry settings",
+      "saved": "Retry settings saved.",
+      "attemptsLabel": "Total attempts per request",
+      "attemptsHint": "Includes the first try. The user sees \"Request attempt x/N\" while it retries. 1 turns retrying off.",
+      "attemptsInvalid": "Enter a whole number from 1 to 10.",
+      "patternLabel": "Preferred fallback models (regex)",
+      "patternHint": "Case-insensitive regex matched against catalog model ids. Matching models are tried first, e.g. 'auto' picks devnuby/auto. Leave empty to use the catalog order.",
+      "patternInvalid": "This is not a valid regular expression.",
+      "orderLabel": "Fallback order",
+      "orderHint": "Highlighted models match the pattern and go first. Only models in the user's plan, with tools when the chat needs them, and with a working route are used.",
+      "save": "Save Retry Settings"
     },
     "imageSettings": {
       "title": "Image Generation Model (generate_image tool)",

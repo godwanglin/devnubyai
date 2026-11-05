@@ -16,10 +16,11 @@ import { cn } from "@/lib/cn";
 import { useAccount } from "@/providers/account-provider";
 import { useI18n } from "@/providers/i18n-provider";
 import type { InteractiveQuizInput } from "@/lib/tools/interactive-quiz";
+import { getFaviconUrl } from "@/lib/tools/compact-source";
 import type { ToolActivity } from "@/types";
 import { CodeExecutionWidget, type StandaloneChartFigure } from "./code-execution-widget";
 import { InteractiveQuizWidget } from "./interactive-quiz-widget";
-import { SearchActivityAccordion } from "./search-activity-accordion";
+import { SearchActivityAccordion, SourceFavicon } from "./search-activity-accordion";
 import { ToolDebugDetails } from "./tool-debug-details";
 import {
   collectToolVisuals,
@@ -44,6 +45,22 @@ interface ToolActivityListProps {
 
 const isSearchTool = (tool: ToolActivity) =>
   tool.name === "web_search" || tool.name === "deep_search";
+
+const FETCH_TITLE_MAX = 48;
+
+/** The page a `fetch_url` call is opening: its title once known, otherwise the URL itself. */
+function fetchTarget(tool: ToolActivity): { label: string; favicon: string } {
+  const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
+  const output = (tool.output && typeof tool.output === "object" ? tool.output : {}) as Record<string, unknown>;
+  const video = (output.video && typeof output.video === "object" ? output.video : {}) as Record<string, unknown>;
+  const url = typeof output.finalUrl === "string" ? output.finalUrl : typeof input.url === "string" ? input.url : "";
+  const title = (typeof video.title === "string" && video.title) || (typeof output.title === "string" && output.title) || "";
+  const full = title || url;
+  return {
+    label: full.length > FETCH_TITLE_MAX ? `${full.slice(0, FETCH_TITLE_MAX - 1)}…` : full,
+    favicon: getFaviconUrl(url),
+  };
+}
 const isRunningTool = (tool: ToolActivity) =>
   tool.state === "running" || tool.state === "streaming";
 
@@ -172,7 +189,7 @@ function describeTool(tool: ToolActivity, t: Translate): string {
     case "calculate":
       return t("message.toolCalculate", { target: String(input.expression ?? "expr").slice(0, 40) });
     case "fetch_url":
-      return t("message.toolFetchUrl", { target: baseName(input.url, "url") });
+      return t("message.toolFetchUrl", { target: fetchTarget(tool).label || "url" });
     case "memory_note":
       return t("message.toolMemoryNote", { action: String(input.action ?? "") });
     case "search_past_chats":
@@ -459,18 +476,22 @@ export function ToolActivityList({
             />
           )}
 
-          <span
-            className={cn(
-              "transition-colors truncate max-w-[260px] sm:max-w-[440px]",
-              isRunning
-                ? "text-shimmer"
-                : failedCount > 0 && tools.length === 1
-                  ? "text-red-400/90"
-                  : cn("text-[var(--muted)]", canExpand && "group-hover:text-[var(--ink)]")
-            )}
-          >
-            {title}
-          </span>
+          {tools.length === 1 && tools[0].name === "fetch_url" ? (
+            <FetchUrlLabel tool={tools[0]} running={isRunning} failed={failedCount > 0} canExpand={canExpand} />
+          ) : (
+            <span
+              className={cn(
+                "transition-colors truncate max-w-[260px] sm:max-w-[440px]",
+                isRunning
+                  ? "text-shimmer"
+                  : failedCount > 0 && tools.length === 1
+                    ? "text-red-400/90"
+                    : cn("text-[var(--muted)]", canExpand && "group-hover:text-[var(--ink)]")
+              )}
+            >
+              {title}
+            </span>
+          )}
 
           {tools.length === 1 && (() => {
             const stats = extractDiffStats(tools[0]);
@@ -569,6 +590,39 @@ export function ToolActivityList({
   );
 }
 
+/** "Opening [favicon] Page title" for `fetch_url`: the URL while it runs, the page title once read. */
+function FetchUrlLabel({
+  tool,
+  running,
+  failed,
+  canExpand,
+}: {
+  tool: ToolActivity;
+  running: boolean;
+  failed: boolean;
+  canExpand: boolean;
+}) {
+  const { t } = useI18n();
+  const { label, favicon } = fetchTarget(tool);
+  const tone = running
+    ? "text-shimmer"
+    : failed
+      ? "text-red-400/90"
+      : cn("text-[var(--muted)]", canExpand && "group-hover:text-[var(--ink)]");
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 max-w-[260px] sm:max-w-[440px]">
+      <span className={cn("shrink-0 transition-colors", tone)}>{t("message.toolFetchUrlOpening")}</span>
+      <span
+        className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-white/[0.03] py-0.5 pl-1 pr-2"
+        title={label}
+      >
+        <SourceFavicon src={favicon} className="h-3.5 w-3.5" />
+        <span className={cn("truncate text-[12.5px] transition-colors", tone)}>{label || "url"}</span>
+      </span>
+    </span>
+  );
+}
+
 /** Borderless soft monochrome trace row for tools like read_file, write_file, vision_tool */
 function ToolActivityRow({
   tool,
@@ -610,9 +664,13 @@ function ToolActivityRow({
       ) : (
         <ToolGlyph name={tool.name} tool={tool} className="w-3.5 h-3.5 shrink-0 text-[var(--muted)]" />
       )}
-      <span className={cn("truncate", isError ? "text-red-400/90" : "text-[var(--muted)]")}>
-        {describeTool(tool, t)}
-      </span>
+      {tool.name === "fetch_url" ? (
+        <FetchUrlLabel tool={tool} running={isRunning} failed={isError} canExpand={canExpand} />
+      ) : (
+        <span className={cn("truncate", isError ? "text-red-400/90" : "text-[var(--muted)]")}>
+          {describeTool(tool, t)}
+        </span>
+      )}
       {(() => {
         const stats = extractDiffStats(tool);
         return stats ? <DiffBadge stats={stats} /> : null;

@@ -68,11 +68,29 @@ export async function getRecentMessagesForGateway(
   // Copies: the session-memory note must not leak into the cached entries
   const rawMapped = entries.map((e) => ({ ...e }));
 
-  // If session working memory has produced files that might not yet be in older turns, inject memory cue
+  // If session working memory has produced files or fetched videos that might not yet be in older turns, inject memory cue
+  const memoryLines: string[] = [];
   if (sessionMemory?.filesProduced?.length) {
-    const memoryNote = `[Active Session Working Memory: Produced files in this chat = ${sessionMemory.filesProduced
-      .map((f) => f.displayName || f.filename)
-      .join(", ")}]`;
+    memoryLines.push(
+      `[Active Session Working Memory: Produced files in this chat = ${sessionMemory.filesProduced
+        .map((f) => f.displayName || f.filename)
+        .join(", ")}]`
+    );
+  }
+  if (sessionMemory?.fetchedVideos?.length) {
+    memoryLines.push(
+      [
+        "[Active Session Working Memory: YouTube videos already read in this chat. Their full data is saved on the server; calling fetch_url with the same URL reads that saved copy (use startAt for later parts), so do not treat it as new research:",
+        ...sessionMemory.fetchedVideos.map(
+          (v) =>
+            `- "${v.title}" ${v.url} — saved file: ${v.savedFile ?? "not saved"}${v.hasTranscript ? "" : " (no transcript available)"}`
+        ),
+        "]",
+      ].join("\n")
+    );
+  }
+  if (memoryLines.length) {
+    const memoryNote = memoryLines.join("\n");
 
     // Attach to earliest system message or insert as a system reminder
     const firstSystem = rawMapped.find((m) => m.role === "system");

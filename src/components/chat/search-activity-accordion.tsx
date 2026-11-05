@@ -26,7 +26,7 @@ function hostOf(source: CompactWebSource): string {
   }
 }
 
-function SourceFavicon({ src, className }: { src?: string; className?: string }) {
+export function SourceFavicon({ src, className }: { src?: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return <Globe className={cn("shrink-0 text-[var(--muted)]", className)} aria-hidden="true" />;

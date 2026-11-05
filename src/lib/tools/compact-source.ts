@@ -121,6 +121,29 @@ export function sanitizeToolOutputForStorage(
     };
   }
 
+  if (toolName === "fetch_url") {
+    const data = rawOutput as {
+      url?: string;
+      finalUrl?: string;
+      title?: string;
+      status?: number;
+      truncated?: boolean;
+      video?: { videoId?: string; title?: string; duration?: string | null; savedFile?: string | null };
+    };
+    // A YouTube transcript is tens of thousands of characters: it stays in the saved
+    // server file and the model's context, never in the browser or the database
+    return {
+      url: data.url,
+      finalUrl: data.finalUrl,
+      title: data.video?.title ?? data.title,
+      status: data.status,
+      truncated: data.truncated,
+      video: data.video
+        ? { videoId: data.video.videoId, duration: data.video.duration, savedFile: data.video.savedFile }
+        : undefined,
+    };
+  }
+
   // interactive_quiz doesn't produce heavy output
   return rawOutput;
 }

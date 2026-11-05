@@ -330,6 +330,7 @@
   },
   "message": {
     "errorTitle": "Terjadi kendala",
+    "requestAttempt": "Percobaan permintaan {attempt}/{max}",
     "errorRequestId": "Request ID",
     "errorRequestIdCopied": "Request ID tersalin",
     "copy": "Salin",
@@ -380,7 +381,8 @@
     "toolExecCommand": "Mengerjakan di workspace",
     "toolQuiz": "Kuis interaktif",
     "toolCalculate": "Menghitung {target}",
-    "toolFetchUrl": "Membaca {target}",
+    "toolFetchUrl": "Membuka {target}",
+    "toolFetchUrlOpening": "Membuka",
     "toolMemoryNote": "Catatan memori ({action})",
     "toolSearchPastChats": "Mencari chat lama: {target}",
     "toolsRunning": "Menjalankan {count} alat...",
@@ -1319,6 +1321,24 @@
       "deleteSuccess": "File log {date} berhasil dihapus",
       "pagination": "Halaman {page} dari {totalPages} ({total} entri)",
       "close": "Tutup"
+    },
+    "requestRetry": {
+      "title": "Ulangi Permintaan yang Gagal",
+      "description": "Kalau balasan gagal sebelum menulis apa pun, permintaan dicoba lagi. Kalau model sedang cooldown, sibuk, atau kuotanya habis, permintaan pindah ke model katalog lain.",
+      "unsaved": "Belum Disimpan",
+      "loading": "Memuat pengaturan percobaan ulang...",
+      "loadFailed": "Gagal memuat pengaturan percobaan ulang",
+      "saveFailed": "Gagal menyimpan pengaturan percobaan ulang",
+      "saved": "Pengaturan percobaan ulang tersimpan.",
+      "attemptsLabel": "Total percobaan per permintaan",
+      "attemptsHint": "Termasuk percobaan pertama. User melihat \"Percobaan permintaan x/N\" selama diulang. Isi 1 untuk mematikan percobaan ulang.",
+      "attemptsInvalid": "Isi bilangan bulat dari 1 sampai 10.",
+      "patternLabel": "Model fallback yang diutamakan (regex)",
+      "patternHint": "Regex (tidak peka huruf besar/kecil) yang dicocokkan ke id model katalog. Model yang cocok dicoba lebih dulu, misalnya 'auto' memilih devnuby/auto. Kosongkan untuk memakai urutan katalog.",
+      "patternInvalid": "Ini bukan regular expression yang valid.",
+      "orderLabel": "Urutan fallback",
+      "orderHint": "Model yang ditandai cocok dengan pola dan dicoba lebih dulu. Hanya model yang ada di paket user, mendukung tools kalau chat membutuhkannya, dan punya route yang berfungsi yang dipakai.",
+      "save": "Simpan Pengaturan Percobaan Ulang"
     },
     "imageSettings": {
       "title": "Model Generator Gambar (tool generate_image)",

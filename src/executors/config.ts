@@ -10,6 +10,7 @@ const PROJECT_ROOT = path.resolve(/* turbopackIgnore: true */ process.cwd());
 const SKILLS_ROOT_DIR = path.resolve(PROJECT_ROOT, ".devnuby", "skills");
 const PYTHON_VENV_DIR = path.resolve(PROJECT_ROOT, ".devnuby", ".venv");
 const FONTS_DIR = path.resolve(PROJECT_ROOT, ".devnuby", "fonts");
+const BIN_DIR = path.resolve(PROJECT_ROOT, ".devnuby", "bin");
 const NODE_MODULES_DIR = path.resolve(PROJECT_ROOT, "node_modules");
 
 export const EXECUTOR_CONFIG: ExecutorConfig = {
@@ -98,6 +99,23 @@ export function resolvePythonExecutable(): string {
   }
 
   return isWin ? "python" : "python3";
+}
+
+/**
+ * Resolves the yt-dlp executable, or null when none is installed.
+ * Prioritizes:
+ * 1. `DEVNUBY_YTDLP_BIN` env variable if explicitly configured
+ * 2. `.devnuby/bin/yt-dlp.exe` (Windows) / `.devnuby/bin/yt-dlp` (Linux)
+ * 3. `yt-dlp` on PATH (returned as the bare name; spawn fails cleanly when missing)
+ */
+export function resolveYtDlpExecutable(): string {
+  const customBin = process.env.DEVNUBY_YTDLP_BIN?.trim();
+  if (customBin && fs.existsSync(customBin)) return customBin;
+
+  const local = path.join(BIN_DIR, os.platform() === "win32" ? "yt-dlp.exe" : "yt-dlp");
+  if (fs.existsSync(local)) return local;
+
+  return "yt-dlp";
 }
 
 /**
