@@ -1267,7 +1267,16 @@
       "description": "Inspect administrative mutation audit trails and live AI routing telemetry.",
       "subtabs": {
         "audit": "Admin Audit Trail",
-        "telemetry": "Routing Telemetry"
+        "telemetry": "Routing Telemetry",
+        "errors": "Chat Errors"
+      },
+      "errors": {
+        "searchPlaceholder": "Search by request id, error code or message...",
+        "loading": "Loading chat errors...",
+        "loadFailed": "Failed to load chat errors",
+        "empty": "No failed chats match this search.",
+        "clientSaw": "User saw",
+        "session": "Session"
       },
       "refresh": "Refresh",
       "searchPlaceholderAudit": "Search by action or entity ID...",

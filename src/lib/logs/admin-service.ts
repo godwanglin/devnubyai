@@ -68,6 +68,83 @@ export interface SanitizedRoutingAttemptDto {
   createdAt: string;
 }
 
+export interface ChatErrorTraceDto {
+  /** Assistant message id; the request id lives inside the trace itself */
+  messageId: string;
+  sessionId: string;
+  userName: string | null;
+  userEmail: string | null;
+  /** Short line the user saw in the chat bubble */
+  clientError: string;
+  /** The real failure: request id, class, message and stack */
+  trace: string;
+  errorCode: string | null;
+  modelName: string | null;
+  createdAt: string;
+}
+
+export const chatErrorQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(15),
+});
+
+export type ChatErrorQuery = z.infer<typeof chatErrorQuerySchema>;
+
+/**
+ * Failed turns whose real trace an admin can search. Matches the request id, the error
+ * code, the trace text and the friendly line the user saw.
+ */
+export async function listChatErrorTraces(query: ChatErrorQuery) {
+  const term = query.search?.trim();
+  const where: Prisma.ChatMessageWhereInput = {
+    status: "failed",
+    errorDetail: { not: null },
+    ...(term
+      ? {
+          OR: [
+            { errorDetail: { contains: term, mode: "insensitive" } },
+            { errorCode: { contains: term, mode: "insensitive" } },
+            { content: { contains: term, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, rows] = await Promise.all([
+    db.chatMessage.count({ where }),
+    db.chatMessage.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+      select: {
+        publicId: true,
+        content: true,
+        errorCode: true,
+        errorDetail: true,
+        createdAt: true,
+        catalogModel: { select: { displayName: true } },
+        session: { select: { publicId: true, user: { select: { name: true, email: true } } } },
+      },
+    }),
+  ]);
+
+  const items: ChatErrorTraceDto[] = rows.map((row) => ({
+    messageId: row.publicId,
+    sessionId: row.session.publicId,
+    userName: row.session.user.name,
+    userEmail: row.session.user.email,
+    clientError: row.content,
+    trace: row.errorDetail ?? "",
+    errorCode: row.errorCode,
+    modelName: row.catalogModel?.displayName ?? null,
+    createdAt: row.createdAt.toISOString(),
+  }));
+
+  return { items, total, page: query.page, pageSize: query.pageSize, totalPages: Math.ceil(total / query.pageSize) };
+}
+
 export const auditLogsQuerySchema = z.object({
   entityType: z.string().optional(),
   action: z.string().optional(),

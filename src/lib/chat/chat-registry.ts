@@ -44,6 +44,21 @@ function createEntry(chatId: string | null): Entry {
     onData: (part) => events.onData?.(holder.chatId, part as { type: string; data?: unknown }),
     onError: (error) => {
       if (holder.chatId) setActivity(holder.chatId, "done");
+      // A failed reply that wrote nothing would leave an empty bubble. The error text the
+      // server sends is the friendly line (the real trace stays in the database), so it
+      // becomes the message content until the next reload reads the stored one.
+      const text = error instanceof Error ? error.message.trim() : "";
+      if (text) {
+        const messages = chat.messages;
+        const last = messages[messages.length - 1];
+        const hasText = last?.role === "assistant" && last.parts.some((p) => p.type === "text" && p.text.trim());
+        if (last?.role === "assistant" && !hasText) {
+          chat.messages = [
+            ...messages.slice(0, -1),
+            { ...last, parts: [...last.parts, { type: "text", text, state: "done" }] },
+          ];
+        }
+      }
       events.onError?.(holder.chatId, error);
     },
     onFinish: ({ messages, isAbort, isError }) => {

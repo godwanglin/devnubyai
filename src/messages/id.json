@@ -1267,7 +1267,16 @@
       "description": "Pantau jejak audit mutasi admin dan telemetri eksekusi routing chat live.",
       "subtabs": {
         "audit": "Jejak Audit Admin",
-        "telemetry": "Telemetri Routing"
+        "telemetry": "Telemetri Routing",
+        "errors": "Error Chat"
+      },
+      "errors": {
+        "searchPlaceholder": "Cari berdasarkan request id, kode error, atau pesan...",
+        "loading": "Memuat error chat...",
+        "loadFailed": "Gagal memuat error chat",
+        "empty": "Tidak ada chat gagal yang cocok dengan pencarian ini.",
+        "clientSaw": "Yang dilihat user",
+        "session": "Sesi"
       },
       "refresh": "Muat Ulang",
       "searchPlaceholderAudit": "Cari berdasarkan aksi atau ID entitas...",

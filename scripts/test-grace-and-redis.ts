@@ -44,6 +44,7 @@ function makeTurn(sessionId: string): PendingTurn {
       parts: [],
       status: "streaming",
       errorCode: null,
+      errorDetail: null,
       catalogModelId: "1",
       catalogModelPublicId: "test-model",
       promptTokens: 0,

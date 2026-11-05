@@ -298,7 +298,12 @@ export function createChatGenerationStream(
       };
 
       // ── Turn state held in Redis until the turn is stored ──
-      const fillTurn = (status: TurnStatus, errorCode: string | null, blankContent = false) => {
+      const fillTurn = (
+        status: TurnStatus,
+        errorCode: string | null,
+        blankContent = false,
+        errorDetail: string | null = null
+      ) => {
         turn.assistant = {
           ...turn.assistant,
           content: blankContent ? "" : fullContent,
@@ -306,6 +311,8 @@ export function createChatGenerationStream(
           parts: executedToolParts,
           status,
           errorCode,
+          // The real trace stays server-side; `content` is the only text the user ever sees
+          errorDetail,
           promptTokens,
           completionTokens,
         };
@@ -1310,7 +1317,12 @@ export function createChatGenerationStream(
 
         // A stopped / failed stream that produced output is still billed (estimated
         // where the provider never reported usage); an upstream rate limit is not.
-        fillTurn(finalStatus, errorCode, isUpstreamRateLimit);
+        if (!isAbort && !fullContent.trim()) {
+          // An empty failed reply would render as a blank bubble. The user gets a short
+          // friendly line; the real trace is stored apart from it for the admin panel.
+          fullContent = clientErrorText(streamErr);
+        }
+        fillTurn(finalStatus, errorCode, isUpstreamRateLimit, isAbort ? null : realErrorTrace(streamErr, requestId));
         await finishTurn(
           isUpstreamRateLimit
             ? null
@@ -1330,17 +1342,10 @@ export function createChatGenerationStream(
           });
           writer.setOutcome({ status: "aborted" });
         } else {
-          let publicMessage = "The model is temporarily unavailable.";
-
-          if (streamErr instanceof ApiError) {
-            publicMessage = streamErr.message;
-          } else if (streamErr instanceof GatewayError) {
-            publicMessage = streamErr.message || "The model is temporarily unavailable.";
-          }
-
+          // The stream error is the only text the client gets; the trace never leaves the server
           writer.write({
             type: "error",
-            errorText: publicMessage,
+            errorText: clientErrorText(streamErr),
           });
           writer.setOutcome({ status: "failed", error: streamErr });
         }
@@ -1352,4 +1357,30 @@ export function createChatGenerationStream(
   });
 
   return startStreamHub(sessionPublicId, assistantMessagePublicId, source);
+}
+
+/** Short, safe line shown in the chat bubble. Never includes a stack, path, or upstream body. */
+function clientErrorText(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof GatewayError && err.errorClass === "rate_limited") {
+    return "Batas penggunaan model ini sudah tercapai. Coba lagi nanti.";
+  }
+  return "Maaf, terjadi kendala saat menjawab. Silakan coba lagi.";
+}
+
+/** The real failure, kept on the message row for the admin error search. */
+function realErrorTrace(err: unknown, requestId: string): string {
+  const lines = [`requestId: ${requestId}`];
+  if (err instanceof GatewayError) {
+    lines.push(`class: ${err.errorClass}`, err.httpStatus ? `http: ${err.httpStatus}` : "");
+  } else if (err instanceof ApiError) {
+    lines.push(`code: ${err.code}`, `http: ${err.status}`);
+  }
+  if (err instanceof Error) {
+    lines.push(err.message);
+    if (err.stack) lines.push(err.stack);
+  } else {
+    lines.push(String(err));
+  }
+  return lines.filter(Boolean).join("\n").slice(0, 8000);
 }

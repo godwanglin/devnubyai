@@ -68,6 +68,8 @@ export interface PendingAssistantMessage {
   parts: Record<string, unknown>[];
   status: TurnStatus;
   errorCode: string | null;
+  /** Real error trace of a failed turn; null otherwise. Never leaves the server. */
+  errorDetail: string | null;
   catalogModelId: string;
   catalogModelPublicId: string;
   promptTokens: number;
@@ -325,6 +327,7 @@ async function persistTurn(turn: PendingTurn, checkAlreadyBilled: boolean): Prom
     parts: a.parts.length > 0 ? (a.parts as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
     status: a.status,
     errorCode: a.errorCode,
+    errorDetail: a.errorDetail,
     promptTokens: a.promptTokens || null,
     completionTokens: a.completionTokens || null,
     catalogModelId: BigInt(a.catalogModelId),

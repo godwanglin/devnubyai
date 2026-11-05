@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { FileText, Activity } from "lucide-react";
+import { FileText, Activity, AlertTriangle } from "lucide-react";
 import { useI18n } from "@/providers/i18n-provider";
 import { AuditLogsView } from "./audit-logs-view";
 import { TelemetryLogsView } from "./telemetry-logs-view";
+import { ChatErrorLogsView } from "./chat-error-logs-view";
 
 export function LogsTab() {
   const { t } = useI18n();
-  const [activeSubtab, setActiveSubtab] = useState<"audit" | "telemetry">("audit");
+  const [activeSubtab, setActiveSubtab] = useState<"audit" | "telemetry" | "errors">("audit");
 
   return (
     <div className="space-y-4">
@@ -45,11 +46,30 @@ export function LogsTab() {
             <Activity className="w-3.5 h-3.5" />
             <span>{t("admin.logs.subtabs.telemetry")}</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubtab("errors")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-medium transition-all cursor-pointer ${
+              activeSubtab === "errors"
+                ? "bg-[var(--surface)] text-[var(--ink)] shadow-xs"
+                : "text-[var(--muted)] hover:text-[var(--ink)]"
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>{t("admin.logs.subtabs.errors")}</span>
+          </button>
         </div>
       </div>
 
       {/* Active Tab View */}
-      {activeSubtab === "audit" ? <AuditLogsView /> : <TelemetryLogsView />}
+      {activeSubtab === "audit" ? (
+        <AuditLogsView />
+      ) : activeSubtab === "telemetry" ? (
+        <TelemetryLogsView />
+      ) : (
+        <ChatErrorLogsView />
+      )}
     </div>
   );
 }
