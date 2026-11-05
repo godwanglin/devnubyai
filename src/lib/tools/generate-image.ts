@@ -39,7 +39,7 @@ export const generateImageTool: ToolDefinition<
 > = {
   name: "generate_image",
   description:
-    "Generates a high-quality visual AI image based on a descriptive prompt using connected OAuth image models (Gemini Flash Image & Grok Imagine) with automatic cross-account and cross-provider fallback. Supports custom aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), custom resolutions, and automated transparent background removal (produces clean PNG alpha channel for logos, stickers, and isolated objects). The image is stored in session storage and immediately rendered in chat.",
+    "Generates a high-quality visual AI image based on a descriptive prompt using the admin-configured image models (OpenAI GPT Image, Gemini Flash Image, Grok Imagine) with automatic cross-account, cross-provider and cross-model fallback. Supports custom aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), custom resolutions, and automated transparent background removal (produces clean PNG alpha channel for logos, stickers, and isolated objects). The image is stored in session storage and immediately rendered in chat.",
   parameters: {
     type: "object",
     properties: {

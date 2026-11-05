@@ -9,6 +9,7 @@ import { z } from "zod";
 
 const patchSchema = z.object({
   catalogModelId: z.string().trim().min(1),
+  fallbackModelIds: z.array(z.string().trim().min(1)).max(10).optional(),
 });
 
 export async function GET(request: Request) {
@@ -45,7 +46,11 @@ export async function PATCH(request: Request) {
       throw ApiError.badRequest("Invalid payload: 'catalogModelId' is required", parsed.error.format());
     }
 
-    const settings = await updateImageSettings(parsed.data.catalogModelId, adminUser.id);
+    const settings = await updateImageSettings(
+      parsed.data.catalogModelId,
+      adminUser.id,
+      parsed.data.fallbackModelIds ?? []
+    );
     return jsonSuccess({ settings }, { requestId });
   } catch (err) {
     return jsonError(err, { requestId });

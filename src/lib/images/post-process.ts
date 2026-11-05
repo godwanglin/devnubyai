@@ -154,7 +154,11 @@ export async function postProcessGeneratedImage(
   let mimeType: "image/png" | "image/jpeg" = "image/jpeg";
 
   if (options.transparentBackground) {
-    finalBuffer = await removeBackgroundViaSharp(finalBuffer);
+    // Upstream may have already drawn a real alpha channel (Codex `background: transparent`).
+    // Only run the chroma key when the image still has an opaque backdrop.
+    const { channels } = await sharp(finalBuffer).stats();
+    const alpha = channels[3];
+    if (!alpha || alpha.min >= 250) finalBuffer = await removeBackgroundViaSharp(finalBuffer);
     mimeType = "image/png";
   } else {
     // Standard JPEG output optimization

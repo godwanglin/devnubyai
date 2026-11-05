@@ -38,8 +38,9 @@ export class ImageConfigError extends Error {
 }
 
 /**
- * Ordered image routes from the catalog (catalog_models -> catalog_model_routes ->
- * upstream_models), with the same strategy, circuits and cooldowns as chat routing.
+ * Routes of the primary model first, then the fallback models' routes in the order the
+ * admin set. A model that appears twice keeps only its first occurrence. Each model's own
+ * strategy, circuits and cooldowns come from the same resolver chat routing uses.
  */
 async function resolveImageRoutes(): Promise<CandidateRoute[]> {
   const settings = await getImageSettings();
@@ -48,8 +49,21 @@ async function resolveImageRoutes(): Promise<CandidateRoute[]> {
       `Pengaturan '${IMAGE_CATALOG_SETTING_KEY}' belum diatur. Pilih model katalog pembuat gambar di /admin/settings.`
     );
   }
-  const resolved = await resolveCandidates(settings.catalogModelId);
-  return resolved.candidates;
+
+  const routes: CandidateRoute[] = [];
+  const seen = new Set<string>();
+  for (const publicId of [settings.catalogModelId, ...settings.fallbackModelIds]) {
+    if (seen.has(publicId)) continue;
+    seen.add(publicId);
+    try {
+      const resolved = await resolveCandidates(publicId);
+      routes.push(...resolved.candidates);
+    } catch (err) {
+      // A deleted or disabled fallback model must not sink the whole request
+      console.warn(`[Image Gen] Catalog model '${publicId}' skipped:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return routes;
 }
 
 async function prepareAuthHeaders(
@@ -67,6 +81,14 @@ async function prepareAuthHeaders(
       accessToken
     );
     headers = buildAntigravityHeaders(conn.id, projectId, gw.extraHeaders);
+  }
+  if (gw.oauthProvider === "openai") {
+    // Binds the request to this pool account; without it multi-account pools cross-bind
+    const pd = (conn.providerData ?? {}) as Record<string, unknown>;
+    const accountId = [pd.chatgptAccountId, pd.workspaceId, pd.accountId].find(
+      (v): v is string => typeof v === "string" && v.length > 0
+    );
+    if (accountId) headers["ChatGPT-Account-ID"] = accountId;
   }
   return headers;
 }
@@ -131,7 +153,7 @@ export async function executeImageGeneration(
           { accessToken, headers, baseUrl: gw.baseUrl },
           candidate.upstreamModelKey,
           prompt,
-          options.signal
+          options
         );
 
         // Post-process: resize & background removal
