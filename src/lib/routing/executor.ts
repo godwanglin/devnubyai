@@ -113,7 +113,9 @@ export async function* executeWithFallback(
       });
 
       for await (const event of stream) {
-        if (firstEventAt === null) {
+        // A usage report alone (Anthropic sends one before any content) is not output:
+        // a failure after it must still fall back to the next route
+        if (firstEventAt === null && event.type !== "usage") {
           firstEventAt = Date.now();
           markSuccess(candidate.gateway.id);
         }

@@ -4,6 +4,7 @@ import { Chat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { CLIENT_ERROR_REQUEST_ID_PREFIX } from "./client-error";
 import { messageErrorRequestIdMap } from "./client-mappers";
+import { clearRequestRetry, parseRequestRetryPart, setRequestRetry } from "./request-retry-store";
 import { chatTransport } from "./transport";
 
 /**
@@ -43,9 +44,16 @@ function createEntry(chatId: string | null): Entry {
   const holder = { chatId };
   const chat = new Chat<UIMessage>({
     transport: chatTransport,
-    onData: (part) => events.onData?.(holder.chatId, part as { type: string; data?: unknown }),
+    onData: (part) => {
+      const retry = parseRequestRetryPart(part as { type: string; data?: unknown });
+      if (retry && holder.chatId) setRequestRetry(holder.chatId, retry);
+      events.onData?.(holder.chatId, part as { type: string; data?: unknown });
+    },
     onError: (error) => {
-      if (holder.chatId) setActivity(holder.chatId, "done");
+      if (holder.chatId) {
+        setActivity(holder.chatId, "done");
+        clearRequestRetry(holder.chatId);
+      }
       // A failed reply that wrote nothing would leave an empty bubble. The error text the
       // server sends is the friendly line (the real trace stays in the database), so it
       // becomes the message content until the next reload reads the stored one.
@@ -68,7 +76,10 @@ function createEntry(chatId: string | null): Entry {
       events.onError?.(holder.chatId, error);
     },
     onFinish: ({ messages, isAbort, isError }) => {
-      if (holder.chatId) setActivity(holder.chatId, "done");
+      if (holder.chatId) {
+        setActivity(holder.chatId, "done");
+        clearRequestRetry(holder.chatId);
+      }
       events.onFinish?.(holder.chatId, { messages, isAbort, isError });
     },
   });
@@ -153,6 +164,8 @@ function clearActivity(chatId: string) {
 
 /** A generation started for this session (send, regenerate or reattach). */
 export function markWorking(chatId: string): void {
+  // A new request starts on its first try
+  clearRequestRetry(chatId);
   setActivity(chatId, "working");
 }
 

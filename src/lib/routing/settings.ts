@@ -29,6 +29,8 @@ const SETTING_KEYS = {
   cacheTtlSeconds: "routing.cache_ttl_seconds",
   version: "routing.version",
   defaultModel: "catalog.default_model",
+  requestRetryAttempts: "routing.request_retry_attempts",
+  fallbackModelPattern: "routing.fallback_model_pattern",
 } as const;
 
 const settingsSchema = z.object({
@@ -42,6 +44,13 @@ const settingsSchema = z.object({
   cacheTtlSeconds: z.number().int().min(0),
   version: z.number().int().min(0),
   defaultModel: z.string().min(1),
+  /** Total tries of one chat request (1 = no retry); shown to the user as "attempt x/N" */
+  requestRetryAttempts: z.number().int().min(1).max(10),
+  /**
+   * Regex (case-insensitive) of catalog model ids tried first when a request moves to
+   * another model, e.g. `auto` for `devnuby/auto`. Empty: no preference, catalog order.
+   */
+  fallbackModelPattern: z.string().max(200),
 });
 
 export type RoutingSettings = z.infer<typeof settingsSchema>;
@@ -114,6 +123,43 @@ export async function getRoutingSettings(options?: {
   cached = { settings, expiresAt: now + settings.cacheTtlSeconds * 1000 };
   await setCachedJson(REDIS_ROUTING_SETTINGS_KEY, settings, settings.cacheTtlSeconds);
   return settings;
+}
+
+export interface RequestRetrySettings {
+  requestRetryAttempts: number;
+  fallbackModelPattern: string;
+}
+
+/** Saves the chat request retry policy (admin panel) and drops the cached settings. */
+export async function updateRequestRetrySettings(
+  input: RequestRetrySettings,
+  userId?: bigint | null
+): Promise<RequestRetrySettings> {
+  const parsed = settingsSchema
+    .pick({ requestRetryAttempts: true, fallbackModelPattern: true })
+    .parse({ ...input, fallbackModelPattern: input.fallbackModelPattern.trim() });
+  if (parsed.fallbackModelPattern) {
+    try {
+      new RegExp(parsed.fallbackModelPattern, "i");
+    } catch {
+      throw new RoutingConfigError(`'${parsed.fallbackModelPattern}' is not a valid regular expression`);
+    }
+  }
+
+  await db.$transaction([
+    db.appSetting.upsert({
+      where: { settingKey: SETTING_KEYS.requestRetryAttempts },
+      create: { settingKey: SETTING_KEYS.requestRetryAttempts, value: parsed.requestRetryAttempts, updatedBy: userId ?? null },
+      update: { value: parsed.requestRetryAttempts, updatedBy: userId ?? null },
+    }),
+    db.appSetting.upsert({
+      where: { settingKey: SETTING_KEYS.fallbackModelPattern },
+      create: { settingKey: SETTING_KEYS.fallbackModelPattern, value: parsed.fallbackModelPattern, updatedBy: userId ?? null },
+      update: { value: parsed.fallbackModelPattern, updatedBy: userId ?? null },
+    }),
+  ]);
+  invalidateRoutingSettingsCache();
+  return parsed;
 }
 
 /**

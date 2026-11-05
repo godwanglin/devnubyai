@@ -14,6 +14,8 @@ const dummySettings: RoutingSettings = {
   cacheTtlSeconds: 60,
   version: 1,
   defaultModel: "gpt-5.6-terra",
+  requestRetryAttempts: 5,
+  fallbackModelPattern: "auto",
 };
 
 function makeCandidate(id: number, name: string, isPrimary: boolean, priority: number): CandidateRoute {

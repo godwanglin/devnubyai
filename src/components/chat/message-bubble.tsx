@@ -17,6 +17,7 @@ import { QuoteChip } from "./quote-chip";
 import { SourceMentionChips } from "./source-mention-chips";
 import { EditTargetChip, parseRequestEditMessage } from "./edit-target-chip";
 import { messageFeedbackMap } from "@/lib/chat/client-mappers";
+import { useRequestRetry } from "@/lib/chat/request-retry-store";
 import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import type { CompactWebSource } from "@/lib/tools/compact-source";
@@ -73,6 +74,8 @@ export const MessageBubble = memo(function MessageBubble({
 
   const hasContent = Boolean(message.content.trim());
   const hasActivity = Boolean(message.reasoning) || Boolean(message.toolCalls?.length);
+  // Retry of the running request ("attempt 2/5"); only the streaming reply shows it
+  const requestRetry = useRequestRetry(isStreaming && message.role === "assistant" ? chatId : undefined);
 
   useEffect(() => {
     const wasStreaming = prevStreamingRef.current;
@@ -387,6 +390,12 @@ export const MessageBubble = memo(function MessageBubble({
 
       {isStreaming ? (
         <div className="mt-2.5">
+          {requestRetry && !hasContent ? (
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/[0.07] px-2.5 py-1 text-[12px] text-amber-400">
+              <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
+              {t("message.requestAttempt", { attempt: requestRetry.attempt, max: requestRetry.max })}
+            </div>
+          ) : null}
           {message.isReasoningStreaming ? (
             <TypingIndicator state="thinking" size="md" showLabel={true} />
           ) : isToolPhase ? (

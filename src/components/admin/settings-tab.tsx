@@ -13,6 +13,7 @@ import { DatabasePoolConfigCard } from "./database-pool-config-card";
 import { NetworkRulesConfigCard } from "./network-rules-config-card";
 import { LegalSettingsCard } from "./legal-settings-card";
 import { ImageSettingsCard } from "./image-settings-card";
+import { RequestRetrySettingsCard } from "./request-retry-settings-card";
 import { SafetySettingsCard } from "./safety-settings-card";
 
 /** Sentinel for "no explicit model" (CustomSelect values are non-empty strings) */
@@ -236,6 +237,9 @@ export function SettingsTab() {
             </form>
           )}
         </div>
+
+        {/* Card 1b: Retry of failed chat requests and their fallback models */}
+        <RequestRetrySettingsCard />
 
         {/* Card 2: Database Connection Pool Config Card */}
         <DatabasePoolConfigCard />
