@@ -397,6 +397,7 @@
     "searchingTopic": "Searching \"{topic}\"",
     "searchedTheWeb": "Searched the web",
     "searchSourcesCount": "{count} sources",
+    "searchMoreSources": "{count} more",
     "skillLoadPdf": "Preparing PDF document format",
     "skillLoadPdfForms": "Preparing PDF form guidelines",
     "skillLoadDocx": "Preparing Word document format",

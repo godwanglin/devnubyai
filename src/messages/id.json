@@ -397,6 +397,7 @@
     "searchingTopic": "Mencari \"{topic}\"",
     "searchedTheWeb": "Mencari di web",
     "searchSourcesCount": "{count} sumber",
+    "searchMoreSources": "{count} lagi",
     "skillLoadPdf": "Menyiapkan format dokumen PDF",
     "skillLoadPdfForms": "Menyiapkan panduan formulir PDF",
     "skillLoadDocx": "Menyiapkan format dokumen Word",
