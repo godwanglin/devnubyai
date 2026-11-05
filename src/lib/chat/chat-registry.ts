@@ -2,7 +2,7 @@
 
 import { Chat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { CLIENT_ERROR_REQUEST_ID_PREFIX } from "./generate";
+import { CLIENT_ERROR_REQUEST_ID_PREFIX } from "./client-error";
 import { messageErrorRequestIdMap } from "./client-mappers";
 import { chatTransport } from "./transport";
 

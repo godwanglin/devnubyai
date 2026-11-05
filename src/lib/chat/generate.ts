@@ -19,6 +19,7 @@ import {
 } from "@/lib/chat/quota";
 import type { LiveLedger } from "@/lib/chat/live-quota";
 import { registerStream, unregisterStream } from "@/lib/chat/active-streams";
+import { CLIENT_ERROR_REQUEST_ID_PREFIX } from "@/lib/chat/client-error";
 import { startStreamHub } from "@/lib/chat/stream-hub";
 import { getChatSettings } from "@/lib/chat/settings";
 import { recordToolExecutionLog } from "@/lib/chat/tool-log";
@@ -1359,12 +1360,6 @@ export function createChatGenerationStream(
 
   return startStreamHub(sessionPublicId, assistantMessagePublicId, source);
 }
-
-/**
- * Marks the request id inside the stream error text. The client splits it back off and shows
- * it on the error card; the stored message keeps only the friendly line.
- */
-export const CLIENT_ERROR_REQUEST_ID_PREFIX = "request-id: ";
 
 /** Short, safe line shown in the chat bubble. Never includes a stack, path, or upstream body. */
 function clientErrorText(err: unknown): string {
