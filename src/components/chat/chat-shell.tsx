@@ -280,11 +280,6 @@ export function ChatShell() {
     [currentProject, currentProjectId]
   );
 
-  const currentModelId =
-    models.length === 0 || models.some((m) => m.id === storedModelId && !m.isLocked)
-      ? storedModelId
-      : (models.find((m) => !m.isLocked)?.id ?? models[0]?.id ?? storedModelId);
-
   // A session created from the home page, until the URL has moved to /c/<id>
   const [pendingChatId, setPendingChatId] = useState<string | null>(null);
   // The URL now names a chat (the new one, or another the user opened): no longer needed
@@ -474,6 +469,44 @@ export function ChatShell() {
     }
     return null;
   }, [activeChatId, sessions, fetchedSessionMeta]);
+
+  // Each chat keeps its own model (stored on the session); the saved preference is
+  // only the default for new chats
+  const preferredModelId = (activeChatId && activeSession?.model) || storedModelId;
+  const currentModelId =
+    models.length === 0 || models.some((m) => m.id === preferredModelId && !m.isLocked)
+      ? preferredModelId
+      : (models.find((m) => !m.isLocked)?.id ?? models[0]?.id ?? preferredModelId);
+
+  const handleModelChange = useCallback(
+    (modelId: string) => {
+      if (!activeChatId) {
+        setModelId(modelId);
+        return;
+      }
+      const chatId = activeChatId;
+      const previous = activeSession?.model ?? "";
+      const apply = (model: string) => {
+        setSessions((prev) => prev.map((s) => (s.id === chatId ? { ...s, model } : s)));
+        setFetchedSessionMeta((prev) => (prev && prev.id === chatId ? { ...prev, model } : prev));
+      };
+      apply(modelId);
+      fetch(`/api/v1/chats/${chatId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelId }),
+        credentials: "same-origin",
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to change model");
+        })
+        .catch(() => {
+          apply(previous);
+          toast(t("toast.actionFailed"));
+        });
+    },
+    [activeChatId, activeSession?.model, setModelId, setSessions, setFetchedSessionMeta, toast, t]
+  );
 
   const {
     renamingTarget,
@@ -947,7 +980,7 @@ export function ChatShell() {
       onStop={handleStop}
       disabled={isStreamingOrSubmitted}
       currentModelId={currentModelId}
-      onModelChange={setModelId}
+      onModelChange={handleModelChange}
       reasoningLevel={reasoningLevel}
       onReasoningChange={setReasoningLevel}
     />

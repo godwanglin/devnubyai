@@ -7,6 +7,7 @@ import { getUnlockedChatSession, listChatMessages, getRecentMessagesForGateway }
 import { assertUserQuota } from "@/lib/chat/quota";
 import { claimGenerationSlot } from "@/lib/chat/concurrency";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
+import { invalidateChatSessionCache } from "@/lib/chat/session-cache";
 import { createChatGenerationStream, resolveCatalogModel } from "@/lib/chat/generate";
 import { userHistoryContent } from "@/lib/chat/gateway-history";
 import { beginTurn, type PendingTurn } from "@/lib/chat/redis-chat-state";
@@ -100,6 +101,14 @@ export async function POST(request: Request, context: RouteContext) {
     timer.mark("quota");
     await assertUserModelAccess(user.id, resolvedModel.id, user);
     timer.mark("access");
+
+    // The chat keeps the model it was last sent with (per-chat model lock); off the hot path
+    if (session.catalogModelId !== resolvedModel.id) {
+      void db.chatSession
+        .update({ where: { id: session.id }, data: { catalogModelId: resolvedModel.id } })
+        .then(() => invalidateChatSessionCache(user.id, session.publicId))
+        .catch(() => {});
+    }
 
     // Cap concurrent generations per plan before the turn starts
     releaseSlot = await claimGenerationSlot(user.id, quota.maxParallelRequests);
