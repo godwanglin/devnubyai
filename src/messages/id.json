@@ -87,7 +87,9 @@
     "liveRunning": "Menyusun dokumen...",
     "liveRendering": "Pratinjau langsung",
     "liveError": "Dokumen gagal dibuat",
-    "liveShowingLast": "Versi terakhir",
+    "liveDrafting": "Draf langsung dari kode yang sedang ditulis",
+    "liveTabDraft": "Draf",
+    "liveTabCode": "Kode",
     "liveSourceTitle": "Kode yang sedang ditulis",
     "liveWaiting": "Menunggu isi dokumen...",
     "toggleThumbnails": "Pratinjau halaman",
@@ -558,6 +560,19 @@
     "deleteAll": "Hapus semua obrolan",
     "deleteAllDesc": "Hapus seluruh riwayat percakapan dan pesan secara permanen",
     "deleteAllBtn": "Hapus semua"
+  },
+  "toolDebug": {
+    "running": "berjalan…",
+    "timeout": "waktu habis",
+    "exit": "exit {code}",
+    "input": "Masukan",
+    "output": "Keluaran",
+    "files": "file: {list}",
+    "inputFiles": "masukan: {list}",
+    "json": "json: {list}",
+    "disk": "disk {used} / {quota} MB",
+    "skill": "skill {name}",
+    "moreChars": "… ({count} karakter lagi)"
   },
   "usage": {
     "title": "Penggunaan & Kuota",

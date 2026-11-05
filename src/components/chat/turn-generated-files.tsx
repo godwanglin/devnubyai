@@ -29,7 +29,7 @@ import {
 } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { ToolActivity } from "@/types";
-import { renderSessionFileIcon } from "./chat-files-panel";
+import { renderSessionFileIcon } from "./session-file-row";
 import { generatedImageUrl } from "./tool-visuals";
 
 /** Tools whose output is a session file, rendered as a card under the reply. */

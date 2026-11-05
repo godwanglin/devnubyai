@@ -19,8 +19,12 @@ export interface LiveDocumentState {
   filename: string;
   /** Code / content streaming in (tail shown while nothing is rendered yet) */
   source: string;
+  /** The call's (partial) input, for the page-shaped draft */
+  input: unknown;
   /** Latest version written by the running script, served from the workspace */
   preview: SessionFileItem | null;
+  /** The preview is this call's own output (not the previous version kept during a revision) */
+  previewIsLive: boolean;
   error?: string;
 }
 
@@ -155,13 +159,22 @@ export function stepLiveDocument(params: {
       current?.preview ??
       (lastFinal && filename && lastFinal.displayName.toLowerCase() === filename.toLowerCase() ? lastFinal : null);
     return {
-      live: { toolCallId: build.id, toolName: build.name, phase, filename, source, preview: previous },
+      live: {
+        toolCallId: build.id,
+        toolName: build.name,
+        phase,
+        filename,
+        source,
+        input: build.input,
+        preview: previous,
+        previewIsLive: false,
+      },
     };
   }
 
   const nextPhase = current.phase === "rendering" ? "rendering" : phase;
-  if (current.filename === filename && current.source === source && current.phase === nextPhase) return null;
-  return { live: { ...current, filename, source, phase: nextPhase } };
+  if (current.filename === filename && current.source === source && current.phase === nextPhase && current.input === build.input) return null;
+  return { live: { ...current, filename, source, input: build.input, phase: nextPhase } };
 }
 
 /** A previewable file item for a workspace version announced by the server. */

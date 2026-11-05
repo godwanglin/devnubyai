@@ -87,7 +87,9 @@
     "liveRunning": "Building the document...",
     "liveRendering": "Live preview",
     "liveError": "The document could not be created",
-    "liveShowingLast": "Latest version",
+    "liveDrafting": "Live draft from the code being written",
+    "liveTabDraft": "Draft",
+    "liveTabCode": "Code",
     "liveSourceTitle": "Code being written",
     "liveWaiting": "Waiting for the document content...",
     "toggleThumbnails": "Page thumbnails",
@@ -558,6 +560,19 @@
     "deleteAll": "Delete all chats",
     "deleteAllDesc": "Permanently clear your entire conversation history and messages",
     "deleteAllBtn": "Delete all"
+  },
+  "toolDebug": {
+    "running": "running…",
+    "timeout": "timeout",
+    "exit": "exit {code}",
+    "input": "Input",
+    "output": "Output",
+    "files": "files: {list}",
+    "inputFiles": "input: {list}",
+    "json": "json: {list}",
+    "disk": "disk {used} / {quota} MB",
+    "skill": "skill {name}",
+    "moreChars": "… ({count} more chars)"
   },
   "usage": {
     "title": "Usage & Quota",

@@ -12,7 +12,7 @@ import { formatFileSize, getExtensionLabel } from "@/lib/files/policy";
 import { openFileInRightPanel, withCacheBuster } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { MessageAttachment } from "@/types";
-import { renderSessionFileIcon } from "./chat-files-panel";
+import { renderSessionFileIcon } from "./session-file-row";
 
 export interface MessageAttachmentsProps {
   attachments: MessageAttachment[];
