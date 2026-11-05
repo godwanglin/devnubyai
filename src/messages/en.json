@@ -90,6 +90,7 @@
     "liveDrafting": "Live draft from the code being written",
     "liveTabDraft": "Draft",
     "liveTabCode": "Code",
+    "livePreparing": "Preparing preview...",
     "liveSourceTitle": "Code being written",
     "liveWaiting": "Waiting for the document content...",
     "toggleThumbnails": "Page thumbnails",

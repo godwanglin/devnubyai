@@ -56,8 +56,9 @@ export function LiveDraftView({ draft }: { draft: DraftDocument }) {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
+      // Small changes (a scrollbar showing up) do not rescale the pages
       const width = entries[0]?.contentRect.width ?? 0;
-      setContainerWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
+      setContainerWidth((prev) => (Math.abs(prev - width) < 24 ? prev : width));
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -69,7 +70,8 @@ export function LiveDraftView({ draft }: { draft: DraftDocument }) {
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   });
 
-  const scale = containerWidth > 0 ? Math.min(MAX_SCALE, Math.max(MIN_SCALE, (containerWidth - 32) / widestPage(draft.sections))) : 0;
+  const rawScale = containerWidth > 0 ? (containerWidth - 32) / widestPage(draft.sections) : 0;
+  const scale = rawScale > 0 ? Math.round(Math.min(MAX_SCALE, Math.max(MIN_SCALE, rawScale)) * 100) / 100 : 0;
   const caret = caretTarget(draft);
 
   return (
@@ -79,7 +81,8 @@ export function LiveDraftView({ draft }: { draft: DraftDocument }) {
         const el = e.currentTarget;
         stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD;
       }}
-      className="relative flex-1 min-h-0 overflow-auto bg-[var(--surface)] px-4 py-4"
+      style={{ scrollbarGutter: "stable" }}
+      className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--surface)] px-4 py-4"
     >
       {scale > 0
         ? draft.sections.map((section, s) => {

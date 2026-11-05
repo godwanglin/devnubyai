@@ -70,6 +70,19 @@ export function ThinkingAccordion({ content, durationSec, isStreaming }: Thinkin
     }
   }, [isStreaming]);
 
+  // While thinking streams, the capped box follows the newest text unless the user
+  // scrolled up inside it to read
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  }
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && isStreaming && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [content, isStreaming]);
+
   function handleToggle() {
     userInteractedRef.current = true;
     setIsOpen((prev) => !prev);
@@ -118,7 +131,12 @@ export function ThinkingAccordion({ content, durationSec, isStreaming }: Thinkin
         )}
       >
         <div className="overflow-hidden">
-          <div className="mt-1.5 ml-[7px] pl-4 border-l border-[var(--border)]">
+          {/* Long thoughts scroll inside a capped box instead of filling the chat */}
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="mt-1.5 ml-[7px] pl-4 pr-2 border-l border-[var(--border)] max-h-[280px] overflow-y-auto overscroll-contain"
+          >
             <div className="prose-chat thinking-prose text-[13.5px] leading-relaxed text-[var(--muted)] [&_*]:!text-[var(--muted)]">
               <MarkdownRenderer content={content} />
             </div>

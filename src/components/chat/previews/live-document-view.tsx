@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { AlertCircle, Code2, FileText, Loader2 } from "lucide-react";
+import { Code2, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useLiveDraft } from "@/hooks/use-live-draft";
-import { cn } from "@/lib/cn";
 import type { LiveDocumentState } from "@/lib/chat/live-document";
+import type { DraftDocument } from "@/lib/live-draft";
 import { useI18n } from "@/providers/i18n-provider";
 import { renderSessionFileIcon } from "../session-file-row";
 import { FilePreviewSurface } from "./file-preview-surface";
@@ -14,12 +13,26 @@ import { LiveDraftView } from "./live-draft/live-draft-view";
 
 const SOURCE_TAIL_LINES = 400;
 
+/** A failed attempt is not shown: the AI retries, and the panel just keeps "building". */
 const PHASE_LABEL_KEY: Record<LiveDocumentState["phase"], string> = {
   writing: "chatFiles.liveWriting",
   running: "chatFiles.liveRunning",
   rendering: "chatFiles.liveRendering",
-  error: "chatFiles.liveError",
+  error: "chatFiles.liveRunning",
 };
+
+/** Blank page with a spinner while the first draft is not ready yet. */
+function DraftLoading() {
+  const { t } = useI18n();
+  return (
+    <div className="flex-1 min-h-0 overflow-hidden bg-[var(--surface)] px-4 py-4" style={{ scrollbarGutter: "stable" }}>
+      <div className="mx-auto flex aspect-[210/297] w-full max-w-[640px] flex-col items-center justify-center gap-3 rounded-[3px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.35),0_8px_24px_rgba(0,0,0,0.25)]">
+        <Loader2 className="h-6 w-6 animate-spin text-[#94a3b8]" />
+        <span className="text-[12px] text-[#64748b]">{t("chatFiles.livePreparing")}</span>
+      </div>
+    </div>
+  );
+}
 
 function SourceTail({ source }: { source: string }) {
   const { t } = useI18n();
@@ -56,6 +69,7 @@ function SourceTail({ source }: { source: string }) {
   );
 }
 
+
 /** Files panel header while a document is being built: its icon, name and a Live badge. */
 export function LiveDocumentTitle({ live }: { live: LiveDocumentState }) {
   const { t } = useI18n();
@@ -64,14 +78,7 @@ export function LiveDocumentTitle({ live }: { live: LiveDocumentState }) {
     <>
       {renderSessionFileIcon({ extension: name.split(".").pop() ?? "", isImage: false, mimeType: "" })}
       <h2 className="text-[14px] font-semibold text-[var(--ink)] truncate">{name}</h2>
-      <span
-        className={cn(
-          "inline-flex items-center px-1.5 py-0.5 rounded-[5px] text-[10.5px] font-semibold uppercase tracking-wide shrink-0",
-          live.phase === "error"
-            ? "bg-red-500/10 text-red-400 border border-red-500/30"
-            : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30"
-        )}
-      >
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[5px] text-[10.5px] font-semibold uppercase tracking-wide shrink-0 bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
         {t("chatFiles.liveBadge")}
       </span>
     </>
@@ -79,41 +86,59 @@ export function LiveDocumentTitle({ live }: { live: LiveDocumentState }) {
 }
 
 /**
- * Files panel body while a document is being built: a page-shaped live draft drawn from
- * the code as the AI writes it (or the code itself), then every real version the script
- * writes, until the final file replaces this view.
+ * Files panel body while a document is being built: the page-shaped live draft drawn
+ * from the code as the AI writes it (a loading page until the first one is ready), then
+ * every real version the script writes, until the final file replaces this view.
+ * Failed attempts and broken drafts never show here: the panel keeps loading instead.
  */
-export function LiveDocumentView({ live }: { live: LiveDocumentState }) {
+export function LiveDocumentView({
+  live,
+  draft,
+  draftVersion,
+}: {
+  live: LiveDocumentState;
+  draft: DraftDocument | null;
+  draftVersion: number;
+}) {
   const { t } = useI18n();
   const [tab, setTab] = useState<"draft" | "code">("draft");
-  const isError = live.phase === "error";
-  const isBusy = live.phase === "writing" || live.phase === "running";
-  const { draft, version } = useLiveDraft({
-    callId: live.toolCallId,
-    toolName: live.toolName,
-    input: live.input,
-    streaming: live.phase === "writing",
-  });
+  const building = live.phase !== "rendering";
 
   const freshPreview = live.preview && live.previewIsLive ? live.preview : null;
-  const showDraft = !freshPreview && draft !== null && tab === "draft";
-  const stalePreview = !freshPreview && !showDraft && tab === "draft" ? live.preview : null;
-  const canSwitch = !freshPreview && (draft !== null || Boolean(live.source));
-  const codeView = <SourceTail source={live.source} />;
+  const stalePreview = !freshPreview && !draft ? live.preview : null;
+  const canSwitch = !freshPreview && Boolean(live.source);
+  const showCode = canSwitch && tab === "code";
+
+  let body: React.ReactNode;
+  if (showCode) body = <SourceTail source={live.source} />;
+  else if (freshPreview) {
+    body = (
+      <div data-ask-selectable="true" className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <FilePreviewSurface key={freshPreview.url} file={freshPreview} />
+      </div>
+    );
+  } else if (draft) {
+    body = (
+      <DraftErrorBoundary resetKey={String(draftVersion)} fallback={<DraftLoading />}>
+        <LiveDraftView draft={draft} />
+      </DraftErrorBoundary>
+    );
+  } else if (stalePreview) {
+    body = (
+      <div data-ask-selectable="true" className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <FilePreviewSurface key={stalePreview.url} file={stalePreview} />
+      </div>
+    );
+  } else body = <DraftLoading />;
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       <div
-        className={cn(
-          "flex items-center gap-2 px-4 sm:px-5 py-1.5 border-b border-[var(--border)] text-[12px] shrink-0 min-h-[38px]",
-          isError ? "text-red-400" : "text-[var(--muted)]"
-        )}
+        className="flex items-center gap-2 px-4 sm:px-5 py-1.5 border-b border-[var(--border)] text-[12px] text-[var(--muted)] shrink-0 min-h-[38px]"
         role="status"
         aria-live="polite"
       >
-        {isError ? (
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-        ) : isBusy && !freshPreview ? (
+        {building && !freshPreview ? (
           <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
         ) : (
           <span className="relative flex w-2 h-2 shrink-0">
@@ -122,7 +147,7 @@ export function LiveDocumentView({ live }: { live: LiveDocumentState }) {
           </span>
         )}
         <span className="truncate">
-          {showDraft && isBusy ? t("chatFiles.liveDrafting") : t(PHASE_LABEL_KEY[live.phase])}
+          {draft && !freshPreview && building ? t("chatFiles.liveDrafting") : t(PHASE_LABEL_KEY[live.phase])}
         </span>
         {canSwitch ? (
           <div className="ml-auto flex items-center gap-0.5 shrink-0" role="tablist">
@@ -151,28 +176,7 @@ export function LiveDocumentView({ live }: { live: LiveDocumentState }) {
           </div>
         ) : null}
       </div>
-
-      {isError && live.error ? (
-        <pre className="mx-4 sm:mx-5 mt-3 max-h-32 overflow-auto rounded-[8px] border border-red-500/30 bg-red-500/5 p-2.5 font-mono text-[11px] leading-relaxed text-red-300 whitespace-pre-wrap shrink-0">
-          {live.error.slice(-2000)}
-        </pre>
-      ) : null}
-
-      {freshPreview ? (
-        <div data-ask-selectable="true" className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <FilePreviewSurface key={freshPreview.url} file={freshPreview} />
-        </div>
-      ) : showDraft && draft ? (
-        <DraftErrorBoundary resetKey={String(version)} fallback={codeView}>
-          <LiveDraftView draft={draft} />
-        </DraftErrorBoundary>
-      ) : stalePreview ? (
-        <div data-ask-selectable="true" className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <FilePreviewSurface key={stalePreview.url} file={stalePreview} />
-        </div>
-      ) : (
-        codeView
-      )}
+      {body}
     </div>
   );
 }

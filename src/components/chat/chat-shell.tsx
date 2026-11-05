@@ -865,7 +865,7 @@ export function ChatShell() {
   const hideChatForFullscreenFiles = showFilesPanel && isFilesFullscreen;
 
   // Live document preview: the panel follows the document the reply is building
-  const { liveDocument, dismissLiveDocument, handleLiveDocumentData } = useLiveDocument({
+  const { liveDocument, liveDraft, liveDraftVersion, dismissLiveDocument, handleLiveDocumentData } = useLiveDocument({
     activeChatId,
     messages: domainMessages,
     streamingId,
@@ -908,6 +908,18 @@ export function ChatShell() {
     }
   }
 
+  // A new message starts with the chat at full width: the files panel comes back on its
+  // own once the reply has something to show (a draft, a file version, the final file).
+  // Requested edits keep it open, the user is working on that file.
+  const handleComposerSend: typeof handleSend = (text, options) => {
+    if ((options?.editChips ?? pendingEditChips).length === 0) {
+      setIsFilesPanelOpen(false);
+      setIsFilesFullscreen(false);
+      setActivePreviewFile(null);
+    }
+    return handleSend(text, options);
+  };
+
   const renderComposer = (customPlaceholder?: string) => (
     <Composer
       placeholder={customPlaceholder}
@@ -931,7 +943,7 @@ export function ChatShell() {
       onRemoveEditChip={handleRemoveEditChip}
       chatId={activeChatId}
       canSend={() => !reachedParallelLimit()}
-      onSend={handleSend}
+      onSend={handleComposerSend}
       onStop={handleStop}
       disabled={isStreamingOrSubmitted}
       currentModelId={currentModelId}
@@ -1084,6 +1096,8 @@ export function ChatShell() {
         onToggleSidebar={handleToggleSidebar}
         onClose={closeFilesPanel}
         liveDocument={liveDocument}
+        liveDraft={liveDraft}
+        liveDraftVersion={liveDraftVersion}
         onDismissLive={dismissLiveDocument}
         onWidthChange={handleFilesPanelWidth}
       />

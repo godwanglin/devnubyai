@@ -21,6 +21,8 @@ export interface LiveDocumentState {
   source: string;
   /** The call's (partial) input, for the page-shaped draft */
   input: unknown;
+  /** Content signature of `input`: the state only changes when the input really grew */
+  inputKey: string;
   /** Latest version written by the running script, served from the workspace */
   preview: SessionFileItem | null;
   /** The preview is this call's own output (not the previous version kept during a revision) */
@@ -166,15 +168,31 @@ export function stepLiveDocument(params: {
         filename,
         source,
         input: build.input,
+        inputKey: inputSignature(build.input),
         preview: previous,
         previewIsLive: false,
       },
     };
   }
 
+  // Compared by content, never by object identity: a re-render that hands over an equal
+  // but new input object must not count as a change (that would loop the render)
   const nextPhase = current.phase === "rendering" ? "rendering" : phase;
-  if (current.filename === filename && current.source === source && current.phase === nextPhase && current.input === build.input) return null;
-  return { live: { ...current, filename, source, input: build.input, phase: nextPhase } };
+  const inputKey = inputSignature(build.input);
+  if (current.filename === filename && current.source === source && current.phase === nextPhase && current.inputKey === inputKey) return null;
+  return { live: { ...current, filename, source, input: build.input, inputKey, phase: nextPhase } };
+}
+
+/** Cheap content signature of a streaming tool input (inputs only grow while streaming). */
+function inputSignature(input: unknown): string {
+  const rec = record(input);
+  if (typeof rec.code === "string") return `code:${rec.code.length}:${rec.code.slice(-24)}`;
+  try {
+    const json = JSON.stringify(input) ?? "";
+    return `json:${json.length}:${json.slice(-24)}`;
+  } catch {
+    return "unknown";
+  }
 }
 
 /** A previewable file item for a workspace version announced by the server. */

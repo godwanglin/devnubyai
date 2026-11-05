@@ -36,7 +36,12 @@ export function useLiveDraft({ callId, toolName, input, streaming }: DraftReques
       lastRun.current = Date.now();
       const current = latest.current;
       const draft = current.callId ? buildDraft({ toolName: current.toolName, input: current.input }, current.streaming) : null;
-      setState((prev) => ({ draft, version: prev.version + 1, callId: current.callId }));
+      setState((prev) => {
+        // A half-written statement can make one rebuild come out empty: keep the last
+        // draft of the same call on screen instead of blinking to nothing and back
+        if (!draft && prev.callId === current.callId && prev.draft) return prev;
+        return { draft, version: prev.version + 1, callId: current.callId };
+      });
     }, wait);
   }, [callId, toolName, input, streaming]);
 

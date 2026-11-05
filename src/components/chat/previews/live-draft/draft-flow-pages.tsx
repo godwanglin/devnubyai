@@ -108,7 +108,9 @@ export function DraftFlowPages({
     return () => observer.disconnect();
   }, [blocks, contentWidth]);
 
-  const usable = measured && measured.tops.length === blocks.length ? measured : null;
+  // Blocks added since the last measurement simply join on the next one: the pages
+  // already laid out stay on screen instead of blinking away for a frame
+  const usable = measured;
   const pages = usable ? paginate(blocks, usable, contentHeight) : [];
 
   return (
@@ -136,7 +138,7 @@ export function DraftFlowPages({
             }}
           >
             {blocks.map((block, i) => {
-              if (!usable) return null;
+              if (!usable || i >= usable.tops.length) return null;
               const top = usable.tops[i];
               const bottom = top + usable.heights[i];
               if (bottom <= slice.start || top >= slice.end) return null;

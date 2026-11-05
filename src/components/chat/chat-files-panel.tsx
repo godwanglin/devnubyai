@@ -20,6 +20,7 @@ import {
 import { useI18n } from "@/providers/i18n-provider";
 import type { SessionFileItem } from "@/types";
 import type { LiveDocumentState } from "@/lib/chat/live-document";
+import type { DraftDocument } from "@/lib/live-draft";
 import { FilePreviewSurface } from "./previews/file-preview-surface";
 import { LiveDocumentTitle, LiveDocumentView } from "./previews/live-document-view";
 import { FILES_PANEL_CHAT_MIN_WIDTH } from "@/lib/files/panel-layout";
@@ -39,6 +40,9 @@ export interface ChatFilesPanelProps {
   onClose: () => void;
   /** A document the AI is building right now; shown live instead of the list / selection */
   liveDocument?: LiveDocumentState | null;
+  /** Page-shaped draft of the live document (see use-live-document) */
+  liveDraft?: DraftDocument | null;
+  liveDraftVersion?: number;
   /** Leave the live view (back to the file list) */
   onDismissLive?: () => void;
   /** Width the panel takes beside the chat (null: closed or full screen), live while dragging */
@@ -72,6 +76,8 @@ export function ChatFilesPanel({
   onToggleSidebar,
   onClose,
   liveDocument = null,
+  liveDraft = null,
+  liveDraftVersion = 0,
   onDismissLive,
   onWidthChange,
 }: ChatFilesPanelProps) {
@@ -368,7 +374,7 @@ export function ChatFilesPanel({
 
           {/* Body: Either Rich Preview View (selectable for "Tanya Devnuby") OR Session File List */}
           {effectiveOpen && live ? (
-            <LiveDocumentView live={live} />
+            <LiveDocumentView live={live} draft={liveDraft} draftVersion={liveDraftVersion} />
           ) : effectiveOpen && selectedFile ? (
             <div
               data-ask-selectable="true"

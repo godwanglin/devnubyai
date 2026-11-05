@@ -8,6 +8,7 @@ import {
   type LiveDocumentState,
 } from "@/lib/chat/live-document";
 import type { Message, SessionFileItem } from "@/types";
+import { useLiveDraft } from "./use-live-draft";
 
 interface UseLiveDocumentOptions {
   activeChatId: string | null;
@@ -59,10 +60,25 @@ export function useLiveDocument({
     }
   }
 
-  // A new build opens the panel (the open/closed pref lives outside React)
+  // The page-shaped draft, built from the call's input as it streams in
+  const { draft, version: draftVersion } = useLiveDraft({
+    callId: liveCallId,
+    toolName: liveDocument?.toolName ?? "",
+    input: liveDocument?.input,
+    streaming: liveDocument?.phase === "writing",
+  });
+  const draftReady = draft !== null;
+
+  // The panel opens only once there is something to see: the first draft of a build
+  // (the server's file versions and the final file open it too, see below and onData).
+  // The open/closed pref lives outside React, hence effects.
   useEffect(() => {
-    if (liveCallId) setFilesPanelOpen(true);
-  }, [liveCallId, setFilesPanelOpen]);
+    if (liveCallId && draftReady) setFilesPanelOpen(true);
+  }, [liveCallId, draftReady, setFilesPanelOpen]);
+
+  useEffect(() => {
+    if (lastFinal) setFilesPanelOpen(true);
+  }, [lastFinal, setFilesPanelOpen]);
 
   const dismissLiveDocument = useCallback(() => {
     if (liveCallId) setDismissed((prev) => new Set(prev).add(liveCallId));
@@ -87,6 +103,7 @@ export function useLiveDocument({
               filename: preview.displayName,
               source: "",
               input: undefined,
+              inputKey: "",
               preview,
               previewIsLive: true,
             }
@@ -97,5 +114,5 @@ export function useLiveDocument({
     [activeChatId, dismissed, setFilesPanelOpen]
   );
 
-  return { liveDocument, dismissLiveDocument, handleLiveDocumentData };
+  return { liveDocument, liveDraft: draft, liveDraftVersion: draftVersion, dismissLiveDocument, handleLiveDocumentData };
 }
