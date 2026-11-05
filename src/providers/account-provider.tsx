@@ -10,6 +10,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
+import { applyAccountResponseMode } from "@/hooks/use-chat-prefs";
 import type { ModelOption, UserProfile } from "@/types";
 
 interface AccountContextType {
@@ -137,6 +138,8 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     };
     writeCache(next);
     setLive(next);
+    // Preferences saved on the account follow the user across devices
+    if (resolvedUser) applyAccountResponseMode(resolvedUser.responseMode);
   }, []);
 
   const refresh = useCallback(async () => {

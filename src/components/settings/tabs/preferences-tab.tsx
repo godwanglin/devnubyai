@@ -7,6 +7,8 @@ import { useI18n } from "@/providers/i18n-provider";
 import { useToast } from "@/providers/toast-provider";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/cn";
+import { saveResponseMode, useResponseMode } from "@/hooks/use-chat-prefs";
+import { isResponseMode, type ResponseMode } from "@/lib/preferences/response-mode";
 import type { Locale, Theme } from "@/types";
 
 interface PreferenceRowProps {
@@ -34,6 +36,12 @@ export function PreferencesTab() {
   const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
   const { toast } = useToast();
+  const responseMode = useResponseMode();
+  const responseModeOptions: { value: ResponseMode; label: string }[] = [
+    { value: "verbose", label: t("settings.responseVerbose") },
+    { value: "normal", label: t("settings.responseNormal") },
+    { value: "silent", label: t("settings.responseSilent") },
+  ];
 
   // Preferences states with localStorage persistence & defaults
   const [uiFont, setUiFont] = useState(() => {
@@ -294,6 +302,20 @@ export function PreferencesTab() {
               `${t("settings.motion")}: ${val}`
             )
           }
+        />
+
+        {/* 7. Tampilan respons / Response display (verbose, normal, silent) */}
+        <PreferenceSelectRow
+          label={t("settings.responseMode")}
+          value={responseMode}
+          options={responseModeOptions}
+          onChange={(val) => {
+            if (!isResponseMode(val) || val === responseMode) return;
+            const option = responseModeOptions.find((o) => o.value === val);
+            void saveResponseMode(val).then((ok) =>
+              toast(ok ? `${t("settings.responseMode")}: ${option?.label ?? val}` : t("toast.actionFailed"))
+            );
+          }}
         />
       </div>
 

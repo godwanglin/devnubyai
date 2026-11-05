@@ -92,51 +92,8 @@ function SourceChips({ sources }: { sources: CompactWebSource[] }) {
   );
 }
 
-export function SearchActivityAccordion({
-  tools,
-  embedded = false,
-}: SearchActivityAccordionProps) {
-  const { t } = useI18n();
-  const [isOpen, setIsOpen] = useState(false);
-
-  // Group all web_search and deep_search items
-  const isRunning = tools.some(
-    (t) => t.state === "running" || t.state === "streaming"
-  );
-
-  // Calculate total duration for search tools:
-  // Either from persisted durationSec in DB or live elapsed timer
-  const persistedDuration = tools.reduce((acc, curr) => acc + (curr.durationSec ?? 0), 0);
-  const [liveSeconds, setLiveSeconds] = useState<number | null>(null);
-  const timerStartRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (isRunning) {
-      if (timerStartRef.current === null) timerStartRef.current = Date.now();
-      const start = timerStartRef.current;
-      const tick = () => setLiveSeconds(Math.max(1, Math.round((Date.now() - start) / 1000)));
-      tick();
-      const interval = setInterval(tick, 1000);
-      return () => {
-        clearInterval(interval);
-        tick();
-      };
-    }
-  }, [isRunning]);
-
-  const effectiveDuration = isRunning
-    ? liveSeconds
-    : persistedDuration > 0
-      ? persistedDuration
-      : null;
-
-  // Primary query/topic display
-  const primaryQuery =
-    (tools[0]?.input as { query?: string; topic?: string })?.query ||
-    (tools[0]?.input as { query?: string; topic?: string })?.topic ||
-    "";
-
-  // Aggregate sources across all search tools in this run
+/** Sources of a run of web/deep searches, deduplicated by URL, in the order found. */
+export function collectSearchSources(tools: ToolActivity[]): CompactWebSource[] {
   const allSources: CompactWebSource[] = [];
   const seenUrls = new Set<string>();
 
@@ -189,6 +146,54 @@ export function SearchActivityAccordion({
       }
     }
   }
+  return allSources;
+}
+
+export function SearchActivityAccordion({
+  tools,
+  embedded = false,
+}: SearchActivityAccordionProps) {
+  const { t } = useI18n();
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Group all web_search and deep_search items
+  const isRunning = tools.some(
+    (t) => t.state === "running" || t.state === "streaming"
+  );
+
+  // Calculate total duration for search tools:
+  // Either from persisted durationSec in DB or live elapsed timer
+  const persistedDuration = tools.reduce((acc, curr) => acc + (curr.durationSec ?? 0), 0);
+  const [liveSeconds, setLiveSeconds] = useState<number | null>(null);
+  const timerStartRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isRunning) {
+      if (timerStartRef.current === null) timerStartRef.current = Date.now();
+      const start = timerStartRef.current;
+      const tick = () => setLiveSeconds(Math.max(1, Math.round((Date.now() - start) / 1000)));
+      tick();
+      const interval = setInterval(tick, 1000);
+      return () => {
+        clearInterval(interval);
+        tick();
+      };
+    }
+  }, [isRunning]);
+
+  const effectiveDuration = isRunning
+    ? liveSeconds
+    : persistedDuration > 0
+      ? persistedDuration
+      : null;
+
+  // Primary query/topic display
+  const primaryQuery =
+    (tools[0]?.input as { query?: string; topic?: string })?.query ||
+    (tools[0]?.input as { query?: string; topic?: string })?.topic ||
+    "";
+
+  const allSources = collectSearchSources(tools);
 
   const isDeep = tools.some((t) => t.name === "deep_search");
   const mainLabel = isRunning
@@ -198,7 +203,6 @@ export function SearchActivityAccordion({
     : isDeep
       ? t("message.doneDeepSearch")
       : t("message.searchedTheWeb");
-
   return (
     <div className={cn("select-none font-sans", embedded ? "mb-0" : "mb-3")}>
       {/* Header bar matching soft Thought-for-Xs style */}

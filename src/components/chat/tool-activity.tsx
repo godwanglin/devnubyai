@@ -43,7 +43,7 @@ interface ToolActivityListProps {
   onChartsChange?: (toolCallId: string, charts: StandaloneChartFigure[]) => void;
 }
 
-const isSearchTool = (tool: ToolActivity) =>
+export const isSearchTool = (tool: ToolActivity) =>
   tool.name === "web_search" || tool.name === "deep_search";
 
 const FETCH_TITLE_MAX = 48;
@@ -61,7 +61,7 @@ function fetchTarget(tool: ToolActivity): { label: string; favicon: string } {
     favicon: getFaviconUrl(url),
   };
 }
-const isRunningTool = (tool: ToolActivity) =>
+export const isRunningTool = (tool: ToolActivity) =>
   tool.state === "running" || tool.state === "streaming";
 
 function baseName(value: unknown, fallback: string): string {
@@ -135,7 +135,7 @@ function extractSkillTargetFilename(tool: ToolActivity): string | null {
 }
 
 /** Formats tool call details into human-friendly label (e.g. "Membaca data.csv#1-100") */
-function describeTool(tool: ToolActivity, t: Translate): string {
+export function describeTool(tool: ToolActivity, t: Translate): string {
   const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<
     string,
     unknown
@@ -250,7 +250,7 @@ function describeTool(tool: ToolActivity, t: Translate): string {
   }
 }
 
-function ToolGlyph({
+export function ToolGlyph({
   name,
   tool,
   className,

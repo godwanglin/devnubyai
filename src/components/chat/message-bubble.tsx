@@ -16,6 +16,8 @@ import { TypingIndicator } from "./typing-indicator";
 import { QuoteChip } from "./quote-chip";
 import { SourceMentionChips } from "./source-mention-chips";
 import { EditTargetChip, parseRequestEditMessage } from "./edit-target-chip";
+import { CompactThinkingLine, CompactToolList, SilentStatusLine, ToolResults } from "./compact-activity";
+import { useResponseMode } from "@/hooks/use-chat-prefs";
 import { messageFeedbackMap } from "@/lib/chat/client-mappers";
 import { useRequestRetry } from "@/lib/chat/request-retry-store";
 import { useI18n } from "@/providers/i18n-provider";
@@ -58,6 +60,7 @@ export const MessageBubble = memo(function MessageBubble({
 }: MessageBubbleProps) {
   const { t, locale } = useI18n();
   const { toast } = useToast();
+  const responseMode = useResponseMode();
   const [copied, setCopied] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<"like" | "dislike" | null | undefined>(undefined);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
@@ -320,9 +323,81 @@ export const MessageBubble = memo(function MessageBubble({
     }
   }
 
+  // Normal / silent response modes: work shown as single lines (normal) or not at all once
+  // the answer starts (silent); text before the last tool call counts as work
+  const lastSegment = message.segments?.at(-1);
+  const answerStart = lastWorkIdx + 1;
+  const isSilentWorking = Boolean(
+    isStreaming &&
+      (message.isReasoningStreaming ||
+        isToolPhase ||
+        lastSegment?.type === "reasoning" ||
+        lastSegment?.type === "tools")
+  );
+  const silentTools = message.isReasoningStreaming
+    ? null
+    : lastSegment?.type === "tools"
+      ? lastSegment.tools
+      : !message.segments?.length && message.toolCalls?.length
+        ? message.toolCalls
+        : null;
+
+  const renderCompactSegment = (segment: NonNullable<Message["segments"]>[number], idx: number, total: number) => {
+    const isLast = idx === total - 1;
+    if (segment.type === "reasoning") {
+      return responseMode === "normal" ? (
+        <CompactThinkingLine
+          key={`reasoning-${idx}`}
+          content={segment.text}
+          durationSec={segment.durationSec}
+          isStreaming={isStreaming && isLast}
+        />
+      ) : null;
+    }
+    if (segment.type === "tools") {
+      return responseMode === "normal" ? (
+        <CompactToolList key={`tools-${segment.tools[0]?.id ?? idx}`} tools={segment.tools} />
+      ) : null;
+    }
+    if (idx < answerStart || errorCard) return null;
+    return (
+      <div key={`text-${idx}`} className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}>
+        <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
+      </div>
+    );
+  };
+
+  const toolResults = message.toolCalls?.length ? (
+    <ToolResults tools={message.toolCalls} messageId={message.id} chatId={chatId} isMessageStreaming={isStreaming} />
+  ) : null;
+
+  const compactBody = message.segments?.length ? (
+    <>
+      {message.segments.slice(0, answerStart).map((segment, idx) =>
+        renderCompactSegment(segment, idx, message.segments!.length)
+      )}
+      {toolResults}
+      {message.segments.slice(answerStart).map((segment, idx) =>
+        renderCompactSegment(segment, idx + answerStart, message.segments!.length)
+      )}
+      {errorCard}
+    </>
+  ) : (
+    <>
+      {responseMode === "normal" && message.toolCalls?.length ? <CompactToolList tools={message.toolCalls} /> : null}
+      {toolResults}
+      {errorCard ??
+        (hasContent ? (
+          <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
+            <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
+          </div>
+        ) : null)}
+    </>
+  );
+
   return (
     <div id={`message-${message.id}`} className="py-4 group min-w-0">
-      {message.segments?.length ? (
+      {responseMode !== "verbose" ? compactBody : message.segments?.length ? (
         lastWorkIdx >= 0 && message.toolCalls ? (
           <>
             <AgentWorkAccordion
@@ -396,7 +471,9 @@ export const MessageBubble = memo(function MessageBubble({
               {t("message.requestAttempt", { attempt: requestRetry.attempt, max: requestRetry.max })}
             </div>
           ) : null}
-          {message.isReasoningStreaming ? (
+          {responseMode === "silent" && isSilentWorking ? (
+            <SilentStatusLine tools={silentTools} />
+          ) : message.isReasoningStreaming ? (
             <TypingIndicator state="thinking" size="md" showLabel={true} />
           ) : isToolPhase ? (
             <TypingIndicator state="tools" size="md" showLabel={true} />

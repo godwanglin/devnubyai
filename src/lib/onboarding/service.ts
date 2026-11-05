@@ -1,32 +1,51 @@
 import { db } from "@/lib/db";
 import { invalidateUserMeCache } from "@/lib/redis/cache-keys";
 import { invalidateHomeSuggestions } from "@/lib/chat/home-suggestions";
+import { DEFAULT_RESPONSE_MODE, isResponseMode, type ResponseMode } from "@/lib/preferences/response-mode";
 import { ONBOARDING_INTERESTS, ONBOARDING_ROLES, type OnboardingInterest, type OnboardingRole } from "./options";
 
 export interface UserPreferences {
   role: OnboardingRole | null;
   interests: OnboardingInterest[];
   onboarded: boolean;
+  responseMode: ResponseMode;
 }
 
 const roleIds = new Set<string>(ONBOARDING_ROLES.map((r) => r.id));
 const interestIds = new Set<string>(ONBOARDING_INTERESTS.map((i) => i.id));
 
-function toPreferences(row: { role: string | null; interests: unknown; onboardedAt: Date | null } | null): UserPreferences {
+const preferenceSelect = { role: true, interests: true, onboardedAt: true, responseMode: true } as const;
+
+function toPreferences(
+  row: { role: string | null; interests: unknown; onboardedAt: Date | null; responseMode: string | null } | null
+): UserPreferences {
   return {
     role: row?.role && roleIds.has(row.role) ? (row.role as OnboardingRole) : null,
     interests: Array.isArray(row?.interests)
       ? (row.interests as unknown[]).filter((i): i is OnboardingInterest => typeof i === "string" && interestIds.has(i))
       : [],
     onboarded: Boolean(row?.onboardedAt),
+    responseMode: isResponseMode(row?.responseMode) ? row.responseMode : DEFAULT_RESPONSE_MODE,
   };
 }
 
 export async function getUserPreferences(userId: bigint): Promise<UserPreferences> {
   const row = await db.userPreference.findUnique({
     where: { userId },
-    select: { role: true, interests: true, onboardedAt: true },
+    select: preferenceSelect,
   });
+  return toPreferences(row);
+}
+
+/** Settings > Appearance > Response display. /me carries it, so its cache is dropped. */
+export async function setUserResponseMode(userId: bigint, responseMode: ResponseMode): Promise<UserPreferences> {
+  const row = await db.userPreference.upsert({
+    where: { userId },
+    create: { userId, responseMode },
+    update: { responseMode },
+    select: preferenceSelect,
+  });
+  await invalidateUserMeCache(userId);
   return toPreferences(row);
 }
 
@@ -54,7 +73,7 @@ export async function completeOnboarding(
       where: { userId },
       create: { userId, ...data },
       update: input.skipped ? { onboardedAt: now } : data,
-      select: { role: true, interests: true, onboardedAt: true },
+      select: preferenceSelect,
     }),
   ]);
 

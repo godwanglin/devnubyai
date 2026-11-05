@@ -1,3 +1,5 @@
+import type { ResponseMode } from "@/lib/preferences/response-mode";
+
 export type Role = "user" | "assistant" | "system";
 
 export interface ToolActivity {
@@ -132,6 +134,8 @@ export interface UserProfile {
   toolDebug?: boolean;
   /** False until the user finished (or skipped) #/onboarding. Missing on old cached payloads. */
   onboarded?: boolean;
+  /** Settings > Appearance > Response display, saved on the account. Missing on old cached payloads. */
+  responseMode?: ResponseMode;
   /** Replies the user's plan may generate at once (Free 1, Pro 3, Max 6). */
   maxParallelRequests?: number;
 }

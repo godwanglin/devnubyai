@@ -42,6 +42,7 @@ export async function GET(request: Request) {
         .map((w) => w[0]?.toUpperCase() || "")
         .join("") || "U";
 
+    const preferences = await getUserPreferences(user.id);
     const responsePayload = {
       user: {
         id: user.publicId,
@@ -54,8 +55,9 @@ export async function GET(request: Request) {
         planLabel: user.plan?.name ?? "Free Plan",
         planExpiresAt: user.planExpiresAt?.toISOString() ?? null,
         avatarUrl: user.avatarUrl,
-        // Cached with the rest; finishing onboarding clears this cache
-        onboarded: (await getUserPreferences(user.id)).onboarded,
+        // Cached with the rest; finishing onboarding or changing a preference clears this cache
+        onboarded: preferences.onboarded,
+        responseMode: preferences.responseMode,
         // Replies the plan may generate at once (server enforces it in claimGenerationSlot)
         maxParallelRequests: effectiveParallelLimit(user.plan?.maxParallelRequests),
       },
