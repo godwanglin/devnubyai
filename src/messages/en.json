@@ -392,6 +392,8 @@
     "searchingWeb": "Searching the web...",
     "deepSearching": "Deep research in progress...",
     "searchingTopic": "Searching \"{topic}\"",
+    "searchedTheWeb": "Searched the web",
+    "searchSourcesCount": "{count} sources",
     "skillLoadPdf": "Preparing PDF document format",
     "skillLoadPdfForms": "Preparing PDF form guidelines",
     "skillLoadDocx": "Preparing Word document format",

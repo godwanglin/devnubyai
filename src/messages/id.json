@@ -392,6 +392,8 @@
     "searchingWeb": "Sedang mencari di web...",
     "deepSearching": "Sedang riset mendalam...",
     "searchingTopic": "Mencari \"{topic}\"",
+    "searchedTheWeb": "Mencari di web",
+    "searchSourcesCount": "{count} sumber",
     "skillLoadPdf": "Menyiapkan format dokumen PDF",
     "skillLoadPdfForms": "Menyiapkan panduan formulir PDF",
     "skillLoadDocx": "Menyiapkan format dokumen Word",

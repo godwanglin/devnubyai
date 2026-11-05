@@ -117,7 +117,7 @@ export function SearchActivityAccordion({
       : t("message.searchingWeb")
     : isDeep
       ? t("message.doneDeepSearch")
-      : t("message.doneWebSearch");
+      : t("message.searchedTheWeb");
 
   return (
     <div className={cn("select-none font-sans", embedded ? "mb-0" : "mb-3")}>
@@ -153,8 +153,8 @@ export function SearchActivityAccordion({
           ) : null}
 
           {allSources.length > 0 ? (
-            <span className="text-[11.5px] text-[var(--muted)] font-mono ml-0.5 shrink-0">
-              · ({allSources.length})
+            <span className="text-[11.5px] text-[var(--muted)] ml-0.5 shrink-0">
+              · {t("message.searchSourcesCount", { count: allSources.length })}
             </span>
           ) : null}
         </span>
@@ -167,21 +167,22 @@ export function SearchActivityAccordion({
         />
       </button>
 
-      {/* Accordion Sources list matching Image 2 */}
+      {/* Source cards in a grid; each card shows the page title, its domain and a snippet */}
       {isOpen && allSources.length > 0 ? (
-        <div className="mt-2 pl-3 sm:pl-3.5 border-l-2 border-[var(--border)] space-y-1.5 py-1">
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 py-1">
           {allSources.map((source, idx) => (
             <a
               key={`${source.url}-${idx}`}
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"
+              title={source.title || source.domain || source.url}
               className={cn(
-                "group flex items-center justify-between gap-3 px-2 py-1.5 rounded-[6px]",
-                "hover:bg-[var(--hover)]/60 transition-colors text-[13px]"
+                "group flex flex-col gap-1.5 min-w-0 p-3 rounded-[12px] border border-[var(--border)]",
+                "bg-[var(--panel)] hover:bg-[var(--hover)] hover:border-[var(--accent)]/40 transition-colors"
               )}
             >
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="flex items-center gap-2 min-w-0">
                 {source.favicon ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -196,15 +197,21 @@ export function SearchActivityAccordion({
                 ) : (
                   <Globe className="w-3.5 h-3.5 text-[var(--muted)] shrink-0" />
                 )}
-                <span className="truncate text-[var(--ink)] group-hover:text-[var(--accent)] transition-colors">
-                  {source.title || source.domain || source.url}
+                <span className="truncate text-[12px] text-[var(--muted)]">
+                  {source.domain || source.url}
                 </span>
+                <ExternalLink className="ml-auto w-3 h-3 shrink-0 text-[var(--muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0 text-[12px] text-[var(--muted)] group-hover:text-[var(--ink)] font-mono">
-                <span>{source.domain}</span>
-                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
+              <span className="text-[13.5px] font-medium leading-snug text-[var(--ink)] line-clamp-2 group-hover:text-[var(--accent)] transition-colors">
+                {source.title || source.domain || source.url}
+              </span>
+
+              {source.snippet ? (
+                <span className="text-[12px] leading-relaxed text-[var(--muted)] line-clamp-2">
+                  {source.snippet}
+                </span>
+              ) : null}
             </a>
           ))}
         </div>
