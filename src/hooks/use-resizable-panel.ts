@@ -12,6 +12,10 @@ export interface UseResizablePanelOptions {
   storageKey?: string;
   /** CSS custom property mutated directly on `panelRef` for 60fps zero-re-render dragging */
   cssVar?: string;
+  /** Live upper bound while dragging (overrides `maxViewportRatio`), e.g. "leave room for the chat" */
+  getMaxWidth?: () => number;
+  /** Called on every drag frame and when the width is committed */
+  onWidthChange?: (width: number) => void;
 }
 
 const widthListeners = new Set<() => void>();
@@ -37,6 +41,8 @@ export function useResizablePanel({
   edge,
   storageKey,
   cssVar,
+  getMaxWidth,
+  onWidthChange,
 }: UseResizablePanelOptions) {
   const panelRef = useRef<HTMLElement | null>(null);
 
@@ -72,8 +78,9 @@ export function useResizablePanel({
       } else {
         setUnpersistedWidth(clamped);
       }
+      onWidthChange?.(clamped);
     },
-    [cssVar, maxWidth, minWidth, storageKey]
+    [cssVar, maxWidth, minWidth, storageKey, onWidthChange]
   );
 
   const handlePointerDown = useCallback(
@@ -111,12 +118,15 @@ export function useResizablePanel({
         } else {
           setFallbackDragWidth(latestWidth);
         }
+        onWidthChange?.(latestWidth);
       }
 
       function onPointerMove(ev: PointerEvent) {
         const deltaX =
           edge === "right" ? ev.clientX - startX : startX - ev.clientX;
-        const viewportCap = Math.floor(window.innerWidth * maxViewportRatio);
+        const viewportCap = getMaxWidth
+          ? Math.floor(getMaxWidth())
+          : Math.floor(window.innerWidth * maxViewportRatio);
         const maxAllowed = Math.max(minWidth, Math.min(maxWidth, viewportCap));
         latestWidth = Math.min(
           maxAllowed,
@@ -146,7 +156,7 @@ export function useResizablePanel({
       window.addEventListener("pointerup", finishDrag);
       window.addEventListener("pointercancel", finishDrag);
     },
-    [commitWidth, cssVar, edge, maxViewportRatio, maxWidth, minWidth, width]
+    [commitWidth, cssVar, edge, maxViewportRatio, maxWidth, minWidth, width, getMaxWidth, onWidthChange]
   );
 
   const resetWidth = useCallback(() => {

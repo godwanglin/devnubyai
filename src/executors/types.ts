@@ -47,6 +47,16 @@ export interface SkillExecutionRequest {
   sessionId: string;
   /** Optional custom timeout in ms (clamped to config.maxTimeoutMs) */
   timeoutMs?: number;
+  /** Called while the script runs, each time a document in the workspace is written and settled */
+  onDocumentReady?: (doc: LiveWorkspaceDocument) => void;
+}
+
+export interface LiveWorkspaceDocument {
+  /** Workspace-relative path, e.g. `laporan.pdf` */
+  path: string;
+  sizeBytes: number;
+  /** mtime of the settled write, so each rewrite is a new version */
+  version: number;
 }
 
 export type PythonSkillExecutionRequest = SkillExecutionRequest;

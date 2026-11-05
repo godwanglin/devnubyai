@@ -1,8 +1,9 @@
 import path from "node:path";
 import { SANDBOX_CONFIG } from "./config";
+import { watchWorkspaceDocuments } from "./live-documents";
 import { runInSandbox } from "./sandbox";
 import { sanitizeSandboxOutput } from "./security";
-import type { ExportedWorkspaceFile } from "./types";
+import type { ExportedWorkspaceFile, LiveWorkspaceDocument } from "./types";
 import {
   acquireUserWorkspace,
   getSandboxSupport,
@@ -33,6 +34,8 @@ export interface ExecCommandRequest {
   /** Workspace-relative paths to export even when their extension is not auto-published */
   publish?: string[];
   signal?: AbortSignal;
+  /** Called while the command runs, each time a document in the workspace is written and settled */
+  onDocumentReady?: (doc: LiveWorkspaceDocument) => void;
 }
 
 export interface ExecCommandResult {
@@ -111,12 +114,20 @@ export async function executeSandboxCommand(request: ExecCommandRequest): Promis
         owner: { uid: support.uid, gid: support.gid },
       });
 
-      const outcome = await runInSandbox({
-        lease,
-        argv: ["/bin/bash", "-c", command],
-        timeoutMs,
-        signal: request.signal,
-      });
+      const stopWatching = request.onDocumentReady
+        ? watchWorkspaceDocuments(lease.workspaceDir, request.onDocumentReady)
+        : null;
+      let outcome: Awaited<ReturnType<typeof runInSandbox>>;
+      try {
+        outcome = await runInSandbox({
+          lease,
+          argv: ["/bin/bash", "-c", command],
+          timeoutMs,
+          signal: request.signal,
+        });
+      } finally {
+        await stopWatching?.();
+      }
 
       const { generatedFiles } = await collectAndSyncWorkspaceOutputs({
         snapshot,

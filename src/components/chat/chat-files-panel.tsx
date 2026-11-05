@@ -27,7 +27,9 @@ import {
 } from "@/lib/files/preview-events";
 import { useI18n } from "@/providers/i18n-provider";
 import type { SessionFileItem } from "@/types";
+import type { LiveDocumentState } from "@/lib/chat/live-document";
 import { FilePreviewSurface } from "./previews/file-preview-surface";
+import { LiveDocumentView } from "./previews/live-document-view";
 
 export interface ChatFilesPanelProps {
   isOpen: boolean;
@@ -41,11 +43,23 @@ export interface ChatFilesPanelProps {
   onToggleFullscreen?: () => void;
   onToggleSidebar?: () => void;
   onClose: () => void;
+  /** A document the AI is building right now; shown live instead of the list / selection */
+  liveDocument?: LiveDocumentState | null;
+  /** Leave the live view (back to the file list) */
+  onDismissLive?: () => void;
+  /** Width the panel takes beside the chat (null: closed or full screen), live while dragging */
+  onWidthChange?: (width: number | null) => void;
 }
 
 const DEFAULT_WIDTH = 460;
 const MIN_WIDTH = 300;
-const MAX_WIDTH = 920;
+const MAX_WIDTH = 4000;
+/** The panel may grow until the chat beside it is phone-sized (the left sidebar folds away) */
+export const FILES_PANEL_CHAT_MIN_WIDTH = 390;
+
+function filesPanelMaxWidth(): number {
+  return window.innerWidth - FILES_PANEL_CHAT_MIN_WIDTH;
+}
 
 export function renderSessionFileIcon(
   file: Pick<SessionFileItem, "extension" | "isImage" | "mimeType">
@@ -140,6 +154,9 @@ export function ChatFilesPanel({
   onToggleFullscreen,
   onToggleSidebar,
   onClose,
+  liveDocument = null,
+  onDismissLive,
+  onWidthChange,
 }: ChatFilesPanelProps) {
   const { t } = useI18n();
   const [files, setFiles] = useState<SessionFileItem[]>([]);
@@ -151,10 +168,16 @@ export function ChatFilesPanel({
   const [highlightTarget, setHighlightTarget] = useState<{ text: string; charOffset?: number } | null>(null);
 
   const effectiveOpen = isOpen && Boolean(chatId || readOnly);
-  const selectedFile =
-    controlledActiveFile !== undefined ? controlledActiveFile : internalActiveFile;
+  const live = readOnly ? null : liveDocument;
+  const liveName = live ? live.preview?.displayName || live.filename || t("chatFiles.liveWaiting") : "";
+  const selectedFile = live
+    ? (live.preview ?? null)
+    : controlledActiveFile !== undefined
+      ? controlledActiveFile
+      : internalActiveFile;
 
   function setSelectedFile(next: SessionFileItem | null) {
+    if (live) onDismissLive?.();
     if (onSelectFile) {
       onSelectFile(next);
     } else {
@@ -172,11 +195,17 @@ export function ChatFilesPanel({
     defaultWidth: DEFAULT_WIDTH,
     minWidth: MIN_WIDTH,
     maxWidth: MAX_WIDTH,
-    maxViewportRatio: 0.68,
     edge: "left",
     storageKey: "devnuby-files-panel-width",
     cssVar: "--files-panel-w",
+    getMaxWidth: filesPanelMaxWidth,
+    onWidthChange,
   });
+
+  // Report the width beside the chat whenever it changes outside a drag (open, close, full screen)
+  useEffect(() => {
+    onWidthChange?.(effectiveOpen && !isFullscreen ? width : null);
+  }, [effectiveOpen, isFullscreen, width, onWidthChange]);
 
   const [prevChatId, setPrevChatId] = useState(chatId);
   if (prevChatId !== chatId) {
@@ -296,7 +325,7 @@ export function ChatFilesPanel({
             ? "translate-x-full pointer-events-none invisible md:static md:w-0 md:border-l-0 md:overflow-hidden"
             : isFullscreen
               ? "translate-x-0 visible md:relative md:flex-1 md:min-w-0 md:w-auto"
-              : "translate-x-0 visible md:relative md:w-[min(var(--files-panel-w),45vw)]",
+              : "translate-x-0 visible md:relative md:w-[min(var(--files-panel-w),calc(100vw-390px))]",
           isDragging && "select-none"
         )}
       >
@@ -337,7 +366,7 @@ export function ChatFilesPanel({
                 </Tooltip>
               ) : null}
 
-              {selectedFile && !readOnly ? (
+              {(selectedFile || live) && !readOnly ? (
                 <Tooltip content={t("chatFiles.backToList")} side="bottom" align="start">
                   <button
                     type="button"
@@ -350,7 +379,26 @@ export function ChatFilesPanel({
                 </Tooltip>
               ) : null}
 
-              {selectedFile ? (
+              {live ? (
+                <>
+                  {renderSessionFileIcon({
+                    extension: liveName.split(".").pop() ?? "",
+                    isImage: false,
+                    mimeType: "",
+                  })}
+                  <h2 className="text-[14px] font-semibold text-[var(--ink)] truncate">{liveName}</h2>
+                  <span
+                    className={cn(
+                      "inline-flex items-center px-1.5 py-0.5 rounded-[5px] text-[10.5px] font-semibold uppercase tracking-wide shrink-0",
+                      live.phase === "error"
+                        ? "bg-red-500/10 text-red-400 border border-red-500/30"
+                        : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30"
+                    )}
+                  >
+                    {t("chatFiles.liveBadge")}
+                  </span>
+                </>
+              ) : selectedFile ? (
                 <>
                   {renderSessionFileIcon(selectedFile)}
                   <h2 className="text-[14px] font-semibold text-[var(--ink)] truncate">
@@ -371,7 +419,7 @@ export function ChatFilesPanel({
             </div>
 
             <div className="flex items-center gap-0.5 shrink-0">
-              {selectedFile ? (
+              {selectedFile && !live ? (
                 <Tooltip content={t("chatFiles.download")} side="bottom">
                   <a
                     href={selectedFile.url}
@@ -420,7 +468,9 @@ export function ChatFilesPanel({
           </div>
 
           {/* Body: Either Rich Preview View (selectable for "Tanya Devnuby") OR Session File List */}
-          {effectiveOpen && selectedFile ? (
+          {effectiveOpen && live ? (
+            <LiveDocumentView live={live} />
+          ) : effectiveOpen && selectedFile ? (
             <div
               data-ask-selectable="true"
               className="flex-1 min-h-0 flex flex-col overflow-hidden"

@@ -34,10 +34,21 @@ export interface AgentWorkAccordionProps {
  * - Opens automatically (`isOpen = true`) while `isWorkActive` is true during live streaming.
  * - Auto-collapses (`isOpen = false`) as soon as `isWorkActive` transitions to false
  *   (i.e. when the final answer begins streaming or the turn completes).
- * - Summarizes the work as `Worked for Xs (N tools)`.
+ * - Summarizes the work as `Worked for 45s (N tools)` / `Worked for 11m 24s (N tools)`.
  * - Visual results (charts, generated images) are shown BELOW the drawer, so they stay
  *   visible in the conversation flow when the work history is collapsed.
  */
+
+/** `45s`, `11m 24s`, `5m`, `1h 3m 9s` */
+export function formatWorkDuration(totalSeconds: number): string {
+  const total = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours === 0 && minutes === 0) return `${seconds}s`;
+  const parts = [hours > 0 ? `${hours}h` : "", minutes > 0 ? `${minutes}m` : "", seconds > 0 ? `${seconds}s` : ""];
+  return parts.filter(Boolean).join(" ");
+}
 export function AgentWorkAccordion({
   segments,
   tools,
@@ -126,14 +137,15 @@ export function AgentWorkAccordion({
   const totalCount = tools.length;
   const failedCount = tools.filter((tool) => tool.state === "error").length;
   const displaySec = isWorkActive ? liveSec : persistedDurationSec;
+  const duration = formatWorkDuration(displaySec);
 
   const headerLabel = isWorkActive
     ? totalCount === 1
-      ? t("message.workingForOneTool", { seconds: displaySec })
-      : t("message.workingForTools", { seconds: displaySec, count: totalCount })
+      ? t("message.workingForOneTool", { duration })
+      : t("message.workingForTools", { duration, count: totalCount })
     : totalCount === 1
-      ? t("message.workedForOneTool", { seconds: displaySec })
-      : t("message.workedForTools", { seconds: displaySec, count: totalCount });
+      ? t("message.workedForOneTool", { duration })
+      : t("message.workedForTools", { duration, count: totalCount });
 
   return (
     <div className="mb-3.5">

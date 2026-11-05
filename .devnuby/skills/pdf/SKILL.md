@@ -186,6 +186,31 @@ squared = Paragraph("x<super>2</super> + y<super>2</super>", styles['Normal'])
 
 For canvas-drawn text (not Paragraph objects), manually adjust font the size and position rather than using Unicode subscripts/superscripts.
 
+#### Fonts and Assets: Check Before You Build
+
+Installed font files differ per host (e.g. `DejaVuSans-Oblique.ttf` is often missing), so a hardcoded path can kill the whole build at the very end. Before writing the document:
+
+- Prefer the families that are already registered: `'Arial'`, `'Times New Roman'`, `'Courier New'`, `'Calibri'`, `'DejaVu Sans'` (each with `-Bold`, `-Italic`, `-BoldItalic`), or any Google Font name (e.g. `fontName='Lexend Deca'`), which is downloaded automatically.
+- If you must register a font file, check it first and fall back:
+
+```python
+import os
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+def register_first(name, *paths):
+    for p in paths:
+        if os.path.exists(p):
+            pdfmetrics.registerFont(TTFont(name, p))
+            return True
+    return False
+
+if not register_first('Body-Italic', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf'):
+    print('Body-Italic missing, using Arial-Italic')
+```
+
+- Do the same for images and other inputs (`os.path.exists(...)`) and stop with a clear message, or skip the element, before `doc.build()` / `c.save()`.
+
 ## Command-Line Tools
 
 ### pdftotext (poppler-utils)

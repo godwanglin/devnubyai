@@ -6,7 +6,7 @@ import type {
 import { executeNodeSkillScript } from "./node-executor";
 import { executePythonSkillScript } from "./python-executor";
 import { executeSkillScriptInSandbox } from "./skill-sandbox-runner";
-import type { SkillExecutionResult, SkillScriptRuntime } from "./types";
+import type { LiveWorkspaceDocument, SkillExecutionResult, SkillScriptRuntime } from "./types";
 import { getSandboxSupport } from "./user-workspace";
 
 export interface RunSkillScriptParams {
@@ -69,7 +69,7 @@ export const runSkillScriptTool: ToolDefinition<
       code: {
         type: "string",
         description:
-          "Optional inline Python or Node.js script to execute inside the isolated workspace when creating or editing a file according to the skill instructions (e.g. a Python `reportlab` or `openpyxl` script, or a Node.js `docx` or `pptxgenjs` script). Write output files directly to the current working directory (e.g. 'output.pdf', 'report.docx', 'financial_model.xlsx', 'deck.pptx') and they will automatically be uploaded to session storage and shown to the user.",
+          "Optional inline Python or Node.js script to execute inside the isolated workspace when creating or editing a file according to the skill instructions (e.g. a Python `reportlab` or `openpyxl` script, or a Node.js `docx` or `pptxgenjs` script). Write output files directly to the current working directory (e.g. 'output.pdf', 'report.docx', 'financial_model.xlsx', 'deck.pptx') and they will automatically be uploaded to session storage and shown to the user. Check that fonts, images and other assets exist (`os.path.exists` / `fs.existsSync`) before building the document and fall back when one is missing; never hardcode system font paths (they differ per host). In Python, prefer the pre-registered families ('Arial', 'Times New Roman', 'Courier New', 'DejaVu Sans', plus any Google Font name used via `fontName=` / `setFont`, which is downloaded automatically) over `TTFont(name, '/usr/share/fonts/...')`.",
       },
       args: {
         type: "array",
@@ -104,6 +104,9 @@ export const runSkillScriptTool: ToolDefinition<
         inputFiles: params.inputFiles,
         userId: context.userId,
         sessionId: context.sessionId,
+        onDocumentReady: context.onProgress
+          ? (doc: LiveWorkspaceDocument) => context.onProgress?.({ type: "document-ready", ...doc })
+          : undefined,
       };
 
       // Prefer the OS sandbox (real isolation, no code restrictions); fall back to the

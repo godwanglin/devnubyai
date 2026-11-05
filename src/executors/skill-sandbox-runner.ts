@@ -8,6 +8,7 @@ import {
   SANDBOX_CONFIG,
 } from "./config";
 import { type CachedFontFamilyVariants, ensureFontsForExecution } from "./fonts";
+import { watchWorkspaceDocuments } from "./live-documents";
 import { ensureSkillPythonDependencies } from "./python-executor";
 import { runInSandbox } from "./sandbox";
 import { buildPythonRunnerSource, sanitizeSandboxOutput, validateSafeArgs } from "./security";
@@ -140,7 +141,16 @@ export async function executeSkillScriptInSandbox(
           env = { PYTHONPATH: `${sandboxSkillDir}/scripts:${p.home}/.pylib` };
         }
 
-        const outcome = await runInSandbox({ lease, argv, env, timeoutMs });
+        // Documents the script writes are streamed to the files panel before it exits
+        const stopWatching = request.onDocumentReady
+          ? watchWorkspaceDocuments(lease.workspaceDir, request.onDocumentReady)
+          : null;
+        let outcome: Awaited<ReturnType<typeof runInSandbox>>;
+        try {
+          outcome = await runInSandbox({ lease, argv, env, timeoutMs });
+        } finally {
+          await stopWatching?.();
+        }
 
         const { generatedFiles, jsonOutputs } = await collectAndSyncWorkspaceOutputs({
           snapshot,

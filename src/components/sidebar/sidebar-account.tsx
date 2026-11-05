@@ -182,23 +182,38 @@ function formatResetIn(resetAt: string): string {
   return `${Math.ceil(hours / 24)}h`;
 }
 
-/** Shows the quota window closest to its limit; windows set to 0 (unlimited) are skipped. */
+/** Long windows only take over the sidebar once 10% or less of them is left. */
+const LONG_WINDOW_ALERT_PERCENT = 90;
+
+/**
+ * Always shows the 5-hour window, unless the weekly or monthly window is down to its last 10%
+ * (then that one is shown). Windows set to 0 (unlimited) are skipped.
+ */
 export function SidebarQuota({ onNavigate }: { onNavigate: () => void }) {
   const { t } = useI18n();
   const { quota } = useQuota();
   const windows = quota?.windows;
 
-  const candidates = windows
-    ? [
-        { label: t("usage.fiveHour"), w: windows.fiveHour },
-        { label: t("usage.weekly"), w: windows.weekly },
-        { label: t("usage.monthly"), w: windows.monthly },
-      ].filter((c) => c.w.limitUsd !== null)
-    : [];
-  const tightest = candidates.reduce<(typeof candidates)[number] | null>(
-    (best, c) => (best === null || c.w.usedPercent > best.w.usedPercent ? c : best),
-    null
-  );
+  type Candidate = { label: string; w: NonNullable<typeof windows>["fiveHour"] };
+  const pickTightest = (list: Candidate[]) =>
+    list.reduce<Candidate | null>(
+      (best, c) => (best === null || c.w.usedPercent > best.w.usedPercent ? c : best),
+      null
+    );
+
+  let tightest: Candidate | null = null;
+  if (windows) {
+    const fiveHour: Candidate = { label: t("usage.fiveHour"), w: windows.fiveHour };
+    const longWindows: Candidate[] = [
+      { label: t("usage.weekly"), w: windows.weekly },
+      { label: t("usage.monthly"), w: windows.monthly },
+    ].filter((c) => c.w.limitUsd !== null);
+    const nearlyExhausted = longWindows.filter((c) => c.w.usedPercent >= LONG_WINDOW_ALERT_PERCENT);
+
+    tightest =
+      pickTightest(nearlyExhausted) ??
+      (fiveHour.w.limitUsd !== null ? fiveHour : pickTightest(longWindows));
+  }
 
   const label = tightest?.label ?? t("nav.monthlyQuota");
   const percent = tightest?.w.usedPercent ?? 0;

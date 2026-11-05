@@ -227,7 +227,13 @@ export async function getPublicSharedChat(shareToken: string): Promise<SharedCha
     messages: formattedMessages,
   };
 
-  await setCachedJson(CACHE_KEYS.sharedChat(cleanToken), result, CACHE_TTL.SHARED_CHAT);
+  // A chat shared while its first reply is still generating has nothing stored yet:
+  // keep that empty snapshot only briefly so the conversation shows up once it lands
+  await setCachedJson(
+    CACHE_KEYS.sharedChat(cleanToken),
+    result,
+    formattedMessages.length > 0 ? CACHE_TTL.SHARED_CHAT : 15
+  );
 
   return result;
 }

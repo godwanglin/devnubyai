@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { ChatTopbar } from "./chat-topbar";
-import { ChatFilesPanel } from "./chat-files-panel";
+import { ChatFilesPanel, FILES_PANEL_CHAT_MIN_WIDTH } from "./chat-files-panel";
+import { getLocalStorage } from "@/lib/storage";
 import { Composer } from "./composer";
 import { MessageList } from "./message-list";
 import { ChatTimeline } from "./chat-timeline";
@@ -18,6 +19,12 @@ import {
   type QuotaNotice,
 } from "@/lib/chat/quota-shared";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/chat/quotes";
+import {
+  livePreviewItem,
+  stepLiveDocument,
+  type LiveDocumentEvent,
+  type LiveDocumentState,
+} from "@/lib/chat/live-document";
 import { Welcome } from "./welcome";
 import { ProjectHomeView } from "@/components/projects/project-home-view";
 import { dispatchProjectsUpdated } from "@/hooks/use-projects";
@@ -77,6 +84,9 @@ import type { OnboardingStep } from "@/lib/onboarding/options";
 import { useToast } from "@/providers/toast-provider";
 import type { MessageAttachment, SessionFileItem, UserQuota } from "@/types";
 
+/** Below this chat width (with the left sidebar open) a wide files panel folds the sidebar away */
+const CHAT_MIN_WIDTH_WITH_SIDEBAR = 560;
+
 /** The server's 429 for "too many replies generating at once" (see claimGenerationSlot) */
 function isParallelLimitError(err: unknown): boolean {
   return err instanceof Error && /generated at once/i.test(err.message);
@@ -93,6 +103,12 @@ export function ChatShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isFilesFullscreen, setIsFilesFullscreen] = useState(false);
   const [activePreviewFile, setActivePreviewFile] = useState<SessionFileItem | null>(null);
+  // Live document preview: the document the AI is building right now (see live-document.ts)
+  const [liveDocument, setLiveDocument] = useState<LiveDocumentState | null>(null);
+  // Build calls the user closed the live view of: not reopened for that call
+  const [dismissedLiveCalls, setDismissedLiveCalls] = useState<ReadonlySet<string>>(() => new Set());
+  // Last document a live build finished: shown again while the AI revises it
+  const [lastLiveFinal, setLastLiveFinal] = useState<SessionFileItem | null>(null);
   const {
     storedModelId,
     reasoningLevel,
@@ -341,8 +357,27 @@ export function ChatShell() {
   const chatEventsRef = useRef<ChatEvents>({});
   chatEventsRef.current = {
     // The server charges spend while the reply streams and pushes the new quota
-    onData: (_chatId, part) => {
+    onData: (chatId, part) => {
       if (part.type === "data-quota" && part.data) setQuotaSnapshot(part.data as UserQuota);
+      // A version of the document being built landed in the workspace: show it right away
+      if (part.type === "data-live-document" && part.data && chatId && chatId === activeChatIdRef.current) {
+        const event = part.data as LiveDocumentEvent;
+        if (dismissedLiveCalls.has(event.toolCallId)) return;
+        const preview = livePreviewItem(event);
+        setLiveDocument((prev) =>
+          prev && prev.toolCallId === event.toolCallId
+            ? { ...prev, phase: "rendering", filename: preview.displayName, preview }
+            : {
+                toolCallId: event.toolCallId,
+                toolName: prev?.toolName ?? "run_skill_script",
+                phase: "rendering",
+                filename: preview.displayName,
+                source: "",
+                preview,
+              }
+        );
+        setIsFilesPanelOpen(true);
+      }
     },
     onError: (chatId, err) => {
       const quota = parseQuotaError(err);
@@ -446,6 +481,8 @@ export function ChatShell() {
     setPendingEditChips([]);
     dispatchClearEditChips();
     setActivePreviewFile(null);
+    setLiveDocument(null);
+    setLastLiveFinal(null);
     setIsFilesFullscreen(false);
     // The open/closed pref is left alone: without an active chat the panel is
     // hidden anyway (showFilesPanel), and it comes back on the next chat.
@@ -859,11 +896,48 @@ export function ChatShell() {
   const showFilesPanel = isFilesPanelOpen && Boolean(activeChatId);
   const hideChatForFullscreenFiles = showFilesPanel && isFilesFullscreen;
 
+  /** Leave the live view of the current build; it is not forced open again for that call. */
+  const liveCallId = liveDocument?.toolCallId ?? null;
+  const dismissLiveDocument = useCallback(() => {
+    if (liveCallId) setDismissedLiveCalls((prev) => new Set(prev).add(liveCallId));
+    setLiveDocument(null);
+  }, [liveCallId]);
+
   const closeFilesPanel = useCallback(() => {
+    dismissLiveDocument();
     setIsFilesPanelOpen(false);
     setIsFilesFullscreen(false);
     setActivePreviewFile(null);
-  }, [setIsFilesPanelOpen]);
+  }, [setIsFilesPanelOpen, dismissLiveDocument]);
+
+  // Live document preview: follow the document build calls of the reply being generated.
+  // Its code streams in, every version the script writes is shown (onData above), and the
+  // final file replaces the live view when the call returns. Adjusted while rendering.
+  const liveStep = activeChatId
+    ? stepLiveDocument({
+        current: liveDocument,
+        messages: domainMessages,
+        streamingId,
+        chatId: activeChatId,
+        dismissed: dismissedLiveCalls,
+        lastFinal: lastLiveFinal,
+      })
+    : null;
+  if (liveStep) {
+    setLiveDocument(liveStep.live);
+    if (liveStep.final) {
+      setLastLiveFinal(liveStep.final);
+      // A rebuilt file can keep its id: the call's id makes the URL new for every version
+      const { url } = liveStep.final;
+      const version = encodeURIComponent(liveCallId ?? "");
+      setActivePreviewFile({ ...liveStep.final, url: `${url}${url.includes("?") ? "&" : "?"}v=${version}` });
+    }
+  }
+
+  // A new build opens the panel (the open/closed pref lives outside React)
+  useEffect(() => {
+    if (liveCallId) setIsFilesPanelOpen(true);
+  }, [liveCallId, setIsFilesPanelOpen]);
 
   const toggleFilesPanel = useCallback(() => {
     if (isFilesPanelOpen) closeFilesPanel();
@@ -888,9 +962,39 @@ export function ChatShell() {
     if (typeof window !== "undefined" && window.innerWidth <= 768) {
       setMobileOpen(true);
     } else {
+      sidebarAutoCollapsedRef.current = false;
       setIsCollapsed((v) => !v);
     }
   }
+
+  // A wide files panel folds the left sidebar away so the chat keeps a usable width;
+  // the sidebar comes back once the panel narrows again (or closes), unless the user
+  // toggled it themselves in between.
+  const sidebarAutoCollapsedRef = useRef(false);
+  const handleFilesPanelWidth = useCallback((panelWidth: number | null) => {
+    if (typeof window === "undefined" || window.innerWidth <= 768) return;
+    if (panelWidth === null) {
+      if (sidebarAutoCollapsedRef.current) {
+        sidebarAutoCollapsedRef.current = false;
+        setIsCollapsed(false);
+      }
+      return;
+    }
+    const viewport = window.innerWidth;
+    const renderedPanel = Math.min(panelWidth, viewport - FILES_PANEL_CHAT_MIN_WIDTH);
+    const storedSidebar = getLocalStorage<number>("devnuby-sidebar-width", 272);
+    const sidebarWidth = Math.min(typeof storedSidebar === "number" ? storedSidebar : 272, viewport * 0.32);
+    const chatWithSidebar = viewport - renderedPanel - sidebarWidth;
+    if (chatWithSidebar < CHAT_MIN_WIDTH_WITH_SIDEBAR) {
+      setIsCollapsed((collapsed) => {
+        if (!collapsed) sidebarAutoCollapsedRef.current = true;
+        return true;
+      });
+    } else if (sidebarAutoCollapsedRef.current && chatWithSidebar >= CHAT_MIN_WIDTH_WITH_SIDEBAR + 40) {
+      sidebarAutoCollapsedRef.current = false;
+      setIsCollapsed(false);
+    }
+  }, []);
 
   const renderComposer = (customPlaceholder?: string) => (
     <Composer
@@ -935,7 +1039,10 @@ export function ChatShell() {
         sessions={sessions}
         isLoadingSessions={isLoadingSessions}
         isCollapsed={isCollapsed}
-        onToggleCollapse={() => setIsCollapsed((v) => !v)}
+        onToggleCollapse={() => {
+          sidebarAutoCollapsedRef.current = false;
+          setIsCollapsed((v) => !v);
+        }}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
         onRenameSession={(s) => setRenamingTarget({ id: s.id, title: s.title })}
@@ -1067,6 +1174,9 @@ export function ChatShell() {
         onToggleFullscreen={() => setIsFilesFullscreen((v) => !v)}
         onToggleSidebar={handleToggleSidebar}
         onClose={closeFilesPanel}
+        liveDocument={liveDocument}
+        onDismissLive={dismissLiveDocument}
+        onWidthChange={handleFilesPanelWidth}
       />
 
       {/* The server refuses PIN-locked chats until the PIN is entered */}

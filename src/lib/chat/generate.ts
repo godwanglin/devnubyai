@@ -1010,6 +1010,25 @@ export function createChatGenerationStream(
                     userInternalId: userId,
                     sessionInternalId: sessionId,
                     signal: combinedSignal,
+                    // Live document preview: the files panel opens what the script just wrote
+                    onProgress: (progress) => {
+                      if (progress.type !== "document-ready") return;
+                      const params = new URLSearchParams({
+                        path: progress.path,
+                        v: String(progress.version),
+                      });
+                      writer.write({
+                        type: "data-live-document",
+                        data: {
+                          toolCallId: effectiveCallId,
+                          path: progress.path,
+                          sizeBytes: progress.sizeBytes,
+                          version: progress.version,
+                          url: `/api/v1/chats/${sessionPublicId}/live-document?${params.toString()}`,
+                        },
+                        transient: true,
+                      });
+                    },
                   });
               const toolEnd = Date.now();
               const toolDurationSec = Math.max(1, Math.round((toolEnd - toolStart) / 1000));

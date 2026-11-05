@@ -287,6 +287,8 @@ export async function updateChatSession(
   if (data.isLocked === true) {
     await invalidateSharedChatCache(existing.shareToken);
     await revokePinUnlock();
+  } else if (data.title !== undefined) {
+    await invalidateSharedChatCache(existing.shareToken);
   }
   await invalidateChatSessionCache(userId, sessionPublicId);
 

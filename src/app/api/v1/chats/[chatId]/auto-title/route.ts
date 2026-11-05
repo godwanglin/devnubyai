@@ -6,6 +6,7 @@ import { executeWithFallback } from "@/lib/routing/executor";
 import { assertUserQuota } from "@/lib/chat/quota";
 import { assertUserModelAccess } from "@/lib/chat/model-access";
 import { invalidateChatSessionCache } from "@/lib/chat/session-cache";
+import { invalidateSharedChatCache } from "@/lib/redis/cache-keys";
 
 type RouteContext = { params: Promise<{ chatId: string }> };
 
@@ -115,11 +116,13 @@ export async function POST(request: Request, context: RouteContext) {
       .slice(0, 80);
 
     if (cleanTitle && cleanTitle.length >= 2) {
-      await db.chatSession.update({
+      const updated = await db.chatSession.update({
         where: { id: session.id },
         data: { title: cleanTitle },
+        select: { shareToken: true },
       });
       await invalidateChatSessionCache(user.id, chatId);
+      await invalidateSharedChatCache(updated.shareToken);
       return jsonSuccess({ title: cleanTitle }, { requestId });
     }
 

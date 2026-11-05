@@ -1,7 +1,7 @@
 import { redis, getCachedJson, setCachedJson } from "@/lib/redis/client";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/client";
-import { invalidateUserQuotaCache } from "@/lib/redis/cache-keys";
+import { invalidateSharedChatCache, invalidateUserQuotaCache } from "@/lib/redis/cache-keys";
 import { computeCostUsd } from "@/lib/billing/cost";
 import {
   FIVE_HOURS_MS,
@@ -471,6 +471,15 @@ type FlushResult = "stored" | "pending" | "busy" | "gone" | "dropped";
  * Stores a queued turn in Postgres. Safe to call concurrently (per-turn lock)
  * and repeatedly (messages are upserted; usage is not billed twice).
  */
+/** Drops the public share snapshot of a chat, if it has a share link. */
+async function invalidateSharedChatOf(sessionId: bigint): Promise<void> {
+  const session = await db.chatSession.findUnique({
+    where: { id: sessionId },
+    select: { shareToken: true },
+  });
+  if (session?.shareToken) await invalidateSharedChatCache(session.shareToken);
+}
+
 export async function flushTurn(publicId: string, known?: PendingTurn): Promise<FlushResult> {
   if (!(await acquireFlushLock(publicId))) return "busy";
   try {
@@ -501,6 +510,8 @@ export async function flushTurn(publicId: string, known?: PendingTurn): Promise<
     const userId = BigInt(turn.userId);
     await Promise.allSettled([
       invalidateChatSessionCache(userId, turn.sessionPublicId),
+      // A share link opened before this turn landed must not keep serving the old snapshot
+      invalidateSharedChatOf(BigInt(turn.sessionId)),
       // Only the DB-backed display cache; the live ledger already has this spend
       turn.usage ? invalidateUserQuotaCache(userId, { keepLive: true }) : Promise.resolve(),
     ]);

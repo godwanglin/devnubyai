@@ -23,6 +23,18 @@ export interface ToolExecutionContext {
   signal?: AbortSignal;
   model?: string;
   customConfig?: Record<string, unknown>;
+  /** Live progress while the tool runs (e.g. a document file landing in the workspace) */
+  onProgress?: (event: ToolProgressEvent) => void;
+}
+
+/** A document the running tool has written to the chat workspace, readable before the tool ends. */
+export interface ToolProgressEvent {
+  type: "document-ready";
+  /** Workspace-relative path, e.g. `laporan.pdf` */
+  path: string;
+  sizeBytes: number;
+  /** Changes on every rewrite, so previews can tell versions apart */
+  version: number;
 }
 
 export interface ToolExecutionResult<T = unknown> {

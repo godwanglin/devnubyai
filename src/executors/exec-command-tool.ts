@@ -72,6 +72,9 @@ export const execCommandTool: ToolDefinition<ExecCommandParams, ExecCommandResul
         timeoutMs: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds * 1000 : undefined,
         publish: Array.isArray(params.publish) ? params.publish.map(String) : undefined,
         signal: context.signal,
+        onDocumentReady: context.onProgress
+          ? (doc) => context.onProgress?.({ type: "document-ready", ...doc })
+          : undefined,
       });
 
       if (!result.ok) {
