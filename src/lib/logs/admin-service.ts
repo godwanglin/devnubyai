@@ -79,6 +79,7 @@ export interface ChatErrorTraceDto {
   /** The real failure: request id, class, message and stack */
   trace: string;
   errorCode: string | null;
+  requestId: string | null;
   modelName: string | null;
   createdAt: string;
 }
@@ -103,6 +104,7 @@ export async function listChatErrorTraces(query: ChatErrorQuery) {
     ...(term
       ? {
           OR: [
+            { requestId: { contains: term, mode: "insensitive" } },
             { errorDetail: { contains: term, mode: "insensitive" } },
             { errorCode: { contains: term, mode: "insensitive" } },
             { content: { contains: term, mode: "insensitive" } },
@@ -123,6 +125,7 @@ export async function listChatErrorTraces(query: ChatErrorQuery) {
         content: true,
         errorCode: true,
         errorDetail: true,
+        requestId: true,
         createdAt: true,
         catalogModel: { select: { displayName: true } },
         session: { select: { publicId: true, user: { select: { name: true, email: true } } } },
@@ -138,6 +141,7 @@ export async function listChatErrorTraces(query: ChatErrorQuery) {
     clientError: row.content,
     trace: row.errorDetail ?? "",
     errorCode: row.errorCode,
+    requestId: row.requestId,
     modelName: row.catalogModel?.displayName ?? null,
     createdAt: row.createdAt.toISOString(),
   }));

@@ -385,6 +385,8 @@ model ChatMessage {
   /// The real error (message + stack) behind a failed turn. Never sent to the client;
   /// admins look it up in the logs panel. The user only sees the friendly `content`.
   errorDetail      String?  @map("error_detail") @db.Text
+  /// Request id of a failed turn, shown on the user's error card and searched by admins.
+  requestId        String?  @map("request_id") @db.VarChar(64)
   promptTokens     Int?     @map("prompt_tokens") 
   completionTokens Int?     @map("completion_tokens") 
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

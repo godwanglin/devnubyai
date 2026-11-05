@@ -11,6 +11,7 @@ import { MessageAttachments } from "./message-attachments";
 import { ThinkingAccordion } from "./thinking-accordion";
 import { ToolActivityList } from "./tool-activity";
 import { TurnGeneratedFiles } from "./turn-generated-files";
+import { MessageErrorCard } from "./message-error-card";
 import { TypingIndicator } from "./typing-indicator";
 import { QuoteChip } from "./quote-chip";
 import { SourceMentionChips } from "./source-mention-chips";
@@ -300,6 +301,11 @@ export const MessageBubble = memo(function MessageBubble({
   // Balasan yang dibatalkan sebelum ada teks/aktivitas: biarkan kosong tanpa action bar
   if (!isStreaming && !hasContent && !hasActivity && donePhase === "idle") return null;
 
+  // A failed reply is a red card with the friendly line and its request id, not chat prose
+  const errorCard = message.errorRequestId ? (
+    <MessageErrorCard message={message.content} requestId={message.errorRequestId} />
+  ) : null;
+
   const hasTools = Boolean(message.toolCalls && message.toolCalls.length > 0);
   let lastWorkIdx = -1;
   if (hasTools && message.segments?.length) {
@@ -330,18 +336,19 @@ export const MessageBubble = memo(function MessageBubble({
               )}
               sourcesMap={sourcesMap}
             />
-            {message.segments.slice(lastWorkIdx + 1).map((segment, idx, arr) => {
-              if (segment.type !== "text") return null;
-              const isLast = idx === arr.length - 1;
-              return (
-                <div
-                  key={`final-text-${idx}`}
-                  className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}
-                >
-                  <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
-                </div>
-              );
-            })}
+            {errorCard ??
+              message.segments.slice(lastWorkIdx + 1).map((segment, idx, arr) => {
+                if (segment.type !== "text") return null;
+                const isLast = idx === arr.length - 1;
+                return (
+                  <div
+                    key={`final-text-${idx}`}
+                    className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}
+                  >
+                    <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
+                  </div>
+                );
+              })}
           </>
         ) : (
           // No tools used: render reasoning & text segments directly
@@ -353,6 +360,7 @@ export const MessageBubble = memo(function MessageBubble({
             if (segment.type === "tools") {
               return <ToolActivityList key={`tools-${segment.tools[0]?.id ?? idx}`} tools={segment.tools} messageId={message.id} chatId={chatId} isMessageStreaming={isStreaming} />;
             }
+            if (errorCard && isLast) return <React.Fragment key={`text-${idx}`}>{errorCard}</React.Fragment>;
             return (
               <div key={`text-${idx}`} className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}>
                 <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
@@ -365,7 +373,9 @@ export const MessageBubble = memo(function MessageBubble({
           {message.toolCalls?.length ? (
             <ToolActivityList tools={message.toolCalls} messageId={message.id} chatId={chatId} isMessageStreaming={isStreaming} />
           ) : null}
-          {hasContent ? (
+          {errorCard ? (
+            errorCard
+          ) : hasContent ? (
             <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
               <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
             </div>

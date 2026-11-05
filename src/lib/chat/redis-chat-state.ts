@@ -70,6 +70,8 @@ export interface PendingAssistantMessage {
   errorCode: string | null;
   /** Real error trace of a failed turn; null otherwise. Never leaves the server. */
   errorDetail: string | null;
+  /** Request id of a failed turn, shown on the user's error card. */
+  requestId: string | null;
   catalogModelId: string;
   catalogModelPublicId: string;
   promptTokens: number;
@@ -328,6 +330,7 @@ async function persistTurn(turn: PendingTurn, checkAlreadyBilled: boolean): Prom
     status: a.status,
     errorCode: a.errorCode,
     errorDetail: a.errorDetail,
+    requestId: a.requestId,
     promptTokens: a.promptTokens || null,
     completionTokens: a.completionTokens || null,
     catalogModelId: BigInt(a.catalogModelId),

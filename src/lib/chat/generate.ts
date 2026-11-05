@@ -313,6 +313,7 @@ export function createChatGenerationStream(
           errorCode,
           // The real trace stays server-side; `content` is the only text the user ever sees
           errorDetail,
+          requestId: errorDetail ? requestId : null,
           promptTokens,
           completionTokens,
         };
@@ -1345,7 +1346,7 @@ export function createChatGenerationStream(
           // The stream error is the only text the client gets; the trace never leaves the server
           writer.write({
             type: "error",
-            errorText: clientErrorText(streamErr),
+            errorText: `${clientErrorText(streamErr)}\n${CLIENT_ERROR_REQUEST_ID_PREFIX}${requestId}`,
           });
           writer.setOutcome({ status: "failed", error: streamErr });
         }
@@ -1358,6 +1359,12 @@ export function createChatGenerationStream(
 
   return startStreamHub(sessionPublicId, assistantMessagePublicId, source);
 }
+
+/**
+ * Marks the request id inside the stream error text. The client splits it back off and shows
+ * it on the error card; the stored message keeps only the friendly line.
+ */
+export const CLIENT_ERROR_REQUEST_ID_PREFIX = "request-id: ";
 
 /** Short, safe line shown in the chat bubble. Never includes a stack, path, or upstream body. */
 function clientErrorText(err: unknown): string {

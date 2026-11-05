@@ -36,6 +36,8 @@ export interface ChatMessageDto {
   parts: unknown;
   status: string;
   errorCode?: string | null;
+  /** Request id of a failed reply, so the user can quote it to support. */
+  requestId?: string | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
   catalogModelId?: string | null;

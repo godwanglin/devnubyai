@@ -329,6 +329,9 @@
     "noModelsHint": "Admin has not configured active catalog models yet."
   },
   "message": {
+    "errorTitle": "Something went wrong",
+    "errorRequestId": "Request ID",
+    "errorRequestIdCopied": "Request ID copied",
     "copy": "Copy",
     "copied": "Copied",
     "edit": "Edit",

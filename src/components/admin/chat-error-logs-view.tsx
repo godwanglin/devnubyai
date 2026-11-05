@@ -9,12 +9,6 @@ import { useToast } from "@/providers/toast-provider";
 import { cn } from "@/lib/cn";
 import type { ChatErrorTraceDto } from "@/lib/logs/admin-service";
 
-/** First line of a trace is `requestId: ...`; shown as the row's handle. */
-function requestIdOf(trace: string): string {
-  const match = /^requestId:\s*(\S+)/.exec(trace);
-  return match?.[1] ?? "";
-}
-
 export function ChatErrorLogsView() {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -78,7 +72,7 @@ export function ChatErrorLogsView() {
           <ul className="divide-y divide-[var(--border)]">
             {items.map((item) => {
               const open = openId === item.messageId;
-              const requestId = requestIdOf(item.trace);
+              const requestId = item.requestId ?? "";
               return (
                 <li key={item.messageId}>
                   <button

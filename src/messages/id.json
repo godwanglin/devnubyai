@@ -329,6 +329,9 @@
     "noModelsHint": "Admin belum menambahkan model aktif di katalog."
   },
   "message": {
+    "errorTitle": "Terjadi kendala",
+    "errorRequestId": "Request ID",
+    "errorRequestIdCopied": "Request ID tersalin",
     "copy": "Salin",
     "copied": "Tersalin",
     "edit": "Edit",

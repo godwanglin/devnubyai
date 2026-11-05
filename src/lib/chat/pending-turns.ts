@@ -21,6 +21,7 @@ function assistantDto(turn: PendingTurn, sessionPublicId: string): ChatMessageDt
       parts: a.parts.length > 0 ? a.parts : null,
       status: a.status,
       errorCode: a.errorCode,
+      requestId: a.requestId,
       promptTokens: a.promptTokens || null,
       completionTokens: a.completionTokens || null,
       catalogModel: { publicId: a.catalogModelPublicId },

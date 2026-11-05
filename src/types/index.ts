@@ -49,6 +49,8 @@ export interface Message {
   /** Project sources the user @mentioned in this message */
   sourceMentions?: { id: string; filename: string }[];
   feedback?: "like" | "dislike" | null;
+  /** Set on a failed reply: the request id shown on the error card. */
+  errorRequestId?: string | null;
 }
 
 export type SessionGroupKey = "pinned" | "today" | "yesterday" | "week" | "earlier";

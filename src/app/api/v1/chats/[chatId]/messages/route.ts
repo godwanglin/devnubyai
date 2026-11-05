@@ -224,6 +224,7 @@ export async function POST(request: Request, context: RouteContext) {
         status: "streaming",
         errorCode: null,
         errorDetail: null,
+        requestId: null,
         catalogModelId: resolvedModel.id.toString(),
         catalogModelPublicId: resolvedModel.publicId,
         promptTokens: 0,

@@ -48,6 +48,7 @@ export function toMessageDto(
     parts: unknown;
     status: string;
     errorCode: string | null;
+    requestId?: string | null;
     promptTokens: number | null;
     completionTokens: number | null;
     catalogModel?: { publicId: string } | null;
@@ -86,6 +87,7 @@ export function toMessageDto(
     parts: message.parts,
     status: message.status,
     errorCode: message.errorCode,
+    requestId: message.requestId ?? null,
     promptTokens: message.promptTokens,
     completionTokens: message.completionTokens,
     catalogModelId: message.catalogModel?.publicId ?? null,

@@ -2,6 +2,8 @@
 
 import { Chat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
+import { CLIENT_ERROR_REQUEST_ID_PREFIX } from "./generate";
+import { messageErrorRequestIdMap } from "./client-mappers";
 import { chatTransport } from "./transport";
 
 /**
@@ -47,12 +49,16 @@ function createEntry(chatId: string | null): Entry {
       // A failed reply that wrote nothing would leave an empty bubble. The error text the
       // server sends is the friendly line (the real trace stays in the database), so it
       // becomes the message content until the next reload reads the stored one.
-      const text = error instanceof Error ? error.message.trim() : "";
+      const raw = error instanceof Error ? error.message.trim() : "";
+      const markerAt = raw.lastIndexOf(CLIENT_ERROR_REQUEST_ID_PREFIX);
+      const requestId = markerAt >= 0 ? raw.slice(markerAt + CLIENT_ERROR_REQUEST_ID_PREFIX.length).trim() : "";
+      const text = (markerAt >= 0 ? raw.slice(0, markerAt) : raw).trim();
       if (text) {
         const messages = chat.messages;
         const last = messages[messages.length - 1];
         const hasText = last?.role === "assistant" && last.parts.some((p) => p.type === "text" && p.text.trim());
         if (last?.role === "assistant" && !hasText) {
+          if (requestId) messageErrorRequestIdMap.set(last.id, requestId);
           chat.messages = [
             ...messages.slice(0, -1),
             { ...last, parts: [...last.parts, { type: "text", text, state: "done" }] },

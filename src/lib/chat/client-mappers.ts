@@ -33,6 +33,7 @@ export interface ApiMessageItem {
   reasoningDurationSec?: number;
   parts?: unknown;
   status: string;
+  requestId?: string | null;
   attachments?: MessageAttachment[];
   createdAt: string;
   updatedAt: string;
@@ -101,6 +102,8 @@ export const messageAttachmentsMap = new Map<string, MessageAttachment[]>();
 export const messageQuotesMap = new Map<string, string[]>();
 export const messageSourceMentionsMap = new Map<string, SourceMention[]>();
 export const messageFeedbackMap = new Map<string, FeedbackRating>();
+/** Request id of a failed reply, keyed by message id. */
+export const messageErrorRequestIdMap = new Map<string, string>();
 
 /**
  * Maps an array of AI SDK UIMessages into the UI's simple Message format.
@@ -130,6 +133,7 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         messageSourceMentionsMap.set(m.id, msgMeta.sourceMentions);
       }
       const feedback = messageFeedbackMap.get(m.id) ?? null;
+      const errorRequestId = messageErrorRequestIdMap.get(m.id) ?? null;
       let isReasoningStreaming = false;
       let currentReasoningDurationSec: number | undefined = undefined;
       const toolCalls: ToolActivity[] = [];
@@ -244,6 +248,7 @@ export function mapUIMessagesToDomain(uiMessages: UIMessage[]): Message[] {
         quotes: quotes && quotes.length > 0 ? quotes : undefined,
         sourceMentions: sourceMentions && sourceMentions.length > 0 ? sourceMentions : undefined,
         feedback,
+        errorRequestId,
       };
     });
 }
@@ -283,6 +288,9 @@ export function mapApiMessagesToUIMessages(items: ApiMessageItem[]): UIMessage[]
       if (sourceMentions.length > 0) {
         messageSourceMentionsMap.set(m.id, sourceMentions);
       }
+
+      if (m.requestId) messageErrorRequestIdMap.set(m.id, m.requestId);
+      else messageErrorRequestIdMap.delete(m.id);
 
       const feedbackPart = rawParts.find(isFeedbackPart);
       if (feedbackPart) {
