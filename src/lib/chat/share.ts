@@ -14,6 +14,8 @@ import {
   isImageMimeType,
 } from "@/lib/files/policy";
 import { stripFeedbackParts } from "./feedback";
+import { mergePendingTurns } from "./pending-turns";
+import { listSessionTurns } from "./redis-chat-state";
 import { getChatSession, getUnlockedChatSession, type ChatMessageDto } from "./service";
 import { isHelperSkillArtifactName } from "./turn-recovery";
 
@@ -91,6 +93,8 @@ export async function enableChatShare(
   }
 
   if (existing.shareToken && existing.sharedAt) {
+    // Sharing again always publishes the conversation as it is now
+    await invalidateSharedChatCache(existing.shareToken);
     return {
       shareToken: existing.shareToken,
       sharedAt: existing.sharedAt.toISOString(),
@@ -219,23 +223,55 @@ export async function getPublicSharedChat(shareToken: string): Promise<SharedCha
     };
   });
 
+  // Turns still in Redis (generating, or ended and waiting for Postgres) are part of the
+  // conversation too: without them a chat shared mid-reply opens empty
+  const pendingTurns = await listSessionTurns(session.id).catch(() => []);
+  const allMessages =
+    pendingTurns.length > 0
+      ? mergePendingTurns(formattedMessages, pendingTurns, session.publicId)
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .filter((m) => m.status !== "failed")
+          .map((m) => toPublicMessage(m, session.publicId, cleanToken))
+      : formattedMessages;
+
   const result: SharedChatDto = {
     id: session.publicId,
     title: session.title,
     sharedAt: session.sharedAt ? session.sharedAt.toISOString() : null,
     updatedAt: session.updatedAt.toISOString(),
-    messages: formattedMessages,
+    messages: allMessages,
   };
 
-  // A chat shared while its first reply is still generating has nothing stored yet:
-  // keep that empty snapshot only briefly so the conversation shows up once it lands
-  await setCachedJson(
-    CACHE_KEYS.sharedChat(cleanToken),
-    result,
-    formattedMessages.length > 0 ? CACHE_TTL.SHARED_CHAT : 15
-  );
+  // While a turn is still in Redis the snapshot changes with every token: never cache it.
+  // Storing the turn invalidates this key (redis-chat-state flushTurn), so the next visit
+  // after that builds and caches the finished conversation.
+  if (pendingTurns.length === 0) {
+    await setCachedJson(
+      CACHE_KEYS.sharedChat(cleanToken),
+      result,
+      allMessages.length > 0 ? CACHE_TTL.SHARED_CHAT : 15
+    );
+  }
 
   return result;
+}
+
+/** A message from a turn still in Redis, made safe for the public page. */
+function toPublicMessage(m: ChatMessageDto, sessionPublicId: string, shareToken: string): ChatMessageDto {
+  const privatePrefix = `/api/v1/chats/${sessionPublicId}/files/`;
+  const publicPrefix = `/api/v1/share/${shareToken}/files/`;
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    reasoning: m.reasoning,
+    parts: rewriteSharedPartsUrls(m.parts ? stripFeedbackParts(m.parts) : m.parts, sessionPublicId, shareToken),
+    // Stored shared messages carry no error code or request id; pending ones don't either
+    status: m.status,
+    attachments: m.attachments?.map((a) => ({ ...a, url: a.url.replace(privatePrefix, publicPrefix) })),
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+  };
 }
 
 function rewriteSharedPartsUrls(
