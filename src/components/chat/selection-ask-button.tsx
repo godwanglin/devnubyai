@@ -167,14 +167,11 @@ export function SelectionAskButton({
     function commitSelection(next: SelectionState | null) {
       setSelection((prev) => {
         if (!next) return prev ? null : prev;
-        if (
-          prev &&
-          prev.text === next.text &&
-          prev.tone === next.tone &&
-          Math.abs(prev.top - next.top) < 1 &&
-          Math.abs(prev.left - next.left) < 1
-        ) {
-          return prev;
+        if (prev && prev.text === next.text) {
+          // The tone is sampled once per selection: re-sampling while the page scrolls or
+          // streams can flip it back and forth and re-render the pill on every event
+          if (Math.abs(prev.top - next.top) < 1 && Math.abs(prev.left - next.left) < 1) return prev;
+          return { ...next, tone: prev.tone };
         }
         return next;
       });

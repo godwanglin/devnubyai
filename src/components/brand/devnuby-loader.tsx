@@ -87,16 +87,28 @@ export function useLookAtCursor(enabled = true) {
         const pupilX = Number((cosA * normDist * 1.1).toFixed(2));
         const pupilY = Number((sinA * normDist * 0.9).toFixed(2));
 
-        setTracking({
-          body: { x: bodyX, y: bodyY, tilt },
-          eye: { x: eyeX, y: eyeY },
-          pupil: { x: pupilX, y: pupilY },
-        });
+        // Same pose (cursor parked, or moving within rounding): keep the old object so
+        // React bails out instead of re-rendering every mascot on screen
+        setTracking((prev) =>
+          prev.body.x === bodyX &&
+          prev.body.y === bodyY &&
+          prev.body.tilt === tilt &&
+          prev.eye.x === eyeX &&
+          prev.eye.y === eyeY &&
+          prev.pupil.x === pupilX &&
+          prev.pupil.y === pupilY
+            ? prev
+            : {
+                body: { x: bodyX, y: bodyY, tilt },
+                eye: { x: eyeX, y: eyeY },
+                pupil: { x: pupilX, y: pupilY },
+              }
+        );
       });
     };
 
     const handleMouseLeave = () => {
-      setTracking(ZERO_TRACKING);
+      setTracking((prev) => (prev === ZERO_TRACKING ? prev : ZERO_TRACKING));
     };
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
@@ -128,7 +140,8 @@ export function DevnubyLoaderMascot({
 }: DevnubyLoaderMascotProps) {
   const p = `dnl${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const shouldTrack = state === "normal" || state === "thinking";
-  const internal = useLookAtCursor(shouldTrack);
+  // A parent that passes `tracking` owns the cursor listener; a second one here would only add renders
+  const internal = useLookAtCursor(shouldTrack && !externalTracking);
   const trk = externalTracking ?? internal.tracking;
   const svgRef = externalTracking ? undefined : (internal.targetRef as React.RefObject<SVGSVGElement>);
 
