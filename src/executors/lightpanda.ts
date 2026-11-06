@@ -107,10 +107,15 @@ export async function fetchWithBrowser(url: string, signal?: AbortSignal): Promi
 
   if (parsed.error) {
     const blocked = /blocked|private|forbidden/i.test(parsed.error);
+    const reason = /couldntconnect/i.test(parsed.error)
+      ? "could not connect to the site"
+      : /resolve|dns/i.test(parsed.error)
+        ? "the domain does not exist"
+        : /timeout|timedout/i.test(parsed.error)
+          ? "the site took too long to respond"
+          : parsed.error;
     throw new BrowserFetchError(
-      blocked
-        ? "This address is not allowed (private or internal network)."
-        : `Could not open the page: ${parsed.error}.`,
+      blocked ? "This address is not allowed (private or internal network)." : `Could not open the page: ${reason}.`,
       blocked ? "BLOCKED" : "NAVIGATION"
     );
   }

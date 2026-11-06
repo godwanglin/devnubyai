@@ -73,7 +73,8 @@ const TEXT_CONTENT_TYPE = /^(?:text\/|application\/(?:json|ld\+json|xml|xhtml\+x
 
 /** The page's first heading, shown as the fetch label (`Opening <title>`). */
 function markdownTitle(markdown: string): string | undefined {
-  const m = /^#{1,2}\s+(.+)$/m.exec(markdown);
+  // Only an h1: reader mode often drops the page title, and a section heading would mislabel the page
+  const m = /^#\s+(.+)$/m.exec(markdown);
   if (!m) return undefined;
   return m[1].replace(/[*_`]|\[([^\]]*)\]\([^)]*\)/g, "$1").trim().slice(0, 200) || undefined;
 }
@@ -232,6 +233,7 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
         );
       }
       if (page.status >= 400) return fail("EXECUTION_ERROR", `HTTP ${page.status}`);
+      if (page.status === 0) return fail("EXECUTION_ERROR", "The site did not respond.");
 
       // A PDF, image or archive is not a readable page; say what it is
       const contentType = page.contentType;
@@ -243,6 +245,7 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
       }
 
       const text = page.markdown.replace(/\u0000/g, "");
+      if (!text) return fail("EXECUTION_ERROR", "The page loaded but has no readable text.");
       const truncated = text.length > maxChars;
       const finalText = truncated ? text.slice(0, maxChars) + "\n…[truncated]" : text;
 
