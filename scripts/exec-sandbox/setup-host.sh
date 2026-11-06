@@ -10,6 +10,7 @@
 #   - an egress firewall for that uid: private/internal networks and this host blocked,
 #     public internet allowed (systemd unit `devnuby-exec-firewall`)
 #   - bubblewrap + document tooling (LibreOffice, pandoc, poppler, qpdf, OCR, fonts)
+#   - the Lightpanda headless browser used by fetch_url (/usr/local/bin/lightpanda)
 #   - root-only image dir and the mount root for the per-user 250 MB workspaces
 set -euo pipefail
 
@@ -67,6 +68,14 @@ install -m 644 "$(dirname "$0")/devnuby-exec-firewall.service" /etc/systemd/syst
 systemctl daemon-reload
 systemctl enable devnuby-exec-firewall.service >/dev/null
 systemctl restart devnuby-exec-firewall.service
+
+echo "== lightpanda headless browser (fetch_url, runs as $EXEC_USER; src/executors/lightpanda.ts)"
+# Nightly builds only; re-run this script to update. Telemetry is turned off by the app.
+curl -fsSL -o /tmp/lightpanda.new \
+  https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux
+install -o root -g root -m 0755 /tmp/lightpanda.new /usr/local/bin/lightpanda
+rm -f /tmp/lightpanda.new
+LIGHTPANDA_DISABLE_TELEMETRY=true /usr/local/bin/lightpanda version
 
 echo "== python libraries in the app venv (shared read-only with the sandbox)"
 if [ -x "$APP_DIR/.devnuby/.venv/bin/python" ]; then

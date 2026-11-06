@@ -5,7 +5,16 @@ import { EXECUTOR_CONFIG, SANDBOX_CONFIG } from "./config";
 import { getSandboxSupport, type UserWorkspaceLease, WorkspaceError } from "./user-workspace";
 
 export interface SandboxRunOptions {
-  lease: UserWorkspaceLease;
+  /**
+   * The user's workspace bound at /workspace, /home/user and /tmp. Without one the run
+   * is ephemeral: those are empty tmpfs and the app's skills / venv / node_modules are
+   * not shared (e.g. the web fetch browser, which needs no files).
+   */
+  lease?: UserWorkspaceLease;
+  /** Overrides of the systemd scope limits (defaults: SANDBOX_CONFIG) */
+  limits?: { memoryMax?: string; tasksMax?: number; cpuQuota?: string };
+  /** Cap on captured stdout / stderr (default: EXECUTOR_CONFIG.maxOutputChars) */
+  maxOutputChars?: number;
   /** Program and arguments to run inside the sandbox (no shell unless you pass one) */
   argv: string[];
   /** Extra environment variables, merged over the sandbox defaults */
@@ -26,9 +35,8 @@ export interface SandboxRunOutcome {
 
 const HOST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
-function appendCapped(current: string, chunk: Buffer, maxChars: number): string {
+function appendCapped(current: string, text: string, maxChars: number): string {
   if (current.length >= maxChars) return current;
-  const text = chunk.toString("utf-8");
   const remaining = maxChars - current.length;
   if (text.length <= remaining) return current + text;
   return current + text.slice(0, remaining) + "\n...[output truncated]";
@@ -148,24 +156,35 @@ export async function runInSandbox(options: SandboxRunOptions): Promise<SandboxR
     "--perms", "0755", "--dir", "/home",
     "--perms", "0755", "--dir", "/opt",
     "--perms", "0755", "--dir", "/opt/devnuby",
-    "--perms", "0755", "--dir", p.xdgData,
-    "--bind", lease.workspaceDir, p.workspace,
-    "--bind", lease.homeDir, p.home,
-    "--bind", lease.tmpDir, p.tmp
+    "--perms", "0755", "--dir", p.xdgData
   );
 
-  const readOnlyShares: Array<[string, string]> = [
-    [EXECUTOR_CONFIG.skillsRootDir, p.skills],
-    [EXECUTOR_CONFIG.nodeModulesDir, p.nodeModules],
-    [EXECUTOR_CONFIG.fontsDir, p.fonts],
-  ];
-  for (const [hostDir, sandboxDir] of readOnlyShares) {
-    if (fs.existsSync(hostDir)) bwrapArgs.push("--ro-bind", hostDir, sandboxDir);
-  }
-  // The venv keeps its host path: its console scripts (pip, ...) have absolute shebangs
-  const venvDir = path.resolve(EXECUTOR_CONFIG.pythonVenvDir);
-  if (fs.existsSync(venvDir)) {
-    bwrapArgs.push(...ancestorDirs(venvDir), "--ro-bind", venvDir, venvDir, "--symlink", venvDir, p.venv);
+  if (lease) {
+    bwrapArgs.push(
+      "--bind", lease.workspaceDir, p.workspace,
+      "--bind", lease.homeDir, p.home,
+      "--bind", lease.tmpDir, p.tmp
+    );
+    const readOnlyShares: Array<[string, string]> = [
+      [EXECUTOR_CONFIG.skillsRootDir, p.skills],
+      [EXECUTOR_CONFIG.nodeModulesDir, p.nodeModules],
+      [EXECUTOR_CONFIG.fontsDir, p.fonts],
+    ];
+    for (const [hostDir, sandboxDir] of readOnlyShares) {
+      if (fs.existsSync(hostDir)) bwrapArgs.push("--ro-bind", hostDir, sandboxDir);
+    }
+    // The venv keeps its host path: its console scripts (pip, ...) have absolute shebangs
+    const venvDir = path.resolve(EXECUTOR_CONFIG.pythonVenvDir);
+    if (fs.existsSync(venvDir)) {
+      bwrapArgs.push(...ancestorDirs(venvDir), "--ro-bind", venvDir, venvDir, "--symlink", venvDir, p.venv);
+    }
+  } else {
+    // Ephemeral run: writable scratch only, gone when the sandbox exits
+    bwrapArgs.push(
+      "--perms", "0700", "--tmpfs", p.workspace,
+      "--perms", "0700", "--tmpfs", p.home,
+      "--perms", "1777", "--tmpfs", p.tmp
+    );
   }
 
   bwrapArgs.push("--chdir", options.cwd ?? p.workspace, "--clearenv");
@@ -192,10 +211,10 @@ export async function runInSandbox(options: SandboxRunOptions): Promise<SandboxR
       "--scope",
       "--quiet",
       "--collect",
-      "-p", `MemoryMax=${SANDBOX_CONFIG.memoryMax}`,
+      "-p", `MemoryMax=${options.limits?.memoryMax ?? SANDBOX_CONFIG.memoryMax}`,
       "-p", "MemorySwapMax=0",
-      "-p", `TasksMax=${SANDBOX_CONFIG.tasksMax}`,
-      "-p", `CPUQuota=${SANDBOX_CONFIG.cpuQuota}`,
+      "-p", `TasksMax=${options.limits?.tasksMax ?? SANDBOX_CONFIG.tasksMax}`,
+      "-p", `CPUQuota=${options.limits?.cpuQuota ?? SANDBOX_CONFIG.cpuQuota}`,
       "--"
     );
   }
@@ -242,11 +261,15 @@ export async function runInSandbox(options: SandboxRunOptions): Promise<SandboxR
     options.signal?.addEventListener("abort", onAbort, { once: true });
     if (options.signal?.aborted) onAbort();
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = appendCapped(stdout, chunk, EXECUTOR_CONFIG.maxOutputChars);
+    const maxOutputChars = options.maxOutputChars ?? EXECUTOR_CONFIG.maxOutputChars;
+    // Decoded as a stream, so a multi-byte character split across chunks stays intact
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout = appendCapped(stdout, chunk, maxOutputChars);
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr = appendCapped(stderr, chunk, EXECUTOR_CONFIG.maxOutputChars);
+    child.stderr?.on("data", (chunk: string) => {
+      stderr = appendCapped(stderr, chunk, maxOutputChars);
     });
 
     const finish = (outcome: SandboxRunOutcome) => {

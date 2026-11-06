@@ -67,6 +67,25 @@ export const SANDBOX_CONFIG = {
 } as const;
 
 /**
+ * Lightpanda headless browser used by `fetch_url`, run inside the OS sandbox as the
+ * restricted user (egress firewall: public internet only). Installed on the host at
+ * `binary` by scripts/exec-sandbox/setup-host.sh.
+ */
+export const LIGHTPANDA_CONFIG = {
+  binary: "/usr/local/bin/lightpanda",
+  /** Page load: wait for the network to go quiet, at most `waitMs` */
+  waitUntil: "networkidle",
+  waitMs: 8_000,
+  /** Hard stop for page JavaScript (endless scripts) */
+  terminateMs: 15_000,
+  /** Whole run, including startup and the dump */
+  timeoutMs: 25_000,
+  /** Soft cap on the markdown Lightpanda writes */
+  dumpMaxBytes: 400_000,
+  limits: { memoryMax: "768M", tasksMax: 64, cpuQuota: "100%" },
+} as const;
+
+/**
  * Resolves the Python executable path.
  * Prioritizes:
  * 1. `DEVNUBY_PYTHON_BIN` env variable if explicitly configured

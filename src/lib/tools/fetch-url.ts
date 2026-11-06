@@ -3,7 +3,8 @@ import type {
   ToolExecutionContext,
   ToolExecutionResult,
 } from "./types";
-import { safeFetch, validateSafeUrl } from "./ssrf";
+import { BrowserFetchError, fetchWithBrowser } from "@/executors/lightpanda";
+import { validateSafeUrl } from "./ssrf";
 import { extractYouTubeVideoId, parseTimestamp } from "./youtube/detect";
 import { loadYouTubeVideo, type YouTubeVideo } from "./youtube/fetch-video";
 import { sliceTranscript } from "./youtube/transcript";
@@ -67,73 +68,14 @@ export interface YouTubeVideoData {
 
 const MAX_CHARS_DEFAULT = 12_000;
 const MAX_CHARS_CAP = 40_000;
-const MAX_BYTES = 2 * 1024 * 1024; // 2MB hard cap
-const TIMEOUT_MS = 15_000;
-
-function stripTags(html: string): string {
-  // Remove script/style blocks
-  let out = html.replace(/<script[\s\S]*?<\/script>/gi, "");
-  out = out.replace(/<style[\s\S]*?<\/style>/gi, "");
-  // Convert common block tags to newlines
-  out = out.replace(/<\/(p|div|li|h[1-6]|tr|br)>/gi, "\n");
-  out = out.replace(/<br\s*\/?>/gi, "\n");
-  // Strip remaining tags
-  out = out.replace(/<[^>]+>/g, "");
-  // Decode basic entities
-  out = out
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-  // Collapse whitespace
-  out = out.replace(/[ \t]+/g, " ");
-  out = out.replace(/\n{3,}/g, "\n\n");
-  return out.trim();
-}
-
-/** Reads the body but stops (returns null) once it exceeds maxBytes. */
-async function readBodyCapped(res: Response, maxBytes: number): Promise<Uint8Array | null> {
-  if (!res.body) return new Uint8Array(0);
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
-}
 
 const TEXT_CONTENT_TYPE = /^(?:text\/|application\/(?:json|ld\+json|xml|xhtml\+xml|rss\+xml|atom\+xml|javascript)|image\/svg\+xml)/i;
 
-/** True for a body that is not text: a known binary type, a PDF/ZIP signature, or NUL bytes up front. */
-function isBinaryBody(contentType: string, body: Uint8Array): boolean {
-  const head = body.subarray(0, 1024);
-  const signature = new TextDecoder("latin1").decode(head.subarray(0, 5));
-  if (signature.startsWith("%PDF") || signature.startsWith("PK\u0003\u0004")) return true;
-  if (TEXT_CONTENT_TYPE.test(contentType.trim())) return false;
-  // Unknown or generic types (application/octet-stream): look at the bytes
-  return head.includes(0);
-}
-
-function extractTitle(html: string): string | undefined {
-  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+/** The page's first heading, shown as the fetch label (`Opening <title>`). */
+function markdownTitle(markdown: string): string | undefined {
+  const m = /^#{1,2}\s+(.+)$/m.exec(markdown);
   if (!m) return undefined;
-  return m[1].replace(/<[^>]+>/g, "").trim().slice(0, 200) || undefined;
+  return m[1].replace(/[*_`]|\[([^\]]*)\]\([^)]*\)/g, "$1").trim().slice(0, 200) || undefined;
 }
 
 function toVideoData(video: YouTubeVideo, startAt: number, maxChars: number): YouTubeVideoData {
@@ -172,7 +114,7 @@ function toVideoData(video: YouTubeVideo, startAt: number, maxChars: number): Yo
 export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
   name: "fetch_url",
   description:
-    "Fetches a public web page and returns its readable text content. Use to read documentation, articles, or any URL the user provides. SSRF-protected: private/loopback/internal IPs and localhost are blocked. Returns plain text (HTML tags stripped). " +
+    "Opens a public web page in a headless browser (its JavaScript runs, so client-rendered sites work) and returns the main content as markdown, with headings, lists, tables and links kept. Use to read documentation, articles, or any URL the user provides. SSRF-protected: private/loopback/internal IPs and localhost are blocked. Sites behind a bot check (e.g. Cloudflare challenge) cannot be read. " +
     "YouTube video URLs (youtube.com/watch, youtu.be, /shorts/, /live/) instead return `video`: title, channel, upload date, duration, views, description, chapters and the full transcript as `[m:ss] text` lines (one subtitle track; none when the video has no subtitles). Long transcripts come in parts: call again with the same URL and `startAt` = `video.transcript.nextStartAt`. Repeat calls for the same video are served from the saved copy on the server, not YouTube.",
   parameters: {
     type: "object",
@@ -272,75 +214,35 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
       MAX_CHARS_CAP
     );
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const signal = context.signal
-      ? AbortSignal.any([context.signal, controller.signal])
-      : controller.signal;
+    const fail = (code: "EXECUTION_ERROR" | "INVALID_PARAM" | "SSRF_BLOCKED", message: string) => ({
+      success: false as const,
+      error: { code, message },
+      metadata: { durationMs: Date.now() - startTime },
+    });
 
+    // The literal host was checked above; the browser re-checks every request after DNS
+    // (and the sandbox firewall drops internal addresses)
     try {
-      // Validates DNS and every redirect hop before the request is sent (SSRF guard)
-      const fetched = await safeFetch(url, {
-        method: "GET",
-        headers: {
-          "User-Agent": "DevnubyAIRuntime/1.0 (+https://devnuby.ai)",
-          Accept: "text/html,text/plain,application/json,application/xml,*/*;q=0.8",
-        },
-        signal,
-      });
+      const page = await fetchWithBrowser(url, context.signal);
 
-      if ("blocked" in fetched) {
-        return {
-          success: false,
-          error: { code: "SSRF_BLOCKED", message: fetched.blocked },
-          metadata: { durationMs: Date.now() - startTime },
-        };
+      if (page.botChallenge) {
+        return fail(
+          "EXECUTION_ERROR",
+          `The site answered with a bot check (${page.botChallenge}) instead of the page, so it cannot be read automatically.`
+        );
+      }
+      if (page.status >= 400) return fail("EXECUTION_ERROR", `HTTP ${page.status}`);
+
+      // A PDF, image or archive is not a readable page; say what it is
+      const contentType = page.contentType;
+      if (!TEXT_CONTENT_TYPE.test(contentType.trim())) {
+        return fail(
+          "INVALID_PARAM",
+          `The URL returned a binary file (${contentType.split(";")[0].trim()}), not a readable web page. Look for an HTML version of the page (e.g. the article page instead of its download link).`
+        );
       }
 
-      const { response: res, finalUrl } = fetched;
-
-      if (!res.ok) {
-        return {
-          success: false,
-          error: {
-            code: "EXECUTION_ERROR",
-            message: `HTTP ${res.status} ${res.statusText}`,
-          },
-          metadata: { durationMs: Date.now() - startTime },
-        };
-      }
-
-      const contentType = res.headers.get("content-type") || "application/octet-stream";
-      const buffer = await readBodyCapped(res, MAX_BYTES);
-      if (!buffer) {
-        return {
-          success: false,
-          error: {
-            code: "INVALID_PARAM",
-            message: `Response exceeds ${MAX_BYTES} bytes limit.`,
-          },
-          metadata: { durationMs: Date.now() - startTime },
-        };
-      }
-
-      // A PDF, image or archive decoded as text is noise for the model (and its NUL
-      // bytes cannot be stored), so say what it is instead of returning it
-      if (isBinaryBody(contentType, buffer)) {
-        return {
-          success: false,
-          error: {
-            code: "INVALID_PARAM",
-            message: `The URL returned a binary file (${contentType.split(";")[0].trim()}), not a readable web page. Look for an HTML version of the page (e.g. the article page instead of its download link).`,
-          },
-          metadata: { durationMs: Date.now() - startTime },
-        };
-      }
-
-      const raw = new TextDecoder("utf-8", { fatal: false }).decode(buffer).replace(/\u0000/g, "");
-      const isHtml = contentType.includes("text/html") || /<html/i.test(raw);
-      const title = isHtml ? extractTitle(raw) : undefined;
-      const text = isHtml ? stripTags(raw) : raw.trim();
-
+      const text = page.markdown.replace(/\u0000/g, "");
       const truncated = text.length > maxChars;
       const finalText = truncated ? text.slice(0, maxChars) + "\n…[truncated]" : text;
 
@@ -348,24 +250,22 @@ export const fetchUrlTool: ToolDefinition<FetchUrlParams, FetchUrlData> = {
         success: true,
         data: {
           url,
-          finalUrl,
-          status: res.status,
+          finalUrl: page.url,
+          status: page.status,
           contentType,
-          title,
+          title: markdownTitle(text),
           text: finalText,
           truncated,
         },
-        metadata: { durationMs: Date.now() - startTime, provider: "fetch-url" },
+        metadata: { durationMs: Date.now() - startTime, provider: "lightpanda" },
       };
     } catch (err: unknown) {
+      if (context.signal?.aborted) throw err;
+      if (err instanceof BrowserFetchError) {
+        return fail(err.code === "BLOCKED" ? "SSRF_BLOCKED" : "EXECUTION_ERROR", err.message);
+      }
       const message = err instanceof Error ? err.message : "Fetch failed";
-      return {
-        success: false,
-        error: { code: "EXECUTION_ERROR", message: `Failed to fetch URL: ${message}` },
-        metadata: { durationMs: Date.now() - startTime },
-      };
-    } finally {
-      clearTimeout(timer);
+      return fail("EXECUTION_ERROR", `Failed to fetch URL: ${message}`);
     }
   },
 };
