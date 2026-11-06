@@ -101,6 +101,74 @@ export function streamingSourceOf(tool: Pick<ToolActivity, "input">): string {
   return "";
 }
 
+const TITLE_MAX = 120;
+
+function cleanTitle(raw: string): string {
+  const text = raw
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Template placeholders (f-strings, JS templates) are not a title yet
+  if (!text || /[{}]|\$\{/.test(text)) return "";
+  return text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text;
+}
+
+/** First title-like text the streamed code / content declares. */
+function titleFromSource(source: string, filename: string): string {
+  const patterns: RegExp[] = [
+    /<title[^>]*>([\s\S]*?)<\/title>/i,
+    /<h1[^>]*>([\s\S]*?)<\/h1>/i,
+    // reportlab / pypdf / fpdf metadata
+    /setTitle\(\s*["']([^"'\n]+)["']/,
+    /\btitle\s*=\s*["']([^"'\n]{3,})["']/,
+    // python-docx / python-pptx
+    /core_properties\.title\s*=\s*["']([^"'\n]+)["']/,
+    /add_heading\(\s*["']([^"'\n]+)["']/,
+    /\.title\.text\s*=\s*["']([^"'\n]+)["']/,
+    // docx-js / pptx-js
+    /\btitle\s*:\s*["'`]([^"'`\n]{3,})["'`]/,
+  ];
+  if (/\.md$/i.test(filename)) patterns.unshift(/^#\s+(.+)$/m);
+  for (const re of patterns) {
+    const match = re.exec(source);
+    const title = match ? cleanTitle(match[1]) : "";
+    if (title) return title;
+  }
+  return "";
+}
+
+/** `Laporan_Akhir-2026.pdf` → `Laporan Akhir 2026` */
+function humanizeFilename(filename: string): string {
+  return filename
+    .replace(/\.[a-z0-9]{1,5}$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * What the live panel calls the document being built: the title the AI gave it (tool
+ * `title`, HTML `<title>`/`<h1>`, the script's document title), else its file name
+ * without the extension. Empty while nothing tells yet.
+ */
+export function liveDocumentTitle(live: Pick<LiveDocumentState, "input" | "source" | "filename">): string {
+  const input = record(live.input);
+  if (typeof input.title === "string") {
+    const title = cleanTitle(input.title);
+    if (title) return title;
+  }
+  const fromSource = titleFromSource(live.source, live.filename);
+  if (fromSource) return fromSource;
+  return humanizeFilename(live.filename);
+}
+
 export interface LiveDocumentStep {
   /** The live view to show next (null: none) */
   live: LiveDocumentState | null;
