@@ -8,6 +8,7 @@ import type { CompactWebSource } from "@/lib/tools/compact-source";
 import { useI18n } from "@/providers/i18n-provider";
 import type { MessageSegment, ToolActivity } from "@/types";
 import type { StandaloneChartFigure } from "./code-execution-widget";
+import { CompactThinkingLine, CompactToolList } from "./compact-activity";
 import { ThinkingAccordion } from "./thinking-accordion";
 import { ToolActivityList } from "./tool-activity";
 import {
@@ -25,6 +26,11 @@ export interface AgentWorkAccordionProps {
   isMessageStreaming?: boolean;
   isWorkActive: boolean;
   sourcesMap: Map<string, CompactWebSource>;
+  /**
+   * Normal response mode: the drawer lists the work as single lines (no nested
+   * accordions, no intro text) and the parent shows the tool results (`ToolResults`).
+   */
+  compact?: boolean;
 }
 
 /**
@@ -57,6 +63,7 @@ export function AgentWorkAccordion({
   isMessageStreaming = false,
   isWorkActive,
   sourcesMap,
+  compact = false,
 }: AgentWorkAccordionProps) {
   const { t } = useI18n();
 
@@ -190,9 +197,30 @@ export function AgentWorkAccordion({
         )}
       >
         <div className="overflow-hidden">
-          <div className="mt-2 ml-[7px] pl-4 border-l border-[var(--border)] space-y-2.5">
+          <div
+            className={cn(
+              "mt-2 ml-[7px] pl-4 border-l border-[var(--border)]",
+              compact ? "space-y-1 [&>*]:mb-0" : "space-y-2.5"
+            )}
+          >
             {segments.map((segment, idx) => {
               const isLastSeg = idx === segments.length - 1;
+              if (compact) {
+                if (segment.type === "tools") {
+                  return <CompactToolList key={`work-tools-${segment.tools[0]?.id ?? idx}`} tools={segment.tools} />;
+                }
+                if (segment.type === "reasoning") {
+                  return (
+                    <CompactThinkingLine
+                      key={`work-reasoning-${idx}`}
+                      content={segment.text}
+                      durationSec={segment.durationSec}
+                      isStreaming={isWorkActive && isLastSeg}
+                    />
+                  );
+                }
+                return null;
+              }
               if (segment.type === "tools") {
                 return (
                   <ToolActivityList
@@ -231,7 +259,7 @@ export function AgentWorkAccordion({
         </div>
       </div>
 
-      <ToolVisualGallery visuals={visuals} />
+      {compact ? null : <ToolVisualGallery visuals={visuals} />}
     </div>
   );
 }

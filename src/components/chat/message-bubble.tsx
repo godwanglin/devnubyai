@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useSyncExternalStore, useState, useRef, useEffect, memo } from "react";
-import { Check, Copy, Volume2, RefreshCw, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
+import { Check, Copy, RefreshCw, Pencil } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -16,7 +16,9 @@ import { TypingIndicator } from "./typing-indicator";
 import { QuoteChip } from "./quote-chip";
 import { SourceMentionChips } from "./source-mention-chips";
 import { EditTargetChip, parseRequestEditMessage } from "./edit-target-chip";
-import { CompactThinkingLine, CompactToolList, SilentStatusLine, ToolResults } from "./compact-activity";
+import { AssistantMessageActions } from "./assistant-message-actions";
+import { SilentStatusLine } from "./compact-activity";
+import { CompactReplyBody } from "./compact-reply-body";
 import { useResponseMode } from "@/hooks/use-chat-prefs";
 import { messageFeedbackMap } from "@/lib/chat/client-mappers";
 import { useRequestRetry } from "@/lib/chat/request-retry-store";
@@ -323,10 +325,15 @@ export const MessageBubble = memo(function MessageBubble({
     }
   }
 
-  // Normal / silent response modes: work shown as single lines (normal) or not at all once
-  // the answer starts (silent); text before the last tool call counts as work
+  const isWorkActive = Boolean(
+    isStreaming &&
+      (isToolRunning ||
+        message.isReasoningStreaming ||
+        (message.segments?.length && lastWorkIdx === message.segments.length - 1))
+  );
+
+  // Silent response mode: one status line while working (see SilentStatusLine)
   const lastSegment = message.segments?.at(-1);
-  const answerStart = lastWorkIdx + 1;
   const isSilentWorking = Boolean(
     isStreaming &&
       (message.isReasoningStreaming ||
@@ -342,62 +349,20 @@ export const MessageBubble = memo(function MessageBubble({
         ? message.toolCalls
         : null;
 
-  const renderCompactSegment = (segment: NonNullable<Message["segments"]>[number], idx: number, total: number) => {
-    const isLast = idx === total - 1;
-    if (segment.type === "reasoning") {
-      return responseMode === "normal" ? (
-        <CompactThinkingLine
-          key={`reasoning-${idx}`}
-          content={segment.text}
-          durationSec={segment.durationSec}
-          isStreaming={isStreaming && isLast}
-        />
-      ) : null;
-    }
-    if (segment.type === "tools") {
-      return responseMode === "normal" ? (
-        <CompactToolList key={`tools-${segment.tools[0]?.id ?? idx}`} tools={segment.tools} />
-      ) : null;
-    }
-    if (idx < answerStart || errorCard) return null;
-    return (
-      <div key={`text-${idx}`} className={cn("prose-chat", !isLast && "mb-3", isStreaming && isLast && "typewriter-fade-in")}>
-        <MarkdownRenderer content={segment.text} sourcesMap={sourcesMap} />
-      </div>
-    );
-  };
-
-  const toolResults = message.toolCalls?.length ? (
-    <ToolResults tools={message.toolCalls} messageId={message.id} chatId={chatId} isMessageStreaming={isStreaming} />
-  ) : null;
-
-  const compactBody = message.segments?.length ? (
-    <>
-      {message.segments.slice(0, answerStart).map((segment, idx) =>
-        renderCompactSegment(segment, idx, message.segments!.length)
-      )}
-      {toolResults}
-      {message.segments.slice(answerStart).map((segment, idx) =>
-        renderCompactSegment(segment, idx + answerStart, message.segments!.length)
-      )}
-      {errorCard}
-    </>
-  ) : (
-    <>
-      {responseMode === "normal" && message.toolCalls?.length ? <CompactToolList tools={message.toolCalls} /> : null}
-      {toolResults}
-      {errorCard ??
-        (hasContent ? (
-          <div className={cn("prose-chat", isStreaming && "typewriter-fade-in")}>
-            <MarkdownRenderer content={message.content} sourcesMap={sourcesMap} />
-          </div>
-        ) : null)}
-    </>
-  );
-
   return (
     <div id={`message-${message.id}`} className="py-4 group min-w-0">
-      {responseMode !== "verbose" ? compactBody : message.segments?.length ? (
+      {responseMode !== "verbose" ? (
+        <CompactReplyBody
+          message={message}
+          chatId={chatId}
+          isStreaming={isStreaming}
+          mode={responseMode}
+          sourcesMap={sourcesMap}
+          errorCard={errorCard}
+          lastWorkIdx={lastWorkIdx}
+          isWorkActive={isWorkActive}
+        />
+      ) : message.segments?.length ? (
         lastWorkIdx >= 0 && message.toolCalls ? (
           <>
             <AgentWorkAccordion
@@ -406,12 +371,7 @@ export const MessageBubble = memo(function MessageBubble({
               messageId={message.id}
               chatId={chatId}
               isMessageStreaming={isStreaming}
-              isWorkActive={Boolean(
-                isStreaming &&
-                  (isToolRunning ||
-                    message.isReasoningStreaming ||
-                    lastWorkIdx === message.segments.length - 1)
-              )}
+              isWorkActive={isWorkActive}
               sourcesMap={sourcesMap}
             />
             {errorCard ??
@@ -488,84 +448,15 @@ export const MessageBubble = memo(function MessageBubble({
           <TypingIndicator state="done" size="md" showLabel={true} isExiting={donePhase === "exiting"} />
         </div>
       ) : (
-        <div className="flex items-center gap-2 mt-2.5 animate-fade-in">
-          <div className="flex items-center gap-0.5">
-            <Tooltip content={copied ? t("message.copied") : t("message.copy")} side="top">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className={cn("grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer", copied && "text-[var(--accent)]")}
-                aria-label={copied ? t("message.copied") : t("message.copy")}
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            </Tooltip>
-            <Tooltip content={t("message.readAloud")} side="top">
-              <button
-                type="button"
-                onClick={() => toast(t("toast.featureUnavailable"))}
-                className="grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-                aria-label={t("message.readAloud")}
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-              </button>
-            </Tooltip>
-            {onRegenerate ? (
-              <Tooltip content={t("message.regenerate")} side="top">
-                <button
-                  type="button"
-                  onClick={onRegenerate}
-                  className="grid place-items-center w-7 h-7 rounded-[6px] text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)] transition-colors cursor-pointer"
-                  aria-label={t("message.regenerate")}
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-              </Tooltip>
-            ) : null}
-            {chatId ? (
-              <>
-                <span className="w-px h-3.5 bg-[var(--border)] mx-1" aria-hidden="true" />
-                <Tooltip content={t("message.like")} side="top">
-                  <button
-                    type="button"
-                    aria-pressed={effectiveFeedback === "like"}
-                    onClick={() => handleFeedback("like")}
-                    className={cn(
-                      "grid place-items-center w-7 h-7 rounded-[6px] transition-colors cursor-pointer",
-                      effectiveFeedback === "like"
-                        ? "text-[var(--ink)] bg-[var(--accent-soft)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                        : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                    )}
-                    aria-label={t("message.like")}
-                  >
-                    <ThumbsUp className={cn("w-3.5 h-3.5", effectiveFeedback === "like" && "fill-current")} />
-                  </button>
-                </Tooltip>
-                <Tooltip content={t("message.dislike")} side="top">
-                  <button
-                    type="button"
-                    aria-pressed={effectiveFeedback === "dislike"}
-                    onClick={() => handleFeedback("dislike")}
-                    className={cn(
-                      "grid place-items-center w-7 h-7 rounded-[6px] transition-colors cursor-pointer",
-                      effectiveFeedback === "dislike"
-                        ? "text-[var(--ink)] bg-[var(--accent-soft)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                        : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--ink)]"
-                    )}
-                    aria-label={t("message.dislike")}
-                  >
-                    <ThumbsDown className={cn("w-3.5 h-3.5", effectiveFeedback === "dislike" && "fill-current")} />
-                  </button>
-                </Tooltip>
-              </>
-            ) : null}
-          </div>
-          {formattedTime ? (
-            <span className="text-[11px] text-[var(--muted)] select-none px-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              {formattedTime}
-            </span>
-          ) : null}
-        </div>
+        <AssistantMessageActions
+          copied={copied}
+          onCopy={handleCopy}
+          onRegenerate={onRegenerate}
+          showFeedback={Boolean(chatId)}
+          feedback={effectiveFeedback}
+          onFeedback={handleFeedback}
+          formattedTime={formattedTime}
+        />
       )}
 
       <FeedbackModal
