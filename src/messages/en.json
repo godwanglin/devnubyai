@@ -33,7 +33,75 @@
     "usage": "Usage & quota",
     "logout": "Log out",
     "login": "Log in",
-    "upgrade": "Upgrade"
+    "upgrade": "Upgrade",
+    "library": "Library"
+  },
+  "library": {
+    "title": "Library",
+    "subtitle": "Every file you uploaded and every file the AI created across your chats, neatly in one place.",
+    "statFiles": "files",
+    "statSize": "total",
+    "tabAll": "All",
+    "tabGenerated": "Artifacts",
+    "tabUploaded": "Uploaded",
+    "badgeGenerated": "Artifact",
+    "badgeUploaded": "Upload",
+    "searchPlaceholder": "Search file or chat names...",
+    "clearSearch": "Clear search",
+    "sortNewest": "Newest",
+    "sortOldest": "Oldest",
+    "sortName": "Name (A–Z)",
+    "sortSize": "Largest",
+    "viewGrid": "Grid view",
+    "viewList": "List view",
+    "kindAll": "All types",
+    "kind": {
+      "document": "Documents",
+      "image": "Images",
+      "spreadsheet": "Spreadsheets",
+      "presentation": "Presentations",
+      "code": "Code & web",
+      "other": "Other"
+    },
+    "group": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "week": "Previous 7 days",
+      "month": "Previous 30 days",
+      "older": "Older"
+    },
+    "colName": "Name",
+    "colChat": "Chat",
+    "colSize": "Size",
+    "colDate": "Date",
+    "preview": "View file",
+    "openChat": "Open chat",
+    "download": "Download",
+    "moreActions": "More actions",
+    "empty": {
+      "all": {
+        "title": "Your library is empty",
+        "body": "Files you upload to chats and files the AI creates will show up here automatically."
+      },
+      "generated": {
+        "title": "No artifacts yet",
+        "body": "Ask the AI for a document, spreadsheet, presentation or image and it will be kept here."
+      },
+      "upload": {
+        "title": "No uploads yet",
+        "body": "Attach files in a chat and all your uploads will be collected here."
+      }
+    },
+    "startChat": "Start a chat",
+    "noResultsTitle": "No matching files",
+    "noResultsBody": "Try another keyword or change the file type filter.",
+    "resetFilters": "Reset filters",
+    "loadFailed": "Couldn't load your library",
+    "retry": "Try again",
+    "retryHint": "Check your connection and try again.",
+    "guestTitle": "Log in to see your library",
+    "guestBody": "Every file from your chats is kept here once you're logged in.",
+    "truncated": "Showing the 1,000 most recent files."
   },
   "topbar": {
     "share": "Share chat",

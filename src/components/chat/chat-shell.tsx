@@ -22,6 +22,7 @@ import { MAX_QUOTES_PER_MESSAGE } from "@/lib/chat/quotes";
 import { useLiveDocument } from "@/hooks/use-live-document";
 import { Welcome } from "./welcome";
 import { ProjectHomeView } from "@/components/projects/project-home-view";
+import { LibraryView } from "@/components/library/library-view";
 import { dispatchProjectsUpdated } from "@/hooks/use-projects";
 import { ChatMessagesSkeleton } from "./chat-skeleton";
 import { RenameModal } from "@/components/modals/rename-modal";
@@ -60,6 +61,8 @@ import {
   dispatchClearEditChips,
   dispatchRemoveEditChip,
   dispatchAIFileUpdated,
+  peekQueuedFilePreview,
+  clearQueuedFilePreview,
   withCacheBuster,
   type AIEditRequestPayload,
   type AIFileUpdatedPayload,
@@ -445,11 +448,16 @@ export function ChatShell() {
     setPendingQuotes([]);
     setPendingEditChips([]);
     dispatchClearEditChips();
-    setActivePreviewFile(null);
+    // A file picked in the library opens in the panel once its chat is the open one
+    setActivePreviewFile(peekQueuedFilePreview(currentChatId));
     setIsFilesFullscreen(false);
     // The open/closed pref is left alone: without an active chat the panel is
     // hidden anyway (showFilesPanel), and it comes back on the next chat.
   }
+
+  useEffect(() => {
+    if (clearQueuedFilePreview(currentChatId)) setIsFilesPanelOpen(true);
+  }, [currentChatId, setIsFilesPanelOpen]);
 
   const isStreamingOrSubmitted = status === "submitted" || status === "streaming";
   const streamingId = useMemo(() => {
@@ -1017,7 +1025,9 @@ export function ChatShell() {
             : "relative flex flex-col min-w-0 flex-1 grid-rows-[auto_1fr_auto]"
         }
       >
-        {isProjectHome ? (
+        {pathname === "/library" ? (
+          <LibraryView onToggleSidebar={handleToggleSidebar} />
+        ) : isProjectHome ? (
           <ProjectHomeView
             projectId={currentProjectId!}
             composer={(projectName) =>

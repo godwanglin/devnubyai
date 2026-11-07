@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Tailwind's automatic source detection skips folders named "library" */
+@source "../components/library";
 
 /* Find-in-document (CSS Custom Highlight API) — used by the shared document previews. */
 ::highlight(devnuby-doc-search) {

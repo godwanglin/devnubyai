@@ -33,7 +33,75 @@
     "usage": "Penggunaan & kuota",
     "logout": "Keluar",
     "login": "Masuk",
-    "upgrade": "Tingkatkan"
+    "upgrade": "Tingkatkan",
+    "library": "Library"
+  },
+  "library": {
+    "title": "Library",
+    "subtitle": "Semua file yang kamu unggah dan yang dibuat AI di setiap percakapan, tersimpan rapi di satu tempat.",
+    "statFiles": "file",
+    "statSize": "total",
+    "tabAll": "Semua",
+    "tabGenerated": "Artifacts",
+    "tabUploaded": "Diunggah",
+    "badgeGenerated": "Artifact",
+    "badgeUploaded": "Unggahan",
+    "searchPlaceholder": "Cari nama file atau percakapan...",
+    "clearSearch": "Hapus pencarian",
+    "sortNewest": "Terbaru",
+    "sortOldest": "Terlama",
+    "sortName": "Nama (A–Z)",
+    "sortSize": "Ukuran terbesar",
+    "viewGrid": "Tampilan grid",
+    "viewList": "Tampilan daftar",
+    "kindAll": "Semua jenis",
+    "kind": {
+      "document": "Dokumen",
+      "image": "Gambar",
+      "spreadsheet": "Spreadsheet",
+      "presentation": "Presentasi",
+      "code": "Kode & web",
+      "other": "Lainnya"
+    },
+    "group": {
+      "today": "Hari ini",
+      "yesterday": "Kemarin",
+      "week": "7 hari terakhir",
+      "month": "30 hari terakhir",
+      "older": "Lebih lama"
+    },
+    "colName": "Nama",
+    "colChat": "Percakapan",
+    "colSize": "Ukuran",
+    "colDate": "Tanggal",
+    "preview": "Lihat file",
+    "openChat": "Buka percakapan",
+    "download": "Unduh",
+    "moreActions": "Aksi lain",
+    "empty": {
+      "all": {
+        "title": "Library kamu masih kosong",
+        "body": "File yang kamu unggah ke percakapan dan file yang dibuat AI akan otomatis muncul di sini."
+      },
+      "generated": {
+        "title": "Belum ada artifact",
+        "body": "Minta AI membuat dokumen, spreadsheet, presentasi, atau gambar, hasilnya akan tersimpan di sini."
+      },
+      "upload": {
+        "title": "Belum ada file yang diunggah",
+        "body": "Lampirkan file di percakapan, semua unggahanmu akan terkumpul di sini."
+      }
+    },
+    "startChat": "Mulai percakapan",
+    "noResultsTitle": "Tidak ada file yang cocok",
+    "noResultsBody": "Coba kata kunci lain atau ubah filter jenis file.",
+    "resetFilters": "Reset filter",
+    "loadFailed": "Gagal memuat library",
+    "retry": "Coba lagi",
+    "retryHint": "Periksa koneksi kamu lalu coba lagi.",
+    "guestTitle": "Masuk untuk melihat library",
+    "guestBody": "Semua file dari percakapanmu akan tersimpan di sini setelah kamu masuk.",
+    "truncated": "Menampilkan 1.000 file terbaru."
   },
   "topbar": {
     "share": "Bagikan percakapan",

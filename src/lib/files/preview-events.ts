@@ -147,6 +147,27 @@ export function openFileInRightPanel(target: PreviewableFileTarget): void {
   );
 }
 
+// A file to preview once its chat opens (e.g. picked in the library, then navigated to)
+let queuedPreview: { chatId: string; target: PreviewableFileTarget } | null = null;
+
+/** Queues a file to open in the right panel as soon as `chatId` becomes the open chat. */
+export function queueFilePreviewForChat(chatId: string, target: PreviewableFileTarget): void {
+  queuedPreview = { chatId, target };
+}
+
+/** The file queued for `chatId`, if any (read-only: safe to call while rendering). */
+export function peekQueuedFilePreview(chatId: string | null): SessionFileItem | null {
+  if (!chatId || !queuedPreview || queuedPreview.chatId !== chatId) return null;
+  return toSessionFileItem(queuedPreview.target);
+}
+
+/** Drops the queued file once its chat has opened it; true when there was one for `chatId`. */
+export function clearQueuedFilePreview(chatId: string | null): boolean {
+  if (!chatId || !queuedPreview || queuedPreview.chatId !== chatId) return false;
+  queuedPreview = null;
+  return true;
+}
+
 /**
  * Emits or clears text selection coordinates originating inside a sandboxed preview iframe.
  */

@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState, useMemo, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Plus,
   Search,
   Pin,
+  Library,
 } from "lucide-react";
 import { SidebarAccountCard, AccountSkeleton } from "./sidebar-account";
 import { SidebarSessionsSkeleton } from "./sidebar-skeleton";
@@ -341,6 +343,23 @@ export function Sidebar({
               className="w-full pl-8 pr-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-transparent text-sm text-[var(--ink)] placeholder:text-[var(--placeholder)] focus:border-[var(--accent)]"
             />
           </div>
+
+          {user && (
+            <Link
+              href="/library"
+              onClick={onCloseMobile}
+              aria-current={pathname === "/library" ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2.5 w-full px-2.5 py-2 rounded-[10px] text-sm transition-colors",
+                pathname === "/library"
+                  ? "bg-[var(--hover)] text-[var(--ink)] font-semibold"
+                  : "text-[var(--ink)] font-medium hover:bg-[var(--hover)]"
+              )}
+            >
+              <Library className="w-4 h-4 text-[var(--muted)]" />
+              <span>{t("nav.library")}</span>
+            </Link>
+          )}
 
           <nav className="space-y-3">
             {/* Project Workspaces Group (Fase 2) */}
